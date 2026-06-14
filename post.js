@@ -23,23 +23,18 @@ let platforms;
 if (platIdx === -1) {
   platforms = ['fb', 'ig', 'x'];
 } else if (args[platIdx].includes('=')) {
-  platforms = args[platIdx].split('=')[1].split(',').map(s => s.trim().toLowerCase());
+  platforms = args[platIdx].split('=')[1].split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 } else {
   platforms = (args[platIdx + 1] || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 }
 
-if (!postDate && !itemIdArg) {
-  console.error('❌ ระบุวันที่หรือ item_id ด้วย เช่น\n   node post.js 2026-05-18\n   node post.js 3991346022 --platform fb');
-  process.exit(1);
-}
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function httpsPost(hostname, path, data, headers = {}) {
+function httpsPost(hostname, urlPath, data, headers = {}) {
   return new Promise((resolve, reject) => {
     const body = typeof data === 'string' ? data : JSON.stringify(data);
     const req = https.request(
-      { hostname, path, method: 'POST',
+      { hostname, path: urlPath, method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), ...headers } },
       res => {
         let buf = '';
@@ -52,16 +47,6 @@ function httpsPost(hostname, path, data, headers = {}) {
     req.on('error', reject);
     req.write(body);
     req.end();
-  });
-}
-
-function httpsGet(hostname, urlPath) {
-  return new Promise((resolve, reject) => {
-    https.get({ hostname, path: urlPath }, res => {
-      let buf = '';
-      res.on('data', d => buf += d);
-      res.on('end', () => { try { resolve(JSON.parse(buf)); } catch { resolve(buf); } });
-    }).on('error', reject);
   });
 }
 
@@ -178,7 +163,10 @@ async function postFacebook(itemId) {
 function uploadImgBB(imagePath) {
   return new Promise((resolve, reject) => {
     const IMGBB_API_KEY = process.env.IMGBB_API_KEY;
-    if (!IMGBB_API_KEY) throw new Error('ขาด IMGBB_API_KEY ใน .env');
+    if (!IMGBB_API_KEY) {
+      reject(new Error('ขาด IMGBB_API_KEY ใน .env'));
+      return;
+    }
 
     const imageData = fs.readFileSync(imagePath);
     const base64    = imageData.toString('base64');
@@ -309,18 +297,39 @@ async function postX(itemId) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-(async function main() {
+async function main() {
+  if (!postDate && !itemIdArg) {
+    console.error('❌ ระบุวันที่หรือ item_id ด้วย เช่น\n   node post.js 2026-05-18\n   node post.js 3991346022 --platform fb');
+    process.exit(1);
+  }
+
+  if (!platforms.length) {
+    console.error('❌ --platform ระบุไม่ถูกต้อง ตัวอย่าง: --platform fb,ig,x');
+    process.exit(1);
+  }
+
   // หาสินค้าของวันที่นั้น
+  if (!fs.existsSync('products')) {
+    console.log('❌ ไม่พบโฟลเดอร์ products/');
+    process.exit(1);
+  }
+
   const productDirs = fs.readdirSync('products')
     .filter(d => fs.existsSync(path.join('products', d, 'data.json')));
 
   const items = productDirs.map(id => {
-    const d = JSON.parse(fs.readFileSync(path.join('products', id, 'data.json'), 'utf8'));
-    return { id, data: d };
-  }).filter(({ data: d }) => {
+    try {
+      const d = JSON.parse(fs.readFileSync(path.join('products', id, 'data.json'), 'utf8'));
+      return { id, data: d };
+    } catch {
+      return null;
+    }
+  }).filter(item => {
+    if (!item) return false;
+    const d = item.data;
     if (d.status === 'placeholder') return false;
     if (postDate) return d.post_date === postDate;
-    return d.item_id === itemIdArg;
+    return d.item_id === itemIdArg || item.id === itemIdArg;
   });
 
   if (!items.length) {
@@ -420,4 +429,22 @@ async function postX(itemId) {
     console.log('\n📱 TikTok: อัปโหลดวิดีโอเองที่ https://www.tiktok.com/creator-center');
     console.log('   แล้ว copy caption จาก products/{item_id}/content/tiktok.md');
   }
-})();
+}
+
+if (require.main === module) {
+  main().catch(e => { console.error(e.message); process.exit(1); });
+}
+
+module.exports = {
+  readContent,
+  parseTweets,
+  uploadImgBB,
+  uploadPhotoFB,
+  buildMultipart,
+  httpsPost,
+  httpsPostBinary,
+  postFacebook,
+  postInstagram,
+  postX,
+  main,
+};

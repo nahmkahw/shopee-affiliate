@@ -1,4 +1,8 @@
 {
+  "scripts": {
+    "test": "jest",
+    "test:coverage": "jest --coverage"
+  },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.0",
     "dotenv": "^16.6.1",
@@ -8,6 +12,7 @@
     "twitter-api-v2": "^1.29.0"
   },
   "devDependencies": {
+    "jest": "^30.4.2",
     "xlsx": "^0.18.5"
   }
 }
