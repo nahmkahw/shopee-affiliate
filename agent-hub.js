@@ -1956,27 +1956,7 @@ function buildMainPage(status) {
     </div>`;
   }).join('');
 
-  // การ์ดพิเศษ: อนิเมะ Generator (ไม่ใช่ agent process — ลิงก์ตรงไป dashboard)
-  const animeCard = `
-    <div onclick="window.location='/dashboard/anime'" class="agent-card"
-         style="cursor:pointer;border-radius:24px;overflow:hidden;position:relative;aspect-ratio:3/4;
-                border:2px solid #a855f7;box-shadow:0 8px 40px #a855f744,0 2px 12px rgba(0,0,0,0.3);
-                transition:all 0.35s ease;background:linear-gradient(160deg,#a855f722 0%,#0f172a 60%);
-                display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px">
-      <div style="font-size:64px;margin-bottom:8px">🎨</div>
-      <div style="font-size:28px;font-weight:900;color:white;text-shadow:0 2px 16px rgba(0,0,0,0.9);letter-spacing:-0.5px">อนิเมะ</div>
-      <div style="display:inline-flex;margin-top:8px;padding:3px 12px;border-radius:999px;
-                  background:#a855f733;border:1px solid #a855f766;font-size:12px;font-weight:600;color:#c084fc">
-        Character Generator
-      </div>
-      <div style="margin-top:14px;font-size:12px;color:rgba(255,255,255,0.55);line-height:1.5">
-        สร้างตัวละครอนิเมะจากรูปคน<br>+ ใส่ข้อความไทย
-      </div>
-      <div style="margin-top:14px;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#a855f7">
-        เปิดหน้าควบคุม <span style="font-size:16px">→</span>
-      </div>
-    </div>`;
-  const allCards = cards + animeCard;
+  const allCards = cards;
 
   return `<!DOCTYPE html>
 <html lang="th">
