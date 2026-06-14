@@ -1,0 +1,12 @@
+{
+  "prompt": "1man, 60 age, solo, color black suite,upper body, looking at viewer, detailed background",
+  "text": "กินข้าวแล้วบ่",
+  "faceWeight": 1.1,
+  "created": 1781136886370,
+  "balloon": {
+    "tailFrac": {
+      "x": 0.46,
+      "y": 0.46
+    }
+  }
+}

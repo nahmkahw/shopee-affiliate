@@ -1,0 +1,13 @@
+{
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.0",
+    "dotenv": "^16.6.1",
+    "msedge-tts": "^2.0.5",
+    "playwright": "^1.60.0",
+    "qrcode": "^1.5.4",
+    "twitter-api-v2": "^1.29.0"
+  },
+  "devDependencies": {
+    "xlsx": "^0.18.5"
+  }
+}

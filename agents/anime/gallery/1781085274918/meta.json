@@ -1,0 +1,13 @@
+{
+  "prompt": "1man, solo, white sport adidas ,upper body, looking at viewer, source background",
+  "text": "กินข้าวแลงแล้วบ่",
+  "faceWeight": 1.5,
+  "balloon": {
+    "tailFrac": {
+      "x": 0.46,
+      "y": 0.46
+    }
+  },
+  "fromTemplate": "1781080733122",
+  "created": 1781085274918
+}

@@ -1,0 +1,13 @@
+{
+  "prompt": "1man, solo, white sport adidas ,upper body, looking at viewer, source background",
+  "text": "ถ้า รัฐบาล สหรัฐ มีเป้าที่จะปลด \nหนี้ สิน ที่มี อยู่ (ตอนนี้ $39T)  \nสภาพตลาด แบบใหน ที่ มันจะ\nทำได้ ?  $25K gold $500 silver\n$20k ETH (stablecoin) \n$1M BTC",
+  "faceWeight": 1.5,
+  "balloon": {
+    "tailFrac": {
+      "x": 0.46,
+      "y": 0.46
+    }
+  },
+  "fromTemplate": "1781080733122",
+  "created": 1781154909201
+}

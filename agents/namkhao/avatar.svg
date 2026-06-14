@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="bg3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1565C0;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#42A5F5;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="56" fill="url(#bg3)" stroke="#fff" stroke-width="3"/>
+  <!-- Crown/supervisor symbol -->
+  <polygon points="60,24 70,40 85,32 80,50 40,50 35,32 50,40" fill="#FFD700" stroke="white" stroke-width="1.5"/>
+  <!-- Body/shield -->
+  <path d="M35,55 Q35,82 60,90 Q85,82 85,55 Z" fill="white" opacity="0.25"/>
+  <!-- Eye left -->
+  <circle cx="48" cy="64" r="6" fill="white"/>
+  <circle cx="50" cy="64" r="3" fill="#1565C0"/>
+  <!-- Eye right -->
+  <circle cx="72" cy="64" r="6" fill="white"/>
+  <circle cx="74" cy="64" r="3" fill="#1565C0"/>
+  <!-- Smile -->
+  <path d="M48,76 Q60,84 72,76" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <text x="60" y="107" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="bold" fill="white">น้ำข้าว</text>
+</svg>

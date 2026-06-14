@@ -1,0 +1,17 @@
+{
+  "prompt": "1man, 60 age, solo, color black suite,upper body, looking at viewer, detailed background",
+  "text": "เงินเฟ้อสหรัฐล่าสุดอยู่ราว \n4.2% สูงกว่าที่ Fed ต้องการ\nมาก ทำให้นักลงทุนเริ่มคาดว่า\nอัตราดอกเบี้ยสูงอาจอยู่ต่อไป\nถึงปี 2027",
+  "faceWeight": 1.5,
+  "balloon": {
+    "tailFrac": {
+      "x": 0.4802259657300695,
+      "y": 0.5844809336599737
+    }
+  },
+  "fromTemplate": "1781135352228",
+  "created": 1781154085030,
+  "posted": {
+    "fb": 1781154220245,
+    "ig": 1781154233761
+  }
+}

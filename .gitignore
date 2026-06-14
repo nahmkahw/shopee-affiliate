@@ -1,0 +1,29 @@
+# Credentials
+.env
+agents/manao/pipeline/.env
+
+# Product data (ข้อมูลสินค้า + รูป)
+products/
+
+# News articles (manao pipeline)
+agents/manao/pipeline/news/
+
+# Lock files
+.approval-bot.lock
+agent-status.json
+.auth-sessions.json
+
+# Video temp files
+*/_temp_video/
+*.mp4
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🎨 อนิเมะ — Character Generator</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0f1117;--card:#1a1d27;--border:rgba(255,255,255,.08);--text:#e2e8f0;--dim:#8892a4;--accent:#a855f7;--green:#34d399;--red:#f87171}
+  *{box-sizing:border-box;margin:0;padding:0;font-family:'Sarabun','Segoe UI',sans-serif}
+  body{background:var(--bg);color:var(--text);font-size:14px;min-height:100vh;padding:20px}
+  .header{display:flex;align-items:center;gap:12px;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+  .header h1{font-size:20px}.header .sub{font-size:12px;color:var(--dim)}
+  .grid{display:grid;grid-template-columns:400px 1fr;gap:20px}
+  @media(max-width:920px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px}
+  .card h2{font-size:15px;margin-bottom:16px}
+  label{display:block;font-size:12px;color:var(--dim);margin:14px 0 6px;font-weight:600}
+  input[type=text],textarea{width:100%;background:#0f1117;border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px}
+  textarea{min-height:60px;resize:vertical}
+  input:focus,textarea:focus{outline:none;border-color:var(--accent)}
+  .drop{border:2px dashed var(--border);border-radius:10px;padding:24px;text-align:center;cursor:pointer;transition:all .15s;color:var(--dim)}
+  .drop:hover,.drop.over{border-color:var(--accent);color:var(--text);background:rgba(168,85,247,.05)}
+  .drop img{max-width:100%;max-height:180px;border-radius:8px;margin-top:10px}
+  .btn{width:100%;margin-top:18px;background:var(--accent);border:none;border-radius:8px;padding:12px;color:#fff;font-size:15px;font-weight:700;cursor:pointer}
+  .btn:hover{background:#9333ea}.btn:disabled{opacity:.5;cursor:not-allowed}
+  .progress{margin-top:14px;font-size:13px;color:var(--accent);min-height:18px}
+  .counter{font-size:13px;font-weight:700;margin-top:6px}
+  .counter.ok{color:var(--green)}.counter.over{color:var(--red)}
+  #preview-wrap{margin-top:10px;text-align:center}
+  #preview-canvas{max-width:100%;border-radius:10px;border:1px solid var(--border);background:#222}
+  .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px}
+  .item{background:#0f1117;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .item img{width:100%;aspect-ratio:1;object-fit:cover;display:block;cursor:pointer}
+  .item .meta{padding:8px 10px;font-size:11px;color:var(--dim)}
+  .item .meta .t{color:var(--text);font-size:12px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .empty{color:var(--dim);text-align:center;padding:40px}
+  .toast{position:fixed;bottom:24px;right:24px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 18px;font-size:13px;opacity:0;transform:translateY(10px);transition:all .3s;pointer-events:none;z-index:99}
+  .toast.show{opacity:1;transform:translateY(0)}
+  .lightbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100;align-items:center;justify-content:center;padding:30px}
+  .lightbox.open{display:flex}.lightbox img{max-width:90%;max-height:90%;border-radius:10px}
+</style>
+</head>
+<body>
+<div class="header">
+  <span style="font-size:28px">🎨</span>
+  <div><h1>อนิเมะ — Character Generator</h1>
+  <div class="sub">สร้างตัวละครอนิเมะจากรูปคน + ลูกโป่งคำพูด (speech balloon) ภาษาไทย</div></div>
+  <a href="/" style="margin-left:auto;color:var(--dim);text-decoration:none;font-size:13px">← กลับ Hub</a>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>✨ สร้างรูปใหม่</h2>
+
+    <label>รูปคนต้นแบบ (หน้าตรง ชัด)</label>
+    <div class="drop" id="drop" onclick="document.getElementById('file').click()">
+      <div id="drop-text">📷 คลิกหรือลากรูปมาวาง</div>
+      <img id="src-preview" style="display:none">
+    </div>
+    <input type="file" id="file" accept="image/*" style="display:none">
+
+    <label>คำอธิบายตัวละคร (อังกฤษ — prompt)</label>
+    <textarea id="prompt" placeholder="เช่น 1man, 60 age, solo, color black suite,upper body, looking at viewer, detailed background">1man, 60 age, solo, color black suite,upper body, looking at viewer, detailed background</textarea>
+
+    <label>ความเหมือนหน้า <span id="fw-val" style="color:var(--accent)">1.1</span></label>
+    <input type="range" id="faceWeight" min="0.6" max="1.6" step="0.1" value="1.1" style="width:100%;accent-color:var(--accent)"
+           oninput="document.getElementById('fw-val').textContent=this.value">
+
+    <label>ข้อความในลูกโป่งคำพูด (ภาษาไทย)</label>
+    <textarea id="balloontext" placeholder="พิมพ์สิ่งที่ตัวละครพูด…" oninput="updateCounter();drawPreview()">กินข้าวแล้วบ่</textarea>
+    <div class="counter ok" id="counter">ใส่ได้อีก — ตัว</div>
+
+    <div id="preview-wrap">
+      <canvas id="preview-canvas" width="320" height="320"></canvas>
+      <div style="font-size:11px;color:var(--dim);margin-top:4px">🖐️ ลากจุดสีม่วง (ปลายหาง) เพื่อชี้ไปที่ตัวละคร · อัปโหลดรูปเพื่อเห็นพื้นหลังจริง</div>
+    </div>
+
+    <button class="btn" id="gen-btn" onclick="generate()">🎨 สร้างตัวละคร</button>
+    <div class="progress" id="progress"></div>
+  </div>
+
+  <div class="card">
+    <h2>🖼️ รูปที่สร้างแล้ว <span id="count" style="color:var(--dim);font-weight:400"></span></h2>
+    <div class="gallery" id="gallery"><div class="empty">กำลังโหลด...</div></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Modal: ดูรูป + โพสต์ -->
+<div class="lightbox" id="viewer" onclick="if(event.target===this)this.classList.remove('open')">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;max-width:560px;width:100%;max-height:92vh;overflow:auto">
+    <img id="v-img" style="width:100%;border-radius:10px;display:block">
+    <label style="margin-top:12px">แคปชั่นโพสต์</label>
+    <textarea id="v-caption" style="min-height:80px"></textarea>
+    <div id="v-status" style="font-size:12px;color:var(--dim);margin-top:8px;min-height:16px"></div>
+    <div style="display:flex;gap:10px;margin-top:12px">
+      <button class="btn" style="margin:0;background:#1877f2" id="v-fb" onclick="postItem('fb')">📘 โพสต์ Facebook</button>
+      <button class="btn" style="margin:0;background:linear-gradient(45deg,#f09433,#dc2743,#bc1888)" id="v-ig" onclick="postItem('ig')">📸 โพสต์ Instagram</button>
+    </div>
+
+    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+      <label style="margin-top:0">🤖 ตั้ง Schedule (รับข้อความจาก Telegram → ใช้ตัวละครนี้เป็นต้นแบบ)</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="v-sched-time" placeholder="เวลาแจ้งเตือน HH:MM (เว้นว่าง=ส่งเองอย่างเดียว)" style="flex:1">
+        <button class="btn" style="margin:0;max-width:150px;background:var(--green)" id="v-sched" onclick="scheduleItem()">📌 ตั้งเป็น Active</button>
+      </div>
+      <div id="v-sched-status" style="font-size:12px;color:var(--dim);margin-top:6px;min-height:14px"></div>
+    </div>
+
+    <button class="btn" style="background:transparent;border:1px solid var(--border);color:var(--dim)" onclick="document.getElementById('viewer').classList.remove('open')">ปิด</button>
+  </div>
+</div>
+
+<canvas id="work-canvas" style="display:none"></canvas>
+
+<script>
+  const API = '/dashboard/anime/api';
+  let selectedFile = null, srcImg = null;
+  let tailFrac = { x: 0.46, y: 0.46 };   // ตำแหน่งปลายหาง (สัดส่วนของภาพ) — ลากได้บน preview
+  let activeTemplate = null;             // template ที่ตั้งไว้ (ใช้เป็น default — override ด้วยการอัปโหลด)
+
+  // ════════════ Balloon geometry + drawing (canvas) ════════════
+  // การ์ตูน: ขาวมน + ขอบดำ + หางชี้ลงซ้าย | ตำแหน่ง: บนขวา | ขนาดคงที่
+  function geom(W, H) {
+    const pad = 0.026 * W;
+    const bw = 0.56 * W, bh = 0.30 * H;
+    const bx = W - bw - 0.04 * W;          // มุมขวา
+    const by = H - bh - 0.05 * H;          // มุมล่าง
+    const fontSize = 0.038 * W;            // เล็กลง → ใส่ตัวอักษรได้มากขึ้น
+    return {
+      bx, by, bw, bh, pad,
+      r: 0.035 * W,
+      border: Math.max(2, 0.006 * W),
+      fontSize,
+      lineH: fontSize * 1.25,
+      // เป้าหางชี้ = ตำแหน่งที่ลากไว้ (ค่าเริ่มต้นกลางตัวละคร)
+      tail: { cx: tailFrac.x * W, cy: tailFrac.y * H },
+      txt: { x: bx + pad, y: by + pad, w: bw - 2 * pad, h: bh - 2 * pad },
+    };
+  }
+  function setFont(ctx, g) { ctx.font = `700 ${g.fontSize}px Sarabun, Tahoma, sans-serif`; }
+
+  // ตัดบรรทัดแบบไทย (ไม่มีเว้นวรรค → ตัดทีละตัว) + เคารพ \n
+  function wrapLines(ctx, text, maxW) {
+    const out = [];
+    for (const para of String(text).split('\n')) {
+      if (para === '') { out.push(''); continue; }
+      let line = '';
+      for (const ch of para) {
+        if (ctx.measureText(line + ch).width > maxW && line) { out.push(line); line = ch; }
+        else line += ch;
+      }
+      out.push(line);
+    }
+    return out;
+  }
+
+  // คำนวณความพอดี: คืน {fits, remaining, lines, maxLines}
+  function computeFit(text) {
+    const ctx = document.getElementById('work-canvas').getContext('2d');
+    const W = 1024, H = 1024, g = geom(W, H);   // คำนวณที่ขนาดจริง 1024
+    setFont(ctx, g);
+    const maxLines = Math.floor(g.txt.h / g.lineH);
+    const lines = wrapLines(ctx, text, g.txt.w);
+    const fits = lines.length <= maxLines;
+    let remaining;
+    if (fits) {
+      // นับว่าใส่ 'ก' ได้อีกกี่ตัวจนเริ่มล้น
+      let extra = 0, t = text;
+      while (true) {
+        t += 'ก';
+        if (wrapLines(ctx, t, g.txt.w).length > maxLines) break;
+        extra++;
+        if (extra > 999) break;
+      }
+      remaining = extra;
+    } else {
+      // หา prefix ยาวสุดที่ยังพอดี → remaining ติดลบ
+      let lo = 0, hi = text.length, fit = 0;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (wrapLines(ctx, text.slice(0, mid), g.txt.w).length <= maxLines) { fit = mid; lo = mid + 1; }
+        else hi = mid - 1;
+      }
+      remaining = fit - text.length;   // ติดลบ = ล้นกี่ตัว
+    }
+    return { fits, remaining, lines, maxLines };
+  }
+
+  function drawBalloon(ctx, W, H, text, showHandle) {
+    const g = geom(W, H);
+    setFont(ctx, g);
+    ctx.textBaseline = 'top';
+    ctx.lineJoin = 'round';
+
+    // หาง (วาดก่อน ให้ฐานถูกกล่องทับ) — ฐานบนขอบบน-ซ้าย ปลายชี้ขึ้นซ้ายไปกลางตัวละคร
+    const tailBaseX1 = g.bx + 0.10 * g.bw, tailBaseX2 = g.bx + 0.30 * g.bw;
+    ctx.beginPath();
+    ctx.moveTo(tailBaseX1, g.by + 1);
+    ctx.lineTo(tailBaseX2, g.by + 1);
+    ctx.lineTo(g.tail.cx, g.tail.cy);
+    ctx.closePath();
+    ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.lineWidth = g.border; ctx.strokeStyle = '#111'; ctx.stroke();
+
+    // กล่องมน
+    roundRect(ctx, g.bx, g.by, g.bw, g.bh, g.r);
+    ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.lineWidth = g.border; ctx.strokeStyle = '#111'; ctx.stroke();
+
+    // ข้อความ (กึ่งกลางแนวตั้งในกล่อง)
+    const lines = wrapLines(ctx, text, g.txt.w);
+    const maxLines = Math.floor(g.txt.h / g.lineH);
+    const shown = lines.slice(0, maxLines);
+    const blockH = shown.length * g.lineH;
+    let y = g.txt.y + Math.max(0, (g.txt.h - blockH) / 2);
+    ctx.fillStyle = '#111'; ctx.textAlign = 'center';
+    for (const ln of shown) { ctx.fillText(ln, g.bx + g.bw / 2, y); y += g.lineH; }
+    ctx.textAlign = 'left';
+
+    // handle ลากปลายหาง (เฉพาะ preview)
+    if (showHandle) {
+      ctx.beginPath();
+      ctx.arc(g.tail.cx, g.tail.cy, Math.max(5, 0.018 * W), 0, Math.PI * 2);
+      ctx.fillStyle = '#a855f7'; ctx.fill();
+      ctx.lineWidth = Math.max(1.5, 0.004 * W); ctx.strokeStyle = '#fff'; ctx.stroke();
+    }
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // ════════════ Live counter + preview ════════════
+  function updateCounter() {
+    const text = document.getElementById('balloontext').value;
+    const { fits, remaining } = computeFit(text);
+    const el = document.getElementById('counter');
+    if (fits) { el.className = 'counter ok'; el.textContent = `✓ ใส่ได้อีก ${remaining} ตัว`; }
+    else { el.className = 'counter over'; el.textContent = `⚠️ ข้อความล้น! เกินมา ${Math.abs(remaining)} ตัว`; }
+  }
+
+  function drawPreview() {
+    const cv = document.getElementById('preview-canvas');
+    const ctx = cv.getContext('2d');
+    const W = cv.width, H = cv.height;
+    ctx.clearRect(0, 0, W, H);
+    // พื้นหลัง: รูปต้นแบบ (ถ้ามี) ไม่งั้นเทาเข้ม
+    if (srcImg) { ctx.drawImage(srcImg, 0, 0, W, H); }
+    else { ctx.fillStyle = '#2a2f3a'; ctx.fillRect(0, 0, W, H); }
+    drawBalloon(ctx, W, H, document.getElementById('balloontext').value, true);   // true = แสดง handle
+  }
+
+  // ลากปลายหางบน preview (รองรับเมาส์ + ทัช)
+  (function enableTailDrag() {
+    const cv = document.getElementById('preview-canvas');
+    let dragging = false;
+    const toFrac = e => {
+      const r = cv.getBoundingClientRect();
+      const x = (e.clientX - r.left) * (cv.width / r.width) / cv.width;
+      const y = (e.clientY - r.top) * (cv.height / r.height) / cv.height;
+      return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
+    };
+    const set = e => { tailFrac = toFrac(e); drawPreview(); };
+    cv.style.cursor = 'crosshair';
+    cv.addEventListener('pointerdown', e => { dragging = true; cv.setPointerCapture(e.pointerId); set(e); });
+    cv.addEventListener('pointermove', e => { if (dragging) set(e); });
+    cv.addEventListener('pointerup',   () => { dragging = false; });
+    cv.addEventListener('pointercancel', () => { dragging = false; });
+  })();
+
+  // ════════════ Upload preview ════════════
+  const fileInput = document.getElementById('file'), drop = document.getElementById('drop');
+  fileInput.onchange = e => showSrc(e.target.files[0]);
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); showSrc(e.dataTransfer.files[0]); });
+
+  function showSrc(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    selectedFile = file;
+    const r = new FileReader();
+    r.onload = ev => {
+      const img = document.getElementById('src-preview');
+      img.src = ev.target.result; img.style.display = 'inline-block';
+      document.getElementById('drop-text').textContent = '✓ ' + file.name;
+      srcImg = new Image(); srcImg.onload = drawPreview; srcImg.src = ev.target.result;
+    };
+    r.readAsDataURL(file);
+  }
+
+  // ════════════ Generate (2 จังหวะ) ════════════
+  async function generate() {
+    // รูปต้นแบบ: อัปโหลด (override) หรือใช้ template (ถ้ามี)
+    if (!selectedFile && !activeTemplate) return toast('❌ อัปโหลดรูป หรือ ตั้ง template ก่อน');
+    const { fits } = computeFit(document.getElementById('balloontext').value);
+    if (!fits && !confirm('ข้อความล้นลูกโป่ง — ส่วนเกินจะถูกตัด ดำเนินการต่อ?')) return;
+
+    const btn = document.getElementById('gen-btn'), prog = document.getElementById('progress');
+    btn.disabled = true; btn.textContent = '⏳ กำลังสร้าง...'; prog.textContent = 'อัปโหลด + เรนเดอร์ (อาจใช้เวลา 1–3 นาที)...';
+
+    const fd = new FormData();
+    if (selectedFile) fd.append('image', selectedFile);   // ไม่มี = ใช้รูป template
+    fd.append('prompt', document.getElementById('prompt').value.trim());
+    fd.append('text', document.getElementById('balloontext').value);
+    fd.append('faceWeight', document.getElementById('faceWeight').value);
+
+    try {
+      const res = await fetch(API + '/generate', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!data.ok) { prog.textContent = '❌ ' + (data.error || 'ล้มเหลว'); toast('❌ ' + (data.error || 'ล้มเหลว')); return; }
+
+      prog.textContent = 'วาดลูกโป่ง + บันทึก...';
+      await finalizeServer(data.id);   // วาดลูกโป่งฝั่ง server (ชุดเดียวกับ Telegram)
+      prog.textContent = '✅ เสร็จแล้ว!'; toast('✅ สร้างรูปสำเร็จ'); loadGallery();
+    } catch (e) { prog.textContent = '❌ ' + e.message; toast('❌ ' + e.message); }
+    finally { btn.disabled = false; btn.textContent = '🎨 สร้างตัวละคร'; }
+  }
+
+  // ส่งข้อความ + ตำแหน่งหางให้ server วาดลูกโป่ง (balloon-canvas.js)
+  async function finalizeServer(id) {
+    const r = await fetch(API + '/finalize', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, text: document.getElementById('balloontext').value, balloon: { tailFrac } }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'finalize ล้มเหลว');
+  }
+
+  // ════════════ Gallery ════════════
+  let galleryItems = [];
+  async function loadGallery() {
+    try {
+      galleryItems = await (await fetch(API + '/list')).json();
+      document.getElementById('count').textContent = galleryItems.length ? `(${galleryItems.length})` : '';
+      const g = document.getElementById('gallery');
+      if (!galleryItems.length) { g.innerHTML = '<div class="empty">ยังไม่มีรูป — สร้างรูปแรกเลย!</div>'; return; }
+      g.innerHTML = galleryItems.map(it => {
+        const badges = (it.posted && (it.posted.fb ? '📘' : '') + (it.posted.ig ? '📸' : '')) || '';
+        return `
+        <div class="item">
+          <img src="${API.replace('/api','')}/image/${it.id}/final.jpg?t=${it.created}" onclick="openItem('${it.id}')">
+          <div class="meta"><div class="t" title="${esc(it.text||it.prompt)}">${badges} ${esc(it.text||it.prompt||'—')}</div>${fmtDate(it.created)}</div>
+        </div>`; }).join('');
+    } catch { document.getElementById('gallery').innerHTML = '<div class="empty">โหลดแกลเลอรีไม่ได้</div>'; }
+  }
+
+  let currentItem = null;
+  function openItem(id) {
+    currentItem = galleryItems.find(x => String(x.id) === String(id));
+    if (!currentItem) return;
+    document.getElementById('v-img').src = `${API.replace('/api','')}/image/${id}/final.jpg?t=${currentItem.created}`;
+    document.getElementById('v-caption').value = currentItem.caption || currentItem.text || '';
+    const p = currentItem.posted || {};
+    document.getElementById('v-status').textContent =
+      (p.fb || p.ig) ? `โพสต์แล้ว: ${p.fb ? 'Facebook ' : ''}${p.ig ? 'Instagram' : ''}` : '';
+    document.getElementById('v-fb').disabled = false;
+    document.getElementById('v-ig').disabled = false;
+    document.getElementById('viewer').classList.add('open');
+  }
+
+  async function postItem(platform) {
+    if (!currentItem) return;
+    const caption = document.getElementById('v-caption').value;
+    const btn = document.getElementById('v-' + platform);
+    const st  = document.getElementById('v-status');
+    btn.disabled = true; const old = btn.textContent; btn.textContent = '⏳ กำลังโพสต์...';
+    st.textContent = `กำลังโพสต์ ${platform.toUpperCase()}...`;
+    try {
+      const res = await fetch(API + '/post', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: currentItem.id, platforms: [platform], caption }),
+      });
+      const data = await res.json();
+      const r = data.results && data.results[platform];
+      if (data.ok && r && r.ok) { st.textContent = `✅ โพสต์ ${platform.toUpperCase()} สำเร็จ`; toast('✅ โพสต์สำเร็จ'); loadGallery(); }
+      else { const err = (r && r.error) || data.error || 'ล้มเหลว'; st.textContent = '❌ ' + err; toast('❌ ' + err); }
+    } catch (e) { st.textContent = '❌ ' + e.message; toast('❌ ' + e.message); }
+    finally { btn.disabled = false; btn.textContent = old; }
+  }
+
+  async function scheduleItem() {
+    if (!currentItem) return;
+    const time = document.getElementById('v-sched-time').value.trim();
+    if (time && !/^\d{1,2}:\d{2}$/.test(time)) return toast('❌ เวลาต้องเป็น HH:MM');
+    const st = document.getElementById('v-sched-status');
+    st.textContent = '⏳ กำลังตั้ง...';
+    try {
+      const res = await fetch(API + '/schedule', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: currentItem.id, time }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        st.innerHTML = `✅ ตั้งเป็น template active แล้ว${time ? ' · เตือนทุกวัน ' + time : ''}<br>ส่งข้อความไทยเข้าบอท anime ได้เลย`;
+        toast('✅ ตั้ง Schedule สำเร็จ');
+      } else { st.textContent = '❌ ' + (data.error || 'ล้มเหลว'); toast('❌ ' + (data.error || 'ล้มเหลว')); }
+    } catch (e) { st.textContent = '❌ ' + e.message; toast('❌ ' + e.message); }
+  }
+
+  function esc(s){ return String(s||'').replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+  function fmtDate(ts){ try{ return new Date(+ts).toLocaleString('th-TH',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch{return '';} }
+  let tt; function toast(m){ const e=document.getElementById('toast'); e.textContent=m; e.classList.add('show'); clearTimeout(tt); tt=setTimeout(()=>e.classList.remove('show'),3000); }
+
+  // โหลด active template → prefill (template = default, อัปโหลดเพื่อ override)
+  async function loadTemplate() {
+    try {
+      activeTemplate = await (await fetch(API + '/template')).json();
+      if (!activeTemplate) return;
+      if (activeTemplate.prompt) document.getElementById('prompt').value = activeTemplate.prompt;
+      if (activeTemplate.faceWeight) {
+        document.getElementById('faceWeight').value = activeTemplate.faceWeight;
+        document.getElementById('fw-val').textContent = activeTemplate.faceWeight;
+      }
+      if (activeTemplate.tailFrac) tailFrac = activeTemplate.tailFrac;
+      // ใช้รูป template เป็นพื้นหลัง preview (ถ้ายังไม่อัปโหลดทับ)
+      if (activeTemplate.templateId) {
+        const im = new Image();
+        im.onload = () => { if (!selectedFile) { srcImg = im; drawPreview(); } };
+        im.src = `${API.replace('/api','')}/image/${activeTemplate.templateId}/source.jpg`;
+        document.getElementById('drop-text').textContent = '📌 ใช้รูปจาก template (คลิกเพื่ออัปโหลดทับ)';
+      }
+      drawPreview();
+    } catch {}
+  }
+
+  // init (รอ font โหลดก่อนวัด/วาด ให้แม่น)
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(async () => {
+    await loadTemplate(); updateCounter(); drawPreview();
+  });
+  loadGallery();
+</script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_in_Chrome__navigate",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "mcp__Claude_in_Chrome__get_page_text",
+      "mcp__Claude_in_Chrome__computer",
+      "mcp__Claude_in_Chrome__javascript_tool",
+      "WebFetch(domain:shopee.co.th)",
+      "Bash(python3 -c \"import requests; print\\('requests ok'\\)\")",
+      "Bash(python3 -c \"import playwright; print\\('playwright ok'\\)\")",
+      "PowerShell(python --version)",
+      "PowerShell(node --version)",
+      "PowerShell(npm --version 2>&1)",
+      "mcp__Claude_in_Chrome__read_network_requests",
+      "mcp__Claude_in_Chrome__browser_batch",
+      "Bash(node -e \"['19283435771','24240277068','28813756155'].forEach\\(id=>{const d=require\\('./products/'+id+'/data.json'\\);console.log\\(id+': price='+d.price+' orig='+d.original_price+' disc='+d.discount+' rating='+d.rating+' desc='+\\(\\(d.description||''\\).length\\)+'ch imgs='+d.images.length\\);console.log\\('  desc:', \\(d.description||''\\).substring\\(0,150\\)\\);console.log\\(\\);}\\)\")",
+      "Bash(npm install *)",
+      "Bash(node scrape.js --dry-run)",
+      "Bash(node scrape.js --dry-run --date 2026-05-17)",
+      "Bash(node post.js 2026-05-18 --platform fb)",
+      "Bash(node post.js 2026-05-18 --platform ig)",
+      "Bash(curl -s http://localhost:9222/json/version)",
+      "Bash(node -e \"const fs=require\\('fs'\\); const lines=fs.readFileSync\\('input/urls.txt','utf8'\\).split\\('\\\\n'\\); console.log\\(lines[0]\\);\")",
+      "Bash(node -e \"const fs=require\\('fs'\\); fs.unlinkSync\\('products/3991346022/data.json'\\); fs.unlinkSync\\('products/19283435771/data.json'\\); console.log\\('ลบ placeholder เสร็จ'\\);\")",
+      "Bash(node scrape.js)",
+      "Bash(node -e \"const fs=require\\('fs'\\); ['3991346022','19283435771'].forEach\\(id => { if\\(fs.existsSync\\('products/'+id+'/data.json'\\)\\) fs.unlinkSync\\('products/'+id+'/data.json'\\); }\\); console.log\\('ลบ data.json เก่าเสร็จ'\\);\")",
+      "Bash(node -e \"const fs=require\\('fs'\\); ['3991346022','19283435771'].forEach\\(id => { if\\(fs.existsSync\\('products/'+id+'/data.json'\\)\\) fs.unlinkSync\\('products/'+id+'/data.json'\\); }\\); console.log\\('done'\\);\")",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"const fs=require\\('fs'\\); fs.mkdirSync\\('products/3991346022/content', {recursive:true}\\); fs.mkdirSync\\('products/19283435771/content', {recursive:true}\\); console.log\\('done'\\);\")",
+      "Bash(node post.js 3991346022 --platform fb)",
+      "Bash(node -e \"const fs=require\\('fs'\\); console.log\\(fs.readdirSync\\('products/3991346022/images'\\)\\);\")",
+      "Bash(ffmpeg -version)",
+      "Bash(node -e \"require\\('canvas'\\)\")",
+      "Bash(node -e \"require\\('fluent-ffmpeg'\\)\")",
+      "Bash(node make-video.js 3991346022 --force)",
+      "Bash(where ffmpeg *)",
+      "Bash(node --check make-video.js)",
+      "Bash(node post.js 2026-05-28 --platform fb)",
+      "PowerShell(cd \"C:\\\\Users\\\\lenovo3\\\\agent\\\\shopee-affiliate\"; $env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\); & \"C:\\\\Program Files\\\\nodejs\\\\node.exe\" agent-hub.js)"
+    ]
+  }
+}

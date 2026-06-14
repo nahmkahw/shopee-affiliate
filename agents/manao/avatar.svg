@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="bg2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4CAF50;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#CDDC39;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="56" fill="url(#bg2)" stroke="#fff" stroke-width="3"/>
+  <!-- Lime slice -->
+  <circle cx="60" cy="56" r="30" fill="#8BC34A" stroke="white" stroke-width="2"/>
+  <circle cx="60" cy="56" r="22" fill="#C5E1A5" stroke="white" stroke-width="1.5"/>
+  <!-- Lime segments -->
+  <line x1="60" y1="34" x2="60" y2="78" stroke="white" stroke-width="1.5"/>
+  <line x1="38" y1="56" x2="82" y2="56" stroke="white" stroke-width="1.5"/>
+  <line x1="44" y1="40" x2="76" y2="72" stroke="white" stroke-width="1.5"/>
+  <line x1="76" y1="40" x2="44" y2="72" stroke="white" stroke-width="1.5"/>
+  <!-- Center pip -->
+  <circle cx="60" cy="56" r="4" fill="white"/>
+  <text x="60" y="103" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="bold" fill="white">มะนาว</text>
+</svg>

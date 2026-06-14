@@ -1,0 +1,13 @@
+{
+  "prompt": "1man, 60 age, solo, color black suite,upper body, looking at viewer, detailed background",
+  "text": "ทุกทิศทั่ว ปฐพี.. บอนด์ยีลด์ กำลัง พุ่งหมด .. แปลว่า ทุกประเทศ กำลัง มีปัญหาเดียวกันหมด... คือขายหนี้ใหม่ มา รีไฟ หนี้เก่า ไม่ได้...",
+  "faceWeight": 1.5,
+  "balloon": {
+    "tailFrac": {
+      "x": 0.4802259657300695,
+      "y": 0.5844809336599737
+    }
+  },
+  "fromTemplate": "1781135352228",
+  "created": 1781139069893
+}

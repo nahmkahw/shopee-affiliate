@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🌾 น้ำข้าว — Schedule Manager</title>
+<style>
+  :root {
+    --bg: #0f1117; --card: #1a1d27; --border: rgba(255,255,255,0.08);
+    --text: #e2e8f0; --text-dim: #8892a4; --green: #34d399; --red: #f87171;
+    --blue: #6c8aff; --yellow: #fbbf24; --orange: #fb923c;
+    --reuters: #1565C0; --reuters-light: #E3F2FD;
+    --shopee: #EF4444; --shopee-light: #FEF2F2;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; padding: 20px; }
+
+  .page-header {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 24px; padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .page-header h1 { font-size: 20px; font-weight: 700; }
+  .page-header .sub { font-size: 12px; color: var(--text-dim); }
+
+  .schedule-grid { display: grid; gap: 20px; }
+
+  .sched-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden;
+  }
+  .sched-header {
+    padding: 14px 18px; display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--border);
+  }
+  .sched-title { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; }
+  .sched-title .emoji { font-size: 20px; }
+  .sched-body { padding: 16px 18px; display: grid; gap: 14px; }
+
+  .info-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+  .info-box { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .info-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .info-value { font-size: 13px; font-weight: 600; }
+
+  .times-section { background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .times-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .time-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .time-chip {
+    background: rgba(108,138,255,0.12); border: 1px solid rgba(108,138,255,0.3);
+    color: var(--blue); border-radius: 6px; padding: 3px 10px; font-size: 13px; font-weight: 600; font-family: monospace;
+  }
+
+  .actions-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-run   { background: rgba(52,211,153,0.12); border-color: rgba(52,211,153,0.3); color: var(--green); }
+  .btn-run:hover:not(:disabled) { background: rgba(52,211,153,0.2); }
+  .btn-edit  { background: rgba(108,138,255,0.12); border-color: rgba(108,138,255,0.3); color: var(--blue); }
+  .btn-edit:hover:not(:disabled) { background: rgba(108,138,255,0.2); }
+  .btn-toggle-on  { background: rgba(251,146,60,0.12); border-color: rgba(251,146,60,0.3); color: var(--orange); }
+  .btn-toggle-on:hover:not(:disabled) { background: rgba(251,146,60,0.2); }
+  .btn-toggle-off { background: rgba(248,113,113,0.12); border-color: rgba(248,113,113,0.3); color: var(--red); }
+  .btn-toggle-off:hover:not(:disabled) { background: rgba(248,113,113,0.2); }
+  .btn-refresh { background: rgba(255,255,255,0.06); border-color: var(--border); color: var(--text-dim); }
+  .btn-refresh:hover { background: rgba(255,255,255,0.1); }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 20px; padding: 3px 10px; font-size: 11px; font-weight: 600; }
+  .badge-ready    { background: rgba(52,211,153,0.1); color: var(--green); }
+  .badge-running  { background: rgba(251,191,36,0.1); color: var(--yellow); }
+  .badge-disabled { background: rgba(255,255,255,0.06); color: var(--text-dim); }
+
+  .result-ok   { color: var(--green); }
+  .result-fail { color: var(--red); }
+  .result-dim  { color: var(--text-dim); }
+
+  /* Log section */
+  .log-section { margin-top: 20px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+  .log-header { padding: 12px 18px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-weight: 600; font-size: 13px; }
+  .log-body { padding: 12px 16px; font-family: monospace; font-size: 11px; color: var(--text-dim); max-height: 220px; overflow-y: auto; white-space: pre-wrap; line-height: 1.6; }
+  .log-body:empty::before { content: '— ยังไม่มี log —'; opacity: 0.5; }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 18px; font-size: 13px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; z-index: 999; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  /* Edit Modal */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 24px; min-width: 360px; max-width: 90vw; }
+  .modal h3 { font-size: 16px; margin-bottom: 18px; }
+  .modal label { display: block; font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; margin-top: 14px; }
+  .modal input { width: 100%; background: rgba(255,255,255,0.06); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; color: var(--text); font-size: 14px; font-family: monospace; }
+  .modal input:focus { outline: none; border-color: var(--blue); }
+  .modal-hint { font-size: 11px; color: var(--text-dim); margin-top: 6px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+  .btn-primary { background: rgba(108,138,255,0.2); border-color: rgba(108,138,255,0.4); color: var(--blue); }
+  .btn-primary:hover { background: rgba(108,138,255,0.3); }
+  .btn-cancel  { background: rgba(255,255,255,0.05); border-color: var(--border); color: var(--text-dim); }
+  .btn-create  { background: rgba(52,211,153,0.12); border-color: rgba(52,211,153,0.3); color: var(--green); }
+  .btn-create:hover { background: rgba(52,211,153,0.22); }
+  .create-section { margin-top: 8px; display: flex; justify-content: flex-end; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <span style="font-size:28px">🌾</span>
+  <div>
+    <h1>น้ำข้าว — Schedule Manager</h1>
+    <div class="sub">จัดการ Windows Task Scheduler สำหรับ Reuters Pipeline และ Shopee Affiliate</div>
+  </div>
+  <div style="display:flex;gap:8px;margin-left:auto">
+    <button class="btn btn-create" onclick="openCreateModal()">➕ สร้าง Schedule</button>
+    <button class="btn btn-refresh" onclick="loadStatus()">🔄 รีเฟรช</button>
+  </div>
+</div>
+
+<div id="loading" style="text-align:center;padding:40px;color:var(--text-dim)">⏳ กำลังโหลด...</div>
+<div class="schedule-grid" id="schedule-grid" style="display:none">
+
+  <!-- Reuters Card -->
+  <div class="sched-card">
+    <div class="sched-header">
+      <div class="sched-title">
+        <span class="emoji">🍋</span>
+        <div>
+          <div>Reuters AI News Pipeline</div>
+          <div style="font-size:11px;font-weight:400;color:var(--text-dim)">Reuters-AI-News-Pipeline</div>
+        </div>
+      </div>
+      <span id="reuters-badge" class="badge">—</span>
+    </div>
+    <div class="sched-body">
+      <div class="info-row">
+        <div class="info-box">
+          <div class="info-label">⏱ รันล่าสุด</div>
+          <div class="info-value" id="reuters-last-run">—</div>
+        </div>
+        <div class="info-box">
+          <div class="info-label">📊 ผลลัพธ์</div>
+          <div class="info-value" id="reuters-last-result">—</div>
+        </div>
+        <div class="info-box">
+          <div class="info-label">⏰ รันถัดไป</div>
+          <div class="info-value" id="reuters-next-run">—</div>
+        </div>
+      </div>
+
+      <div class="times-section">
+        <div class="times-label">🕐 เวลารัน (ทุกวัน)</div>
+        <div class="time-chips" id="reuters-times">—</div>
+      </div>
+
+      <div class="actions-row">
+        <button class="btn btn-run" onclick="runNow('reuters')">▶ รันตอนนี้</button>
+        <button class="btn btn-edit" onclick="openEditModal('reuters')">✏️ แก้ไขเวลา</button>
+        <button class="btn btn-create" onclick="openCreateModal('reuters')">➕ สร้าง Schedule</button>
+        <button class="btn" id="reuters-toggle-btn" onclick="toggleTask('reuters')">—</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Shopee Card -->
+  <div class="sched-card">
+    <div class="sched-header">
+      <div class="sched-title">
+        <span class="emoji">🌸</span>
+        <div>
+          <div>Shopee Affiliate Daily Post</div>
+          <div style="font-size:11px;font-weight:400;color:var(--text-dim)">ShopeeAffiliate-DailyFBPost</div>
+        </div>
+      </div>
+      <span id="shopee-badge" class="badge">—</span>
+    </div>
+    <div class="sched-body">
+      <div class="info-row">
+        <div class="info-box">
+          <div class="info-label">⏱ รันล่าสุด</div>
+          <div class="info-value" id="shopee-last-run">—</div>
+        </div>
+        <div class="info-box">
+          <div class="info-label">📊 ผลลัพธ์</div>
+          <div class="info-value" id="shopee-last-result">—</div>
+        </div>
+        <div class="info-box">
+          <div class="info-label">⏰ รันถัดไป</div>
+          <div class="info-value" id="shopee-next-run">—</div>
+        </div>
+      </div>
+
+      <div class="times-section">
+        <div class="times-label">🕐 เวลารัน (ทุกวัน)</div>
+        <div class="time-chips" id="shopee-times">—</div>
+      </div>
+
+      <div class="actions-row">
+        <button class="btn btn-run" onclick="runNow('shopee')">▶ รันตอนนี้</button>
+        <button class="btn btn-edit" onclick="openEditModal('shopee')">✏️ แก้ไขเวลา</button>
+        <button class="btn btn-create" onclick="openCreateModal('shopee')">➕ สร้าง Schedule</button>
+        <button class="btn" id="shopee-toggle-btn" onclick="toggleTask('shopee')">—</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /schedule-grid -->
+
+<!-- Log Section -->
+<div class="log-section" style="margin-top:20px">
+  <div class="log-header">
+    <span>📋 Log ล่าสุด (น้ำข้าว)</span>
+    <button class="btn btn-refresh" style="font-size:11px;padding:4px 10px" onclick="loadLog()">🔄</button>
+  </div>
+  <div class="log-body" id="log-body"></div>
+</div>
+
+<!-- Create Schedule Modal -->
+<div class="modal-overlay" id="create-modal" onclick="closeCreateModalOverlay(event)">
+  <div class="modal" style="min-width:420px">
+    <h3 id="create-modal-title">➕ สร้าง Schedule ใหม่</h3>
+
+    <label>ชื่อ Task (Task Scheduler)</label>
+    <input type="text" id="create-task-name" placeholder="เช่น MyScript-Daily">
+    <div class="modal-hint">ชื่อที่จะแสดงใน Windows Task Scheduler</div>
+
+    <label id="create-script-label">Path ของ .bat หรือ .js</label>
+    <input type="text" id="create-script-path" placeholder='เช่น C:\Users\lenovo3\agent\shopee-affiliate\post-daily-fb.bat'>
+    <div class="modal-hint">ระบุ path เต็มของ script หรือ XML ที่ต้องการ import</div>
+
+    <label id="create-times-label">เวลารัน (HH:MM, คั่นด้วยจุลภาคถ้าหลายรอบ)</label>
+    <input type="text" id="create-times" placeholder="เช่น 08:00 หรือ 08:00,12:00,18:00">
+    <div class="modal-hint">รอบเดียว → ชื่อ task เดิม | หลายรอบ → สร้าง task ย่อย _1, _2, ...</div>
+
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeCreateModal()">ยกเลิก</button>
+      <button class="btn btn-create btn-primary" onclick="createSchedule()">➕ สร้าง</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Times Modal -->
+<div class="modal-overlay" id="edit-modal" onclick="closeModalOverlay(event)">
+  <div class="modal">
+    <h3 id="edit-modal-title">✏️ แก้ไขเวลา Schedule</h3>
+    <div id="edit-modal-desc" style="font-size:12px;color:var(--text-dim);margin-bottom:4px"></div>
+
+    <label id="edit-label">เวลา (HH:MM)</label>
+    <input type="text" id="edit-input" placeholder="00:00">
+    <div class="modal-hint" id="edit-hint"></div>
+
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeEditModal()">ยกเลิก</button>
+      <button class="btn btn-primary btn-edit" onclick="saveSchedule()">💾 บันทึก</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  let statusData = {};
+  let editTarget = null;  // 'reuters' | 'shopee'
+
+  const TASK_NAMES = {
+    reuters: 'AI-News-Pipeline',
+    shopee:  'ShopeeAffiliate-DailyFBPost',
+  };
+
+  // ─── Load & Render ──────────────────────────────────────────────────────────
+
+  async function loadStatus() {
+    try {
+      const res  = await fetch('/dashboard/namkhao/api/schedule-status');
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Load failed');
+      statusData = data;
+      renderStatus(data);
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('schedule-grid').style.display = '';
+    } catch (e) {
+      document.getElementById('loading').textContent = '❌ โหลดข้อมูล Schedule ไม่สำเร็จ: ' + e.message;
+    }
+  }
+
+  function renderStatus(data) {
+    renderTask('reuters', data.reuters);
+    renderTask('shopee',  data.shopee);
+  }
+
+  function renderTask(key, d) {
+    if (!d) return;
+
+    // Badge
+    const badge = document.getElementById(key + '-badge');
+    if (d.state === 'Ready') {
+      badge.className = 'badge badge-ready';
+      badge.textContent = '✅ พร้อมทำงาน';
+    } else if (d.state === 'Running') {
+      badge.className = 'badge badge-running';
+      badge.textContent = '🔄 กำลังรัน...';
+    } else if (d.state === 'Disabled') {
+      badge.className = 'badge badge-disabled';
+      badge.textContent = '🚫 ปิดใช้งาน';
+    } else {
+      badge.className = 'badge badge-disabled';
+      badge.textContent = d.state || '—';
+    }
+
+    // Info
+    document.getElementById(key + '-last-run').textContent = fmtDateTime(d.lastRun);
+
+    const resultEl = document.getElementById(key + '-last-result');
+    if (d.lastResult === 0) {
+      resultEl.innerHTML = '<span class="result-ok">✅ สำเร็จ</span>';
+    } else if (d.lastResult === null || d.lastRun === 'N/A') {
+      resultEl.innerHTML = '<span class="result-dim">— ยังไม่เคยรัน</span>';
+    } else {
+      resultEl.innerHTML = `<span class="result-fail">❌ Code ${d.lastResult}</span>`;
+    }
+
+    document.getElementById(key + '-next-run').textContent = fmtDateTime(d.nextRun);
+
+    // Times chips
+    const timesEl = document.getElementById(key + '-times');
+    if (d.times && d.times.length) {
+      timesEl.innerHTML = d.times.map(t => `<span class="time-chip">${t}</span>`).join('');
+    } else {
+      timesEl.textContent = '—';
+    }
+
+    // Toggle button
+    const toggleBtn = document.getElementById(key + '-toggle-btn');
+    if (d.state === 'Disabled') {
+      toggleBtn.className = 'btn btn-toggle-on';
+      toggleBtn.textContent = '✅ เปิดใช้งาน';
+    } else {
+      toggleBtn.className = 'btn btn-toggle-off';
+      toggleBtn.textContent = '🚫 ปิดใช้งาน';
+    }
+  }
+
+  function fmtDateTime(str) {
+    if (!str || str === 'N/A' || str.startsWith('1/1/0001')) return '—';
+    // Format: "2026-05-31 07:05:00" or ISO
+    try {
+      const d = new Date(str);
+      if (isNaN(d.getTime())) return str;
+      return d.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', hour12: false,
+        month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    } catch { return str; }
+  }
+
+  // ─── Run Now ────────────────────────────────────────────────────────────────
+
+  async function runNow(key) {
+    const taskName = TASK_NAMES[key];
+    const label    = key === 'reuters' ? 'Reuters Pipeline' : 'Shopee Daily Post';
+    showToast(`▶ กำลังสั่งรัน ${label}...`);
+    try {
+      const res  = await fetch('/dashboard/namkhao/api/schedule-run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskName }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast(`✅ สั่งรัน ${label} แล้ว`);
+        setTimeout(loadStatus, 2000);
+      } else {
+        showToast(`❌ ${data.error || 'ไม่สำเร็จ'}`);
+      }
+    } catch (e) { showToast('❌ ' + e.message); }
+  }
+
+  // ─── Toggle Enable/Disable ──────────────────────────────────────────────────
+
+  async function toggleTask(key) {
+    const taskName = TASK_NAMES[key];
+    const d = statusData[key];
+    if (!d) return;
+    const enable = d.state === 'Disabled';
+    const action = enable ? 'เปิดใช้งาน' : 'ปิดใช้งาน';
+    showToast(`⏳ กำลัง${action}...`);
+    try {
+      const res  = await fetch('/dashboard/namkhao/api/schedule-toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskName, enable }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast(`✅ ${action}สำเร็จ`);
+        setTimeout(loadStatus, 1000);
+      } else {
+        showToast(`❌ ${data.error || 'ไม่สำเร็จ'}`);
+      }
+    } catch (e) { showToast('❌ ' + e.message); }
+  }
+
+  // ─── Create Schedule Modal ─────────────────────────────────────────────────
+
+  const CREATE_PRESETS = {
+    reuters: {
+      taskName: 'AI-News-Pipeline',
+      xmlPath:  'C:\\Users\\lenovo3\\Desktop\\AI-News-Pipeline.xml',
+      label:    '🍋 Reuters AI News Pipeline',
+      mode:     'xml',   // ใช้ XML import — รองรับ multi-trigger ครบ
+    },
+    shopee: {
+      taskName:   'ShopeeAffiliate-DailyFBPost',
+      scriptPath: 'C:\\Users\\lenovo3\\agent\\shopee-affiliate\\post-daily-fb.bat',
+      times:      '11:05',
+      label:      '🌸 Shopee Affiliate Daily Post',
+      mode:       'script',
+    },
+  };
+
+  function openCreateModal(key) {
+    const preset = key ? CREATE_PRESETS[key] : null;
+    const isXml  = preset && preset.mode === 'xml';
+
+    document.getElementById('create-modal-title').textContent =
+      preset ? `➕ สร้าง Schedule — ${preset.label}` : '➕ สร้าง Schedule ใหม่';
+
+    document.getElementById('create-task-name').value   = preset ? preset.taskName   : '';
+    document.getElementById('create-script-path').value = isXml  ? preset.xmlPath    : (preset ? preset.scriptPath : '');
+    document.getElementById('create-times').value       = isXml  ? '(กำหนดใน XML อัตโนมัติ)' : (preset ? preset.times : '');
+
+    // ซ่อน/แสดง field เวลาตาม mode
+    document.getElementById('create-times').disabled   = isXml;
+    document.getElementById('create-times-label').textContent = isXml
+      ? 'เวลารัน (กำหนดใน XML — 00:00, 06:00, 12:00, 18:00)'
+      : 'เวลารัน (HH:MM, คั่นด้วยจุลภาคถ้าหลายรอบ)';
+    document.getElementById('create-script-label').textContent = isXml ? 'ไฟล์ XML' : 'Path ของ .bat หรือ .js';
+
+    // เก็บ mode ไว้ใช้ตอน submit
+    document.getElementById('create-modal').dataset.mode = preset ? preset.mode : 'script';
+    document.getElementById('create-modal').classList.add('open');
+    setTimeout(() => document.getElementById('create-task-name').focus(), 100);
+  }
+
+  function closeCreateModal() {
+    document.getElementById('create-modal').classList.remove('open');
+  }
+
+  function closeCreateModalOverlay(e) {
+    if (e.target === document.getElementById('create-modal')) closeCreateModal();
+  }
+
+  async function createSchedule() {
+    const taskName   = document.getElementById('create-task-name').value.trim();
+    const scriptPath = document.getElementById('create-script-path').value.trim();
+    const mode       = document.getElementById('create-modal').dataset.mode || 'script';
+
+    if (!taskName)   return showToast('❌ กรอกชื่อ Task ด้วย');
+    if (!scriptPath) return showToast('❌ กรอก path ด้วย');
+
+    let payload;
+    if (mode === 'xml') {
+      // Reuters: ส่ง xmlPath ให้ API import โดยแก้ SID + path อัตโนมัติ
+      payload = { taskName, xmlPath: scriptPath };
+    } else {
+      // Shopee / ทั่วไป: ส่ง scriptPath + times
+      const rawTimes = document.getElementById('create-times').value.trim();
+      if (!rawTimes) return showToast('❌ กรอกเวลาด้วย');
+      const times = rawTimes.split(',').map(t => t.trim()).filter(Boolean);
+      if (!times.every(t => /^\d{1,2}:\d{2}$/.test(t)))
+        return showToast('❌ รูปแบบเวลาต้องเป็น HH:MM เช่น 08:00');
+      payload = { taskName, scriptPath, times };
+    }
+
+    showToast('⏳ กำลังสร้าง Schedule...');
+    closeCreateModal();
+    try {
+      const res  = await fetch('/dashboard/namkhao/api/schedule-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast(`✅ สร้าง Schedule สำเร็จ${data.taskName ? ' — ' + data.taskName : ` (${data.created} task)`}`);
+        setTimeout(loadStatus, 1500);
+      } else {
+        showToast(`❌ ${data.error || 'สร้างไม่สำเร็จ'}`);
+      }
+    } catch (e) { showToast('❌ ' + e.message); }
+  }
+
+  // ─── Edit Times Modal ───────────────────────────────────────────────────────
+
+  function openEditModal(key) {
+    editTarget = key;
+    const d = statusData[key];
+    const isReuters = key === 'reuters';
+    document.getElementById('edit-modal-title').textContent =
+      '✏️ แก้ไขเวลา — ' + (isReuters ? '🍋 Reuters Pipeline' : '🌸 Shopee Daily Post');
+    document.getElementById('edit-modal-desc').textContent =
+      isReuters ? 'กรอกเวลาหลายรอบคั่นด้วยจุลภาค (สูงสุด 6 รอบ/วัน)' : 'กรอกเวลารันประจำวัน';
+    document.getElementById('edit-label').textContent = isReuters ? 'เวลา (HH:MM, HH:MM, ...)' : 'เวลา (HH:MM)';
+    document.getElementById('edit-hint').textContent = isReuters
+      ? 'ตัวอย่าง: 00:00,06:00,12:00,18:00'
+      : 'ตัวอย่าง: 11:05';
+    const current = d && d.times ? d.times.join(',') : '';
+    document.getElementById('edit-input').value = current;
+    document.getElementById('edit-modal').classList.add('open');
+    setTimeout(() => document.getElementById('edit-input').focus(), 100);
+  }
+
+  function closeEditModal() {
+    document.getElementById('edit-modal').classList.remove('open');
+    editTarget = null;
+  }
+
+  function closeModalOverlay(e) {
+    if (e.target === document.getElementById('edit-modal')) closeEditModal();
+  }
+
+  async function saveSchedule() {
+    if (!editTarget) return;
+    const taskName = TASK_NAMES[editTarget];
+    const raw      = document.getElementById('edit-input').value.trim();
+    if (!raw) return showToast('❌ กรอกเวลาด้วย');
+
+    const times = raw.split(',').map(t => t.trim()).filter(Boolean);
+    // validate HH:MM format
+    const valid = times.every(t => /^\d{1,2}:\d{2}$/.test(t));
+    if (!valid) return showToast('❌ รูปแบบเวลาต้องเป็น HH:MM เช่น 06:00');
+    if (editTarget === 'shopee' && times.length > 1) return showToast('❌ Shopee รองรับเวลาเดียว');
+
+    showToast('⏳ กำลังบันทึก Schedule...');
+    closeEditModal();
+
+    try {
+      const res  = await fetch('/dashboard/namkhao/api/schedule-edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskName, times }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast(`✅ บันทึกเวลา Schedule แล้ว: ${times.join(', ')}`);
+        setTimeout(loadStatus, 1500);
+      } else {
+        showToast(`❌ ${data.error || 'บันทึกไม่สำเร็จ'}`);
+      }
+    } catch (e) { showToast('❌ ' + e.message); }
+  }
+
+  // ─── Log ────────────────────────────────────────────────────────────────────
+
+  async function loadLog() {
+    try {
+      const res  = await fetch('/dashboard/namkhao/api/log');
+      const text = await res.text();
+      document.getElementById('log-body').textContent = text || '— ยังไม่มี log —';
+    } catch {}
+  }
+
+  // ─── Toast ──────────────────────────────────────────────────────────────────
+
+  let toastTimer = null;
+  function showToast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+  }
+
+  // ─── Auto-refresh ────────────────────────────────────────────────────────────
+
+  loadStatus();
+  loadLog();
+  setInterval(loadStatus, 30000);  // รีเฟรชทุก 30 วิ
+  setInterval(loadLog,    20000);
+</script>
+</body>
+</html>
