@@ -14,11 +14,11 @@
  */
 
 require('dotenv').config();
-const https            = require('https');
-const http             = require('http');
-const fs               = require('fs');
-const path             = require('path');
-const { execSync }     = require('child_process');
+const https                      = require('https');
+const http                       = require('http');
+const fs                         = require('fs');
+const path                       = require('path');
+const { execSync, execFileSync } = require('child_process');
 
 const HUB_PORT = 3002; // agent-hub port
 
@@ -51,12 +51,6 @@ function acquireLock() {
 const BOT_TOKEN = (process.env.MALI_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '').replace(/"/g, '').trim();
 const CHAT_ID   = (process.env.TELEGRAM_CHAT_ID || '').replace(/"/g, '').trim();
 
-if (!BOT_TOKEN || !CHAT_ID) {
-  console.error('❌ ขาด MALI_TELEGRAM_BOT_TOKEN (หรือ TELEGRAM_BOT_TOKEN) หรือ TELEGRAM_CHAT_ID ใน .env');
-  process.exit(1);
-}
-
-acquireLock(); // ตรวจ lock ทันที
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -116,16 +110,20 @@ async function initOffset() {
 async function waitForCallback(validCbs, timeoutMs = 60 * 60 * 1000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const res = await tgApi('getUpdates', {
-      offset: globalOffset, timeout: 25, allowed_updates: ['callback_query']
-    });
-    if (res.result) {
-      for (const upd of res.result) {
-        globalOffset = upd.update_id + 1;
-        const cb = upd.callback_query;
-        if (!cb) continue;
-        if (validCbs.includes(cb.data)) return { data: cb.data, cbId: cb.id };
+    try {
+      const res = await tgApi('getUpdates', {
+        offset: globalOffset, timeout: 25, allowed_updates: ['callback_query']
+      });
+      if (res.result) {
+        for (const upd of res.result) {
+          globalOffset = upd.update_id + 1;
+          const cb = upd.callback_query;
+          if (!cb) continue;
+          if (validCbs.includes(cb.data)) return { data: cb.data, cbId: cb.id };
+        }
       }
+    } catch (e) {
+      console.error('[TG] getUpdates error:', e.message);
     }
     await sleep(500);
   }
@@ -209,7 +207,7 @@ async function postAllPlatforms(itemId) {
 
   // 1) Facebook schedule เท่านั้น (IG ข้าม)
   try {
-    const out = execSync(`node post.js ${itemId} --platform fb --schedule`, {
+    const out = execFileSync(process.execPath, ['post.js', itemId, '--platform', 'fb', '--schedule'], {
       cwd: path.resolve(__dirname), encoding: 'utf8', timeout: 120_000
     });
     const fbOk = out.includes('Facebook') && (out.includes('post_id') || out.includes('✅'));
@@ -349,7 +347,7 @@ async function handleOldProducts(oldProducts) {
     ];
 
     const { data, cbId } = await waitForCallback(validCbs, 10 * 60 * 1000);
-    await answerCb(cbId || '', '');
+    if (cbId) await answerCb(cbId, '');
 
     // เสร็จแล้ว / timeout
     if (data === 'timeout' || data === 'old_done') {
@@ -394,7 +392,7 @@ async function handleOldProducts(oldProducts) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-(async function main() {
+async function main() {
   const today    = todayString();
   // รองรับ argument: node approval-bot.js {item_id}
   const argItemId = process.argv[2]?.match(/^\d{8,}$/) ? process.argv[2] : null;
@@ -450,7 +448,7 @@ async function handleOldProducts(oldProducts) {
         `⏳ กรุณารอสักครู่ (~2-5 นาที)`
       );
       try {
-        execSync(`node make-tiktok-video.js ${id}`, {
+        execFileSync(process.execPath, ['make-tiktok-video.js', id], {
           cwd:     path.resolve(__dirname),
           stdio:   'inherit',           // output ตรงไป console ไม่ buffer — ป้องกัน overflow
           timeout: 10 * 60 * 1000,     // 10 นาที
@@ -511,8 +509,38 @@ async function handleOldProducts(oldProducts) {
         ]]
       );
       const { data: ask, cbId: askCb } = await waitForCallback(['old_show', 'old_skip'], 5 * 60 * 1000);
-      await answerCb(askCb || '', '');
+      if (askCb) await answerCb(askCb, '');
       if (ask === 'old_show') await handleOldProducts(oldProducts);
     }
   }
-})();
+}
+
+function startup(token = BOT_TOKEN, chatId = CHAT_ID) {
+  if (!token || !chatId) {
+    console.error('❌ ขาด MALI_TELEGRAM_BOT_TOKEN (หรือ TELEGRAM_BOT_TOKEN) หรือ TELEGRAM_CHAT_ID ใน .env');
+    process.exit(1);
+    return;
+  }
+  acquireLock();
+  main().catch(e => { console.error(e.message); process.exit(1); });
+}
+
+if (require.main === module) startup();
+
+module.exports = {
+  tgApi,
+  sendMsg,
+  editMsg,
+  answerCb,
+  waitForCallback,
+  waitForDecision,
+  regenerateFromTemplate,
+  postFbClip,
+  postAllPlatforms,
+  approveLoop,
+  todayString,
+  initOffset,
+  main,
+  acquireLock,
+  startup,
+};
