@@ -1,0 +1,209 @@
+{
+  "main": {
+    "id": "811385931c219ae5",
+    "type": "split",
+    "children": [
+      {
+        "id": "be738d844220a4f0",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "2a2d470911314bef",
+            "type": "leaf",
+            "state": {
+              "type": "empty",
+              "state": {},
+              "icon": "lucide-file",
+              "title": "New tab"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "fb8707d5ba45f30b",
+    "type": "split",
+    "children": [
+      {
+        "id": "9e589fadfb475d99",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "bb3509e93187ad1b",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "08db79a6e9cb674e",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "ab4ed7e26d221594",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 234.50666046142578
+  },
+  "right": {
+    "id": "8bd0cff8b35503b0",
+    "type": "split",
+    "children": [
+      {
+        "id": "95f98855a3f99462",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "c6d18d34a55bab5b",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks"
+            }
+          },
+          {
+            "id": "bd0c5d3d7cf60941",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links"
+            }
+          },
+          {
+            "id": "5f23e456c0693994",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "5e57bee763b22cff",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "5235dc0a8c6a8e2d",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "2a2d470911314bef",
+  "lastOpenFiles": [
+    "Clippings/Shopee Thailand  ซื้อขายผ่านมือถือ หรือออนไลน์.md",
+    "raw/หนังสือติวสอบท้องถิ่น ภาค ก ปี69 และเฉลยข้อสอบจริงท้องถิ่น(ภาค ก) ฟรี!คอร์สติว 35 ชม 1.md",
+    "wiki/sources/tongthin-phak-kor-pi69.md",
+    "wiki/log.md.tmp.29984.1779008239687",
+    "wiki/overview.md.tmp.29984.1779008225664",
+    "wiki/index.md",
+    "wiki/index.md.tmp.29984.1779008188642",
+    "wiki/concepts/พรบ-13-ฉบับ.md",
+    "wiki/concepts/การสอบภาค-ก-ท้องถิ่น.md",
+    "wiki/entities/j-kop-tutor.md",
+    "wiki/entities/jknowledgeshop.md",
+    "wiki/entities/jknowledgeshop.md.tmp.29984.1779008084082",
+    "Clippings/หนังสือติวสอบท้องถิ่น ภาค ก ปี69 และเฉลยข้อสอบจริงท้องถิ่น(ภาค ก) ฟรี!คอร์สติว 35 ชม 1.md",
+    "Clippings/หนังสือติวสอบท้องถิ่น ภาค ก ปี69 และเฉลยข้อสอบจริงท้องถิ่น(ภาค ก) ฟรี!คอร์สติว 35 ชม 2.md",
+    "Clippings/หนังสือติวสอบท้องถิ่น ภาค ก ปี69 และเฉลยข้อสอบจริงท้องถิ่น(ภาค ก) ฟรี!คอร์สติว 35 ชม.md",
+    "raw/README.md",
+    "Welcome.md",
+    "Untitled.canvas",
+    "Clippings",
+    "Welcome.md.tmp.29984.1779007449594",
+    "wiki/overview.md",
+    "wiki/log.md",
+    "CLAUDE.md",
+    "CLAUDE.md.tmp.29984.1779007227118",
+    "wiki/syntheses",
+    "wiki/sources",
+    "wiki/entities"
+  ]
+}

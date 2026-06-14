@@ -174,6 +174,15 @@ const AGENTS = {
       { id: 'start-manao', label: '▶ เริ่ม มะนาว',      icon: '🍋' },
     ],
   },
+  anime: {
+    label: 'อนิเมะ',
+    role: 'Anime Image Generator',
+    color: '#E91E8C',
+    colorLight: '#FCE4EC',
+    emoji: '🎌',
+    hasDashboard: true,
+    actions: [],
+  },
 };
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
