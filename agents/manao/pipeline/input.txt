@@ -144,3 +144,10 @@
 2026-06-13T23:04:38.000Z | Sound Money, Artificial Intelligence, And The Pope – OpEd | https://www.eurasiareview.com/14062026-sound-money-artificial-intelligence-and-the-pope-oped/
 2026-06-13T17:50:17.000Z | Anthropic Pulls Its Most Powerful AI Models After U.S. Bars Foreign Access | https://time.com/article/2026/06/13/anthropic-fable-mythos-ban-US-security/
 2026-06-13T19:21:00.000Z | News - Army Reserve Civil Affairs Soldiers Train Using AI-Driven Scenarios | https://www.dvidshub.net/news/567238/army-reserve-civil-affairs-soldiers-train-using-ai-driven-scenarios
+
+# ดึงข้อมูลเมื่อ 2026-06-14T13:00:29 (5 ข่าวใหม่)
+2026-06-14T00:41:06.000Z | Trump Administration Reignites Its Feud With Anthropic Over Latest A.I. Models | https://www.nytimes.com/2026/06/13/us/politics/trump-anthropic-ai-models.html
+2026-06-14T01:09:00.000Z | Anthropic shuts down Mythos access after sweeping U.S. order | https://www.latimes.com/business/story/2026-06-13/anthropic-shuts-down-mythos-access-after-sweeping-u-s-order
+2026-06-14T03:28:16.000Z | Phoenix residents react to the rapid rise of artificial intelligence | https://news.google.com/rss/articles/CBMiZkFVX3lxTFBzNi1tam9lbmQ1VEQtaEdSaWlnNm9EX3R4MnNyU0dQVmp4cEVFR1hnUEQ4S1F1STlPRWNTd0ZrM3l0RUVJMnFUSVpBSldnZnpiaC16YjJ6cExHMUhTdjc5ZnllcUVqZ9IBa0FVX3lxTE0tLXdvcGRQNmxyMHpMS1VDSHUtdDc2TDJxMm1VOGtGTnBWWm5pWGZfNmhWdXpsQXQtRndmdG0xeUZkNTU5UXdSMUk5YWhnSEQ0bUNPZGRsSHlzTEhUYWhXTGVuLURiYXdRbU5J?oc=5
+2026-06-14T03:19:45.000Z | My real concerns with artificial intelligence | https://yourislandnews.com/my-real-concerns-with-artificial-intelligence/
+2026-06-13T19:00:38.000Z | Michigan law requires campaigns to clearly display disclaimers indicating the use of artificial intelligence in ads leading up to an election. See link below ⬇️ 📸 Junfu Han, Detroit Free Press - facebook.com | https://www.facebook.com/detroitfreepress/posts/michigan-law-requires-campaigns-to-clearly-display-disclaimers-indicating-the-us/1464070799098401/
