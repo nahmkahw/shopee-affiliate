@@ -37,7 +37,8 @@
       "Bash(where ffmpeg *)",
       "Bash(node --check make-video.js)",
       "Bash(node post.js 2026-05-28 --platform fb)",
-      "PowerShell(cd \"C:\\\\Users\\\\lenovo3\\\\agent\\\\shopee-affiliate\"; $env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\); & \"C:\\\\Program Files\\\\nodejs\\\\node.exe\" agent-hub.js)"
+      "PowerShell(cd \"C:\\\\Users\\\\lenovo3\\\\agent\\\\shopee-affiliate\"; $env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\); & \"C:\\\\Program Files\\\\nodejs\\\\node.exe\" agent-hub.js)",
+      "Bash(grep -n \"\\\\/agent\\\\/\\\\|agentPage\\\\|agent-detail\" agent-hub.js)"
     ]
   }
 }
