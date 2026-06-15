@@ -21,15 +21,6 @@ const PRODUCTS_DIR = path.join(ROOT, 'products');
 const OLLAMA_HOST  = process.env.OLLAMA_HOST  || 'http://10.3.17.118:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2:latest';
 
-const args   = process.argv.slice(2);
-const itemId = args.find(a => !a.startsWith('--'));
-const force  = args.includes('--force');
-
-if (!itemId) {
-  console.error('Usage: node generate-content.js <item_id> [--force]');
-  process.exit(1);
-}
-
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ── Ollama ────────────────────────────────────────────────────────────────────
@@ -71,14 +62,16 @@ function ollamaChat(prompt) {
 function buildContext(data) {
   const features = [];
   if (data.description) {
-    // ดึง bullet points จาก description ถ้ามี
     const bullets = data.description.split(/[\n\r]+/)
       .map(l => l.replace(/^[-•*]\s*/, '').trim())
       .filter(l => l.length > 5 && l.length < 150)
       .slice(0, 6);
     features.push(...bullets);
   }
-  const topReview = (data.reviews || []).slice(0, 1).map(r => r.comment || '').filter(Boolean).join(' ');
+  // reviews may be strings (from scrape.js) or objects with .comment
+  const topReview = (data.reviews || []).slice(0, 1)
+    .map(r => typeof r === 'string' ? r : (r.comment || ''))
+    .filter(Boolean).join(' ');
 
   return `ข้อมูลสินค้า Shopee:
 ชื่อสินค้า: ${data.title || ''}
@@ -176,23 +169,42 @@ ${ctx}
 // ── Clean helpers ─────────────────────────────────────────────────────────────
 function cleanText(text) {
   return text
-    .replace(/^\[[^\]]+\]\s*/gm, '')   // ลบ [label]
-    .replace(/^\*{0,2}[\w ]+\*{0,2}:\s*/gm, '')  // ลบ "label:"
+    .replace(/^\[[^\]]+\]\s*/gm, '')
+    .replace(/^\*{0,2}[\w ]+\*{0,2}:\s*/gm, '')
     .replace(/\n{4,}/g, '\n\n\n')
     .trim();
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-(async () => {
+async function main(opts = {}) {
+  const args   = opts.args !== undefined ? opts.args : process.argv.slice(2);
+  const itemId = opts.itemId || args.find(a => !a.startsWith('--'));
+  const force  = opts.force  !== undefined ? opts.force : args.includes('--force');
+
+  if (!itemId) {
+    console.error('Usage: node generate-content.js <item_id> [--force]');
+    process.exit(1);
+    return;
+  }
+
   const productDir = path.join(PRODUCTS_DIR, itemId);
   const dataPath   = path.join(productDir, 'data.json');
 
   if (!fs.existsSync(dataPath)) {
     console.error(`❌ ไม่พบ products/${itemId}/data.json`);
     process.exit(1);
+    return;
   }
 
-  const data       = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+  } catch (e) {
+    console.error(`❌ อ่าน data.json ไม่ได้: ${e.message}`);
+    process.exit(1);
+    return;
+  }
+
   const contentDir = path.join(productDir, 'content');
   fs.mkdirSync(contentDir, { recursive: true });
 
@@ -207,6 +219,7 @@ function cleanText(text) {
   if (!needFB && !needIG && !needTT) {
     console.log(`✅ content ครบแล้ว (ใช้ --force เพื่อสร้างใหม่)`);
     process.exit(0);
+    return;
   }
 
   console.log(`\n🛍️  Generate Content: ${itemId}`);
@@ -238,6 +251,7 @@ function cleanText(text) {
   } catch (e) {
     console.error(`❌ เชื่อมต่อ Ollama ไม่ได้: ${e.message}`);
     process.exit(1);
+    return;
   }
 
   // Facebook
@@ -274,4 +288,11 @@ function cleanText(text) {
 
   console.log(`\n✅ เสร็จแล้ว → products/${itemId}/content/`);
   console.log(`   📘 facebook.md  📸 instagram.md  🎵 tiktok.md`);
-})();
+}
+
+/* istanbul ignore next */
+if (require.main === module) {
+  main().catch(e => { console.error('❌', e.message); process.exit(1); });
+}
+
+module.exports = { buildContext, cleanText, ollamaChat, generateFacebook, generateInstagram, generateTikTok, main };
