@@ -12,11 +12,7 @@ const fs   = require('fs');
 const path = require('path');
 const https = require('https');
 
-// ─── CLI args ─────────────────────────────────────────────────────────────────
-
-const args     = process.argv.slice(2);
-const isDryRun = args.includes('--dry-run');
-const isForce  = args.includes('--force');
+// ─── CLI args (resolved inside main so tests can control argv without reloading) ─
 
 // ─── Parse urls.txt ──────────────────────────────────────────────────────────
 
@@ -46,8 +42,12 @@ function parseUrlsFile(filePath) {
 function downloadImage(url, dest) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
-    https.get(url, res => { res.pipe(file); file.on('finish', () => { file.close(); resolve(); }); })
-         .on('error', e => { fs.unlink(dest, () => {}); reject(e); });
+    const req = https.get(url, res => {
+      res.pipe(file);
+      file.on('finish', () => { file.close(); resolve(); });
+    });
+    req.setTimeout(15000, () => { req.destroy(); fs.unlink(dest, () => {}); reject(new Error('timeout')); });
+    req.on('error', e => { fs.unlink(dest, () => {}); reject(e); });
   });
 }
 
@@ -61,6 +61,7 @@ async function downloadImages(images, dir) {
 
 // ─── DOM Extraction (runs inside browser) ────────────────────────────────────
 
+/* istanbul ignore next -- browser-only function, executed via page.evaluate() */
 function extractProductData() {
   const all = [...document.querySelectorAll('*')];
   const title = (document.querySelector('h1') || {}).innerText || '';
@@ -150,7 +151,11 @@ function extractProductData() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-(async function main() {
+async function main(opts = {}) {
+  const args     = opts.args !== undefined ? opts.args : process.argv.slice(2);
+  const isDryRun = opts.dryRun !== undefined ? opts.dryRun : args.includes('--dry-run');
+  const isForce  = opts.force  !== undefined ? opts.force  : args.includes('--force');
+
   const urlsFile = path.join('input', 'urls.txt');
   if (!fs.existsSync(urlsFile)) { console.error('❌ ไม่พบ input/urls.txt'); process.exit(1); }
 
@@ -180,7 +185,17 @@ function extractProductData() {
     process.exit(1);
   }
   const [ctx] = browser.contexts();
-  const page  = ctx.pages()[0];
+  if (!ctx) {
+    console.error('❌ Chrome ไม่มี context — ตรวจสอบว่าเปิดแท็บอยู่');
+    await browser.close();
+    process.exit(1);
+  }
+  const page = ctx.pages()[0];
+  if (!page) {
+    console.error('❌ Chrome ไม่มีแท็บที่เปิดอยู่ — เปิดแท็บก่อน');
+    await browser.close();
+    process.exit(1);
+  }
   console.log('✅ Connected!\n');
 
   let ok = 0, err = 0;
@@ -228,4 +243,10 @@ function extractProductData() {
 
   console.log(`\n✓ เสร็จสิ้น: สำเร็จ ${ok}/${pending.length}${err ? ` (ล้มเหลว ${err})` : ''}`);
   console.log('ขั้นตอนต่อไป: /สร้าง-content');
-})();
+}
+
+if (require.main === module) {
+  main().catch(e => { console.error('❌', e.message); process.exit(1); });
+}
+
+module.exports = { parseUrlsFile, downloadImage, downloadImages, extractProductData, main };
