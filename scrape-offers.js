@@ -16,10 +16,7 @@ const https = require('https');
 const fs    = require('fs');
 const path  = require('path');
 
-// ─── CLI ──────────────────────────────────────────────────────────────────────
-
-const args     = process.argv.slice(2);
-const isDryRun = args.includes('--dry-run');
+// ─── CLI (resolved inside main so tests can control without reloading) ────────
 
 // ─── Parse urls.txt ──────────────────────────────────────────────────────────
 
@@ -104,7 +101,10 @@ function extractIds(url) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-(async function main() {
+async function main(opts = {}) {
+  const args     = opts.args !== undefined ? opts.args : process.argv.slice(2);
+  const isDryRun = opts.dryRun !== undefined ? opts.dryRun : args.includes('--dry-run');
+
   const { existingItemIds, lastDate } = parseUrlsFile();
   const baseDate = lastDate || new Date().toISOString().split('T')[0];
 
@@ -126,6 +126,11 @@ function extractIds(url) {
   }
 
   const [ctx] = browser.contexts();
+  if (!ctx) {
+    console.error('❌ Chrome ไม่มี context — ตรวจสอบว่าเปิดแท็บอยู่');
+    await browser.close();
+    process.exit(1);
+  }
   const pages  = ctx.pages();
 
   // ── หาแท็บที่มี affiliate portal เปิดอยู่แล้ว (ไม่ navigate เอง!) ─────────
@@ -153,17 +158,20 @@ function extractIds(url) {
 
   // ── Scan item_ids จากหน้าที่โหลดอยู่ ──────────────────────────────────────
   console.log('🔍 สแกนสินค้าบนหน้า...');
-  const allProducts = await page.evaluate(() => {
-    const seen = new Set();
-    const results = [];
-    for (const a of document.querySelectorAll('a[href*="/offer/product_offer/"]')) {
-      const m = a.href.match(/product_offer\/(\d+)/);
-      if (!m || seen.has(m[1])) continue;
-      seen.add(m[1]);
-      results.push({ item_id: m[1] });
+  const allProducts = await page.evaluate(
+    /* istanbul ignore next -- browser DOM code, runs via page.evaluate() */
+    () => {
+      const seen = new Set();
+      const results = [];
+      for (const a of document.querySelectorAll('a[href*="/offer/product_offer/"]')) {
+        const m = a.href.match(/product_offer\/(\d+)/);
+        if (!m || seen.has(m[1])) continue;
+        seen.add(m[1]);
+        results.push({ item_id: m[1] });
+      }
+      return results;
     }
-    return results;
-  });
+  );
 
   if (!allProducts.length) {
     console.error('❌ ไม่พบสินค้าบนหน้า');
@@ -208,17 +216,21 @@ function extractIds(url) {
   // ปุ่มบน Shopee Affiliate อาจมีชื่อต่างกัน — ลองทุก keyword
   const BTN_KEYWORDS = ['เอา ลิงก์', 'เอาลิงก์', 'เอาลิงค์', 'Get Link', 'รับลิงก์', 'รับลิงค์'];
 
-  const { buttonCount, productOrder } = await page.evaluate((keywords) => {
-    const seen = new Set();
-    const productOrder = [];
-    for (const a of document.querySelectorAll('a[href*="/offer/product_offer/"]')) {
-      const m = a.href.match(/product_offer\/(\d+)/);
-      if (m && !seen.has(m[1])) { seen.add(m[1]); productOrder.push(m[1]); }
-    }
-    const btns = [...document.querySelectorAll('button,[role="button"]')]
-      .filter(b => keywords.some(k => (b.innerText || '').trim().includes(k)));
-    return { buttonCount: btns.length, productOrder };
-  }, BTN_KEYWORDS);
+  const { buttonCount, productOrder } = await page.evaluate(
+    /* istanbul ignore next -- browser DOM code, runs via page.evaluate() */
+    (keywords) => {
+      const seen = new Set();
+      const productOrder = [];
+      for (const a of document.querySelectorAll('a[href*="/offer/product_offer/"]')) {
+        const m = a.href.match(/product_offer\/(\d+)/);
+        if (m && !seen.has(m[1])) { seen.add(m[1]); productOrder.push(m[1]); }
+      }
+      const btns = [...document.querySelectorAll('button,[role="button"]')]
+        .filter(b => keywords.some(k => (b.innerText || '').trim().includes(k)));
+      return { buttonCount: btns.length, productOrder };
+    },
+    BTN_KEYWORDS
+  );
 
   console.log(`\n  🔢 ปุ่ม "เอา ลิงก์": ${buttonCount} ปุ่ม | สินค้า: ${productOrder.length} รายการ\n`);
 
@@ -245,51 +257,61 @@ function extractIds(url) {
 
     try {
       // คลิกปุ่มที่ index ตรงกับ product
-      const clickOk = await page.evaluate(({ keywords, idx }) => {
-        const btns = [...document.querySelectorAll('button,[role="button"]')]
-          .filter(b => keywords.some(k => (b.innerText || '').trim().includes(k)));
-        if (idx < btns.length) {
-          btns[idx].scrollIntoView({ block: 'center' });
-          btns[idx].click();
-          return true;
-        }
-        return false;
-      }, { keywords: BTN_KEYWORDS, idx: btnIndex });
+      const clickOk = await page.evaluate(
+        /* istanbul ignore next -- browser DOM code, runs via page.evaluate() */
+        ({ keywords, idx }) => {
+          const btns = [...document.querySelectorAll('button,[role="button"]')]
+            .filter(b => keywords.some(k => (b.innerText || '').trim().includes(k)));
+          if (idx < btns.length) {
+            btns[idx].scrollIntoView({ block: 'center' });
+            btns[idx].click();
+            return true;
+          }
+          return false;
+        },
+        { keywords: BTN_KEYWORDS, idx: btnIndex }
+      );
 
       if (!clickOk) { console.log('⚠️  คลิกปุ่มไม่ได้'); continue; }
 
       await page.waitForTimeout(2000);
 
       // อ่าน short link จาก modal input
-      const shortLink = await page.evaluate(() => {
-        const modalSels = ['[role="dialog"]', '[class*="modal"]', '[class*="popup"]', '[class*="dialog"]', '[class*="share"]'];
-        let container = null;
-        for (const sel of modalSels) {
-          const el = document.querySelector(sel);
-          if (el && el.getBoundingClientRect().width > 10) { container = el; break; }
+      const shortLink = await page.evaluate(
+        /* istanbul ignore next -- browser DOM code, runs via page.evaluate() */
+        () => {
+          const modalSels = ['[role="dialog"]', '[class*="modal"]', '[class*="popup"]', '[class*="dialog"]', '[class*="share"]'];
+          let container = null;
+          for (const sel of modalSels) {
+            const el = document.querySelector(sel);
+            if (el && el.getBoundingClientRect().width > 10) { container = el; break; }
+          }
+          const root = container || document;
+          for (const inp of root.querySelectorAll('input,textarea')) {
+            const v = (inp.value || inp.defaultValue || '').trim();
+            if (v && (v.includes('s.shopee') || v.includes('shopee.co.th'))) return v;
+          }
+          // fallback: ทั้งหน้า
+          for (const inp of document.querySelectorAll('input,textarea')) {
+            const v = (inp.value || '').trim();
+            if (v && v.includes('s.shopee')) return v;
+          }
+          return null;
         }
-        const root = container || document;
-        for (const inp of root.querySelectorAll('input,textarea')) {
-          const v = (inp.value || inp.defaultValue || '').trim();
-          if (v && (v.includes('s.shopee') || v.includes('shopee.co.th'))) return v;
-        }
-        // fallback: ทั้งหน้า
-        for (const inp of document.querySelectorAll('input,textarea')) {
-          const v = (inp.value || '').trim();
-          if (v && v.includes('s.shopee')) return v;
-        }
-        return null;
-      });
+      );
 
       // ปิด modal
       await page.keyboard.press('Escape');
       await page.waitForTimeout(500);
-      await page.evaluate(() => {
-        for (const sel of ['[role="dialog"] [class*="close"]','[class*="modal"] [class*="close"]','[aria-label="Close"]']) {
-          const btn = document.querySelector(sel);
-          if (btn) { btn.click(); break; }
+      await page.evaluate(
+        /* istanbul ignore next -- browser DOM code, runs via page.evaluate() */
+        () => {
+          for (const sel of ['[role="dialog"] [class*="close"]','[class*="modal"] [class*="close"]','[aria-label="Close"]']) {
+            const btn = document.querySelector(sel);
+            if (btn) { btn.click(); break; }
+          }
         }
-      });
+      );
       await page.waitForTimeout(400);
 
       if (!shortLink) { console.log('⚠️  อ่านลิงก์ไม่ได้'); continue; }
@@ -325,8 +347,8 @@ function extractIds(url) {
   }
 
   const urlsFile = path.join('input', 'urls.txt');
-  let existing = fs.readFileSync(urlsFile, 'utf8');
-  if (!existing.endsWith('\n')) existing += '\n';
+  let existing = fs.existsSync(urlsFile) ? fs.readFileSync(urlsFile, 'utf8') : '';
+  if (existing && !existing.endsWith('\n')) existing += '\n';
   const newLines = results.map(r =>
     `${r.product_url}  | ${r.short_link}  | ${r.post_date}`
   ).join('\n');
@@ -349,4 +371,11 @@ function extractIds(url) {
 
   console.log('\n📌 ขั้นตอนต่อไป:');
   console.log('   /ดึงสินค้า  — ดึงรายละเอียดสินค้าและรูปจาก Shopee');
-})();
+}
+
+/* istanbul ignore next */
+if (require.main === module) {
+  main().catch(e => { console.error('❌', e.message); process.exit(1); });
+}
+
+module.exports = { parseUrlsFile, addDays, resolveRedirect, getProductUrl, extractIds, main };
