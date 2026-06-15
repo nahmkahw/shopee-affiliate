@@ -15,40 +15,22 @@ const path = require('path');
 const os   = require('os');
 const { spawnSync, execSync } = require('child_process');
 
-// ─── CLI ──────────────────────────────────────────────────────────────────────
+// ─── FFmpeg path (resolved by checkFFmpeg, writable for tests) ────────────────
 
-const args   = process.argv.slice(2);
-const filter = args.find(a => !a.startsWith('-')) || '';
-const force  = args.includes('--force');
-
-// --sec N : กำหนดวินาทีต่อ scene (default 2)
-const secIdx = args.indexOf('--sec');
-const SEC_PER_SCENE = secIdx !== -1 ? Math.max(1, parseInt(args[secIdx + 1]) || 2) : 2;
-
-if (!filter) {
-  console.error('❌ ระบุ item_id หรือ YYYY-MM-DD');
-  console.error('   node make-video.js 3991346022');
-  console.error('   node make-video.js 2026-05-17');
-  process.exit(1);
-}
+let FFMPEG_BIN = 'ffmpeg';
 
 // ─── หา FFmpeg (PATH หรือ common locations) ───────────────────────────────────
 
-let FFMPEG_BIN = 'ffmpeg'; // default: ใช้จาก PATH
-
 function findFFmpeg() {
-  // ลอง PATH ก่อน
   try { execSync('ffmpeg -version', { stdio: 'ignore' }); return 'ffmpeg'; }
   catch {}
-  // ลอง common install paths บน Windows
   const candidates = [
     'C:/ffmpeg/bin/ffmpeg.exe',
     'C:/Program Files/ffmpeg/bin/ffmpeg.exe',
     'C:/Program Files (x86)/ffmpeg/bin/ffmpeg.exe',
   ];
-  const fs2 = require('fs');
   for (const p of candidates) {
-    if (fs2.existsSync(p)) return p;
+    if (fs.existsSync(p)) return p;
   }
   return null;
 }
@@ -65,7 +47,7 @@ function findFont() {
   const candidates = [
     'C:/Windows/Fonts/THSarabunNew.ttf',
     'C:/Windows/Fonts/NotoSansThai-Regular.ttf',
-    'C:/Windows/Fonts/Tahoma.ttf',          // รองรับภาษาไทย ✅
+    'C:/Windows/Fonts/Tahoma.ttf',
     'C:/Windows/Fonts/Arial.ttf',
     'C:/Windows/Fonts/arial.ttf',
   ];
@@ -74,7 +56,7 @@ function findFont() {
 
 // ─── Parse tiktok.md ──────────────────────────────────────────────────────────
 
-function parseTiktok(content) {
+function parseTiktok(content, secPerScene = 2) {
   const scenes = [];
   let inCaption = false;
   const captionLines = [];
@@ -82,20 +64,18 @@ function parseTiktok(content) {
   for (const line of content.split('\n')) {
     if (line.includes('## Caption')) { inCaption = true; continue; }
 
-    // parse script table rows
     if (!inCaption && line.startsWith('|')) {
       const cols = line.split('|').slice(1, -1).map(s => s.trim());
       if (cols.length >= 4 && cols[0].match(/\d+:\d+/)) {
         const onScreen = cols[3]
           .replace(/\*\*/g, '')
           .replace(/`/g, '')
-          // แยก "/" ออกเป็น 2 บรรทัด เช่น "text1 / text2"
           .replace(/\s*\/\s*/g, '\n');
         scenes.push({
           time:     cols[0],
           visual:   cols[2],
           onScreen,
-          duration: SEC_PER_SCENE,  // ใช้ค่าคงที่ (default 2s, ปรับได้ด้วย --sec N)
+          duration: secPerScene,
         });
       }
     }
@@ -110,20 +90,17 @@ function parseTiktok(content) {
 
 function getJpegSize(filePath) {
   try {
-    // อ่านแค่ 64 KB แรก — SOF marker มักอยู่ต้นไฟล์
     const CHUNK = 65536;
     const buf = Buffer.alloc(CHUNK);
     const fd  = fs.openSync(filePath, 'r');
     const bytesRead = fs.readSync(fd, buf, 0, CHUNK, 0);
     fs.closeSync(fd);
     const data = buf.slice(0, bytesRead);
-    // ตรวจ JPEG signature: FF D8
     if (data[0] !== 0xFF || data[1] !== 0xD8) return null;
     let i = 2;
     while (i + 4 < data.length) {
       if (data[i] !== 0xFF) break;
       const marker = data[i + 1];
-      // SOF0–SOF3, SOF5–SOF7, SOF9–SOF11, SOF13–SOF15 มีขนาดอยู่ที่ offset +5
       if ((marker >= 0xC0 && marker <= 0xC3) ||
           (marker >= 0xC5 && marker <= 0xC7) ||
           (marker >= 0xC9 && marker <= 0xCB) ||
@@ -133,7 +110,6 @@ function getJpegSize(filePath) {
         const w = data.readUInt16BE(i + 7);
         return { w, h };
       }
-      // ข้าม segment นี้
       if (i + 3 >= data.length) break;
       const len = data.readUInt16BE(i + 2);
       if (len < 2) break;
@@ -143,9 +119,9 @@ function getJpegSize(filePath) {
   return null;
 }
 
-// ─── Map images → scenes (กรองเฉพาะรูปที่ > 800×800) ─────────────────────────
+// ─── Map images → scenes ──────────────────────────────────────────────────────
 
-const MIN_SIZE = 800; // pixel
+const MIN_SIZE = 800;
 
 function mapImages(itemId, count) {
   const imgDir = path.join('products', itemId, 'images');
@@ -153,9 +129,8 @@ function mapImages(itemId, count) {
   const all = fs.readdirSync(imgDir)
     .filter(f => /^\d+\.jpg$/.test(f))
     .sort((a, b) => parseInt(a) - parseInt(b))
-    .filter(f => f !== '1.jpg');              // ข้าม thumbnail
+    .filter(f => f !== '1.jpg');
 
-  // กรองตามขนาด > 800×800
   const imgs = [];
   const skipped = [];
   for (const f of all) {
@@ -183,21 +158,18 @@ function mapImages(itemId, count) {
 
 function escapeText(text) {
   return text
-    // ลบ surrounding quotes ที่มาจาก tiktok.md เช่น “สอบท้องถิ่น 69”
-    .replace(/[“”]/g, '')
-    // แทนที่ emoji ด้วย text สั้น (FFmpeg drawtext ไม่รองรับ emoji)
+    .replace(/[""]/g, '')
     .replace(/✅/g, '[OK]')
     .replace(/🔥/g, '!')
     .replace(/📚/g, '')
     .replace(/🎥/g, '')
     .replace(/🔗/g, '')
     .replace(/❤️/g, '<3')
-    .replace(/[^\x00-\x7F฀-๿\n]/g, '')  // เก็บ ASCII + Thai + newline
+    .replace(/[^\x00-\x7F฀-๿\n]/g, '')
     .trim()
-    // escape สำหรับ drawtext
     .replace(/\\/g, '\\\\')
-    .replace(/'/g, '’')  // แทน ' ด้วย right-single-quote (ไม่ทำให้ filter แตก)
-    .replace(/"/g, '')         // ลบ double-quote ที่เหลือ
+    .replace(/'/g, '’')
+    .replace(/"/g, '')
     .replace(/:/g, '\\:')
     .replace(/,/g, '\\,')
     .replace(/\[/g, '\\[')
@@ -209,13 +181,10 @@ function escapeText(text) {
 function makeClip(imgPath, duration, onScreen, fontPath, outPath) {
   const escaped = escapeText(onScreen);
 
-  // font path สำหรับ Windows: forward slash + escape ":" หลัง drive letter
-  // ต้อง escape `:` ก่อน แล้ว replace `\` → `/` ทีหลัง (ไม่งั้น backslash จะหายไป)
   const fontEsc = fontPath
     ? `fontfile='${fontPath.replace(/\\/g, '/').replace(/^([A-Za-z]):\//,'$1\\:/')}':`
     : '';
 
-  // ถ้า text มีหลายบรรทัด (\n) ให้แสดง 2 บรรทัด
   const escapedFinal = escaped.replace(/\n/g, '\\n');
   const dtFilter = escaped.includes('\n')
     ? `drawtext=${fontEsc}text='${escapedFinal}':fontsize=55:fontcolor=white:borderw=3:bordercolor=black:x=(w-text_w)/2:y=h*0.10:line_spacing=8`
@@ -245,22 +214,29 @@ function makeClip(imgPath, duration, onScreen, fontPath, outPath) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-(function main() {
-  // ตรวจ FFmpeg
-  if (!checkFFmpeg()) {
-    console.error('\n❌ ไม่พบ FFmpeg — กรุณาติดตั้งก่อน:');
-    console.error('   1. ดาวน์โหลดฟรีที่ https://ffmpeg.org/download.html');
-    console.error('   2. แตกไฟล์ → copy ไปที่ C:\\ffmpeg\\');
-    console.error('   3. เพิ่ม C:\\ffmpeg\\bin ใน System PATH');
-    console.error('   4. เปิด terminal ใหม่ → พิมพ์ ffmpeg -version\n');
+function main(opts = {}) {
+  const args   = opts.args !== undefined ? opts.args : process.argv.slice(2);
+  const filter = opts.filter !== undefined ? opts.filter : (args.find(a => !a.startsWith('-')) || '');
+  const force  = opts.force  !== undefined ? opts.force  : args.includes('--force');
+  const secIdx = args.indexOf('--sec');
+  const secPerScene = opts.secPerScene !== undefined ? opts.secPerScene :
+    (secIdx !== -1 ? Math.max(1, parseInt(args[secIdx + 1]) || 2) : 2);
+
+  if (!filter) {
+    console.error('❌ ระบุ item_id หรือ YYYY-MM-DD');
     process.exit(1);
+    return;
   }
 
-  // หา font
+  if (!checkFFmpeg()) {
+    console.error('\n❌ ไม่พบ FFmpeg — กรุณาติดตั้งก่อน:');
+    process.exit(1);
+    return;
+  }
+
   const fontPath = findFont();
   console.log(fontPath ? `🔤 Font: ${fontPath}` : '⚠️  ไม่พบ font — ข้อความอาจแสดงผลไม่ถูกต้อง');
 
-  // หาสินค้า
   const isDate   = /^\d{4}-\d{2}-\d{2}$/.test(filter);
   const isItemId = /^\d{8,}$/.test(filter);
 
@@ -288,7 +264,7 @@ function makeClip(imgPath, duration, onScreen, fontPath, outPath) {
     console.log(`[${id}] ${title}`);
 
     const tiktokContent = fs.readFileSync(path.join('products', id, 'content', 'tiktok.md'), 'utf8');
-    const { scenes } = parseTiktok(tiktokContent);
+    const { scenes } = parseTiktok(tiktokContent, secPerScene);
 
     if (!scenes.length) {
       console.log('  ⚠️  parse tiktok.md ไม่พบ scene — ข้าม\n'); continue;
@@ -302,7 +278,6 @@ function makeClip(imgPath, duration, onScreen, fontPath, outPath) {
     fs.mkdirSync(tmpDir, { recursive: true });
 
     try {
-      // สร้าง clip แต่ละ scene
       const clipPaths = [];
       for (let i = 0; i < scenes.length; i++) {
         const sc = scenes[i];
@@ -313,14 +288,12 @@ function makeClip(imgPath, duration, onScreen, fontPath, outPath) {
         process.stdout.write(' ✓\n');
       }
 
-      // สร้าง concat list
       const listPath = path.join(tmpDir, 'list.txt');
       fs.writeFileSync(listPath,
         clipPaths.map(p => `file '${p.replace(/\\/g, '/')}'`).join('\n'),
         'utf8'
       );
 
-      // Concat ทุก scene → video.mp4
       const outPath = path.join('products', id, 'video.mp4').replace(/\\/g, '/');
       process.stdout.write(`  🔗 Concat ${scenes.length} scenes ...`);
       const r = spawnSync(FFMPEG_BIN, [
@@ -343,4 +316,9 @@ function makeClip(imgPath, duration, onScreen, fontPath, outPath) {
 
   console.log('🎉 เสร็จสิ้น!');
   console.log('📱 อัปโหลดที่ https://www.tiktok.com/creator-center');
-})();
+}
+
+/* istanbul ignore next */
+if (require.main === module) { main(); }
+
+module.exports = { findFFmpeg, findFont, parseTiktok, getJpegSize, mapImages, escapeText, makeClip, checkFFmpeg, main };
