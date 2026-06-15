@@ -25,7 +25,7 @@ const AI_NEWS_DIR   = path.join(ROOT, 'agents', 'manao', 'pipeline');
 const COMFYUI_HOST  = '10.3.17.118';
 const COMFYUI_PORT  = 8188;
 const STATUS_FILE = path.join(ROOT, 'agent-status.json');
-const NODE_BIN    = '"C:\\Program Files\\nodejs\\node.exe"';
+// NODE_BIN removed — use process.execPath instead (avoids hard-coded path)
 
 // ป้องกัน MaxListenersExceededWarning เมื่อ request หลาย concurrent เข้ามา
 require('events').defaultMaxListeners = 50;
@@ -1515,24 +1515,6 @@ function runCmd(cmd) {
   return execSync(cmd, { encoding: 'utf8', shell: 'cmd.exe', timeout: 15000 }).trim();
 }
 
-// รัน PowerShell script ผ่าน node.js helper (หลีกเลี่ยง EPERM)
-function runPSScript(psCode) {
-  const { execFileSync } = require('child_process');
-  const os = require('os');
-  const tmpFile = path.join(os.tmpdir(), `namkhao_${Date.now()}.ps1`);
-  const helperScript = path.join(ROOT, 'agents', 'namkhao', 'ps-runner.js');
-  try {
-    fs.writeFileSync(tmpFile, psCode, 'utf8');
-    // ใช้ node เป็นตัวกลางรัน PowerShell — node มีสิทธิ์ spawn ps.exe แตกต่างจาก agent-hub.js server process
-    const out = execFileSync(process.execPath, [helperScript, tmpFile], {
-      encoding: 'utf8', timeout: 20000, cwd: ROOT,
-    }).trim();
-    return out;
-  } finally {
-    try { fs.unlinkSync(tmpFile); } catch {}
-  }
-}
-
 // Parse schtasks CSV output → { state, lastRun, nextRun, lastResult, times[] }
 function parseSchedCSV(raw) {
   const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
@@ -2828,10 +2810,11 @@ const server = http.createServer(async (req, res) => {
   // ── Dashboard API: มะนาว /api/config (GET) ──────────────────────────────────
   if (url === '/dashboard/manao/api/config' && method === 'GET') {
     try {
-      const { loadConfig } = require(path.join(AI_NEWS_DIR, 'config.js'));
-      const cfg = loadConfig();   // loadConfig อ่าน config.json สดทุกครั้ง
+      const cfgFile = path.join(AI_NEWS_DIR, 'config.json');
+      const raw = fs.readFileSync(cfgFile, 'utf8');
+      const cfg = JSON.parse(raw);
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
-      return res.end(JSON.stringify({ filter: cfg.filter, formatter: cfg.formatter }));
+      return res.end(JSON.stringify({ filter: cfg.filter || {}, formatter: cfg.formatter || {} }));
     } catch (e) {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       return res.end(JSON.stringify({ error: e.message }));
@@ -2945,10 +2928,10 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ ok: false, error: `ไม่พบ news/${slug}/data.json` }));
       }
       try {
-        const { execSync } = require('child_process');
+        const { execFileSync } = require('child_process');
         console.log(`[Hub] 🎨 Generate image: ${slug}`);
-        const out = execSync(
-          `"C:\\Program Files\\nodejs\\node.exe" "${path.join(AI_NEWS_DIR, 'comfy-gen.js')}" "${slug}"`,
+        const out = execFileSync(process.execPath,
+          [path.join(AI_NEWS_DIR, 'comfy-gen.js'), slug],
           { cwd: AI_NEWS_DIR, encoding: 'utf8', timeout: 4 * 60 * 1000 }
         );
         const imgPath = path.join(AI_NEWS_DIR, 'news', slug, 'image.jpg');
@@ -2983,10 +2966,10 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ ok: false, error: `ไม่พบ news/${slug}/data.json` }));
       }
       try {
-        const { execSync } = require('child_process');
+        const { execFileSync } = require('child_process');
         console.log(`[Hub] 🔄 Generate force: ${slug}`);
-        const out = execSync(
-          `"C:\\Program Files\\nodejs\\node.exe" "${path.join(AI_NEWS_DIR, 'generate.js')}" "${slug}" --force --no-telegram`,
+        const out = execFileSync(process.execPath,
+          [path.join(AI_NEWS_DIR, 'generate.js'), slug, '--force', '--no-telegram'],
           { cwd: AI_NEWS_DIR, encoding: 'utf8', timeout: 10 * 60 * 1000 }  // 10 นาที (Ollama + ComfyUI)
         );
         const imgPath = path.join(AI_NEWS_DIR, 'news', slug, 'image.jpg');
@@ -3039,16 +3022,22 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ ok: false, error: 'Missing slug or platform' }));
       }
+      const VALID_PLATFORMS = ['fb', 'ig', 'x', 'fb,ig', 'fb,ig,x', 'fb,x', 'ig,x'];
+      if (!VALID_PLATFORMS.includes(platform)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ ok: false, error: 'Invalid platform' }));
+      }
       const dataPath = path.join(AI_NEWS_DIR, 'news', slug, 'data.json');
       if (!fs.existsSync(dataPath)) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ ok: false, error: `ไม่พบ news/${slug}/data.json` }));
       }
       try {
-        const { execSync } = require('child_process');
+        const { execFileSync } = require('child_process');
         const postScript = path.join(AI_NEWS_DIR, 'post.js');
-        const cmd = `"C:\\Program Files\\nodejs\\node.exe" "${postScript}" "${slug}" --platform ${platform}`;
-        const out = execSync(cmd, { cwd: AI_NEWS_DIR, encoding: 'utf8', timeout: 5 * 60 * 1000 });
+        const out = execFileSync(process.execPath,
+          [postScript, slug, '--platform', platform],
+          { cwd: AI_NEWS_DIR, encoding: 'utf8', timeout: 5 * 60 * 1000 });
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: true, message: 'โพสต์สำเร็จ', output: out.substring(0, 500) }));
       } catch (e) {
@@ -3085,7 +3074,7 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ ok: false, error: 'Missing agent' }));
       }
-      if (pipelineProcs[agent] !== null) {
+      if (pipelineProcs.hasOwnProperty(agent) && pipelineProcs[agent] !== null) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ ok: false, error: `${agent} กำลังทำงานอยู่แล้ว` }));
       }
@@ -3185,10 +3174,10 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ ok: false, error: `ไม่พบ products/${id}/data.json` }));
       }
       try {
-        const { execSync } = require('child_process');
+        const { execFileSync } = require('child_process');
         console.log(`[Hub] 🔄 Mali generate-force: ${id}`);
-        const out = execSync(
-          `"C:\\Program Files\\nodejs\\node.exe" "${path.join(ROOT, 'generate-content.js')}" "${id}" --force`,
+        const out = execFileSync(process.execPath,
+          [path.join(ROOT, 'generate-content.js'), id, '--force'],
           { cwd: ROOT, encoding: 'utf8', timeout: 8 * 60 * 1000 }  // 8 นาที (Ollama × 3)
         );
         console.log(`[Hub] ✅ Mali generate-force complete: ${id}`);
@@ -3277,10 +3266,10 @@ const server = http.createServer(async (req, res) => {
       }
       const platStr = valid.join(',');
       try {
-        const { execSync } = require('child_process');
+        const { execFileSync } = require('child_process');
         console.log(`[Hub] 📤 Mali post: ${id} --platform ${platStr}`);
-        const out = execSync(
-          `"C:\\Program Files\\nodejs\\node.exe" "${path.join(ROOT, 'post.js')}" "${id}" --platform ${platStr}`,
+        const out = execFileSync(process.execPath,
+          [path.join(ROOT, 'post.js'), id, '--platform', platStr],
           { cwd: ROOT, encoding: 'utf8', timeout: 5 * 60 * 1000 }
         );
         console.log(`[Hub] ✅ Mali post complete: ${id} platform=${platStr}`);
@@ -3856,7 +3845,24 @@ function handleAnimeGenerate(req, res) {
   });
 }
 
-server.listen(PORT, () => {
+module.exports = {
+  readStatus, writeStatus, readLog,
+  startAgent, stopAgent,
+  buildComfyWorkflow,
+  comfyPost, comfyGet, comfyGetBinary,
+  spawnStep, runPipelineSequential,
+  parseSchedCSV,
+  escHtml, statusBadge, tgEscape,
+  buildMainPage, buildAgentPage, buildShopeeHTML,
+  serveNamkhaoHTML, serveNewsHTML,
+  loadProducts, readShopeeEnv, readNewsEnv,
+  getNewsItems, getNewsBotStatus, getNewsPipelineInfo, buildNewsApiData,
+  getScheduleStatus, editScheduleTimes, toggleScheduleTask, runScheduleNow,
+  parseMultipart,
+  server,
+};
+
+if (require.main === module) server.listen(PORT, () => {
   console.log('\n🤖 Agent Hub — Single Server');
   console.log(`🌐 http://localhost:${PORT}`);
   console.log('');
