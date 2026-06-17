@@ -17,6 +17,7 @@ const { TwitterApi } = require('twitter-api-v2');
 const {
   readContent,
   parseTweets,
+  parsePlatforms,
   uploadImgBB,
   uploadPhotoFB,
   buildMultipart,
@@ -113,9 +114,9 @@ describe('readContent', () => {
 // ─── parseTweets ──────────────────────────────────────────────────────────────
 
 describe('parseTweets', () => {
-  test('returns content as single element when no tweet headings present', () => {
+  test('returns empty array when no tweet headings present', () => {
     const result = parseTweets('no tweets here');
-    expect(result).toEqual(['no tweets here']);
+    expect(result).toEqual([]);
   });
 
   test('parses single tweet section', () => {
@@ -710,75 +711,69 @@ describe('main()', () => {
   });
 });
 
-// ─── Module-level arg parsing (isolateModules) ────────────────────────────────
+// ─── parsePlatforms ───────────────────────────────────────────────────────────
 
-describe('module-level arg parsing via isolateModules', () => {
-  // Helper: load a fresh copy of post.js with given argv
-  function loadWithArgv(argv) {
-    let mod;
-    process.argv = argv;
-    jest.isolateModules(() => {
-      mod = require('../post.js');
-    });
-    process.argv = ['node', 'post.js', '2026-01-01']; // restore
-    return mod;
-  }
+describe('parsePlatforms', () => {
+  test('returns fb,ig,x by default when no --platform flag', () => {
+    expect(parsePlatforms([])).toEqual(['fb', 'ig', 'x']);
+  });
 
-  test('--platform=fb,ig format (branch: includes("="))', async () => {
-    const exitSpy = jest.spyOn(process, 'exit').mockImplementation(code => {
+  test('parses --platform=fb,ig format (equals sign)', () => {
+    expect(parsePlatforms(['2026-01-01', '--platform=fb,ig'])).toEqual(['fb', 'ig']);
+  });
+
+  test('parses --platform fb,ig format (separate arg)', () => {
+    expect(parsePlatforms(['2026-01-01', '--platform', 'fb,ig'])).toEqual(['fb', 'ig']);
+  });
+
+  test('returns empty array when --platform has no value', () => {
+    expect(parsePlatforms(['2026-01-01', '--platform'])).toEqual([]);
+  });
+
+  test('lowercases and trims platform names', () => {
+    expect(parsePlatforms(['--platform', ' FB , IG '])).toEqual(['fb', 'ig']);
+  });
+});
+
+// ─── main() arg parsing via opts ─────────────────────────────────────────────
+
+describe('main() arg parsing via opts', () => {
+  let exitSpy;
+  beforeEach(() => {
+    exitSpy = jest.spyOn(process, 'exit').mockImplementation(code => {
       throw Object.assign(new Error(`EXIT_${code}`), { exitCode: code });
     });
     fs.existsSync.mockReturnValue(false);
-    const mod = loadWithArgv(['node', 'post.js', '2026-01-01', '--platform=fb,ig']);
-    // products dir not found → exits with 1, but platforms was parsed
-    await expect(mod.main()).rejects.toThrow('EXIT_1');
-    exitSpy.mockRestore();
   });
-
-  test('--platform fb,ig format (branch: separate arg)', async () => {
-    const exitSpy = jest.spyOn(process, 'exit').mockImplementation(code => {
-      throw Object.assign(new Error(`EXIT_${code}`), { exitCode: code });
-    });
-    fs.existsSync.mockReturnValue(false);
-    const mod = loadWithArgv(['node', 'post.js', '2026-01-01', '--platform', 'fb,ig']);
-    await expect(mod.main()).rejects.toThrow('EXIT_1');
-    exitSpy.mockRestore();
-  });
+  afterEach(() => exitSpy.mockRestore());
 
   test('no date and no item_id → exits with error message', async () => {
-    const exitSpy = jest.spyOn(process, 'exit').mockImplementation(code => {
-      throw Object.assign(new Error(`EXIT_${code}`), { exitCode: code });
-    });
-    const mod = loadWithArgv(['node', 'post.js']); // no date, no item_id
-    await expect(mod.main()).rejects.toThrow('EXIT_1');
+    await expect(main({ args: ['node', 'post.js'] })).rejects.toThrow('EXIT_1');
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining('ระบุวันที่หรือ item_id'));
-    exitSpy.mockRestore();
   });
 
   test('--platform with no value → empty platforms → exits with error', async () => {
-    const exitSpy = jest.spyOn(process, 'exit').mockImplementation(code => {
-      throw Object.assign(new Error(`EXIT_${code}`), { exitCode: code });
-    });
-    const mod = loadWithArgv(['node', 'post.js', '2026-01-01', '--platform']);
-    await expect(mod.main()).rejects.toThrow('EXIT_1');
+    await expect(main({ args: ['node', 'post.js', '2026-01-01', '--platform'] })).rejects.toThrow('EXIT_1');
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining('--platform'));
-    exitSpy.mockRestore();
+  });
+
+  test('--platform=fb,ig= format is parsed correctly', async () => {
+    // products dir not found → exits but platforms were parsed correctly
+    await expect(main({ args: ['node', 'post.js', '2026-01-01', '--platform=fb,ig'] })).rejects.toThrow('EXIT_1');
+    // Should exit due to missing products dir, not platform error
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('ไม่พบโฟลเดอร์'));
   });
 
   test('item_id arg (no date) → uses itemIdArg filter path', async () => {
-    const exitSpy = jest.spyOn(process, 'exit').mockImplementation(code => {
-      throw Object.assign(new Error(`EXIT_${code}`), { exitCode: code });
-    });
+    exitSpy.mockRestore(); // don't want exit to throw here
+    exitSpy = jest.spyOn(process, 'exit').mockImplementation(() => {});
     fs.existsSync.mockImplementation(p => {
       const ps = String(p);
       return ps === 'products' || ps.endsWith('data.json');
     });
     fs.readdirSync.mockReturnValue(['123456789']);
-    // data.json with item_id but no post_date match needed (we use itemIdArg)
     fs.readFileSync.mockReturnValue(JSON.stringify({ item_id: '123456789', post_date: '2026-01-01', status: 'draft', title: 'T' }));
-    const mod = loadWithArgv(['node', 'post.js', '123456789']); // item_id not date
-    // Will try to post but no platform credentials → fails gracefully
-    await mod.main();
-    exitSpy.mockRestore();
+    // itemIdArg passed directly, no credentials → all platforms fail gracefully
+    await main({ args: ['node', 'post.js', '123456789'] });
   });
 });
