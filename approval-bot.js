@@ -208,7 +208,7 @@ async function postAllPlatforms(itemId) {
   // 1) Facebook schedule เท่านั้น (IG ข้าม)
   try {
     const out = execFileSync(process.execPath, ['post.js', itemId, '--platform', 'fb', '--schedule'], {
-      cwd: path.resolve(__dirname), encoding: 'utf8', timeout: 120_000
+      cwd: path.resolve(__dirname), encoding: 'utf8', timeout: 120_000, maxBuffer: 10 * 1024 * 1024
     });
     const fbOk = out.includes('Facebook') && (out.includes('post_id') || out.includes('✅'));
     results.fb = fbOk ? '✅ Scheduled' : '⚠️ ไม่แน่ใจ';
