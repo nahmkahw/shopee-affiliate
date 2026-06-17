@@ -324,7 +324,7 @@ function findItems() {
   // ถ้าไม่มี post ที่ schedule ไว้ → ใช้ now +1 ชม.
   const nowUnix       = Math.floor(Date.now() / 1000);
   const lastScheduled = schedule ? getLastScheduledTime() : null;
-  const baseTime      = lastScheduled ? lastScheduled + 7200 : nowUnix + 7200;
+  const baseTime      = lastScheduled ? lastScheduled + 3600 : nowUnix + 3600;
 
   if (schedule) {
     const baseDate = new Date(baseTime * 1000);
@@ -343,7 +343,7 @@ function findItems() {
     const title = (data.title || '').substring(0, 50);
     console.log(`[${i + 1}/${items.length}] ${title}`);
 
-    const scheduledUnix = schedule ? baseTime + i * 7200 : null;
+    const scheduledUnix = schedule ? baseTime + i * 3600 : null;
     if (scheduledUnix) {
       const scheduledDate = new Date(scheduledUnix * 1000);
       console.log(`  ⏰ กำหนดโพสต์: ${scheduledDate.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}`);

@@ -151,6 +151,48 @@ if (require.main === module) server.listen(PORT, () => {
       console.log('manao-bot started PID:' + bot.pid);
     }
   })();
+
+  // ── Manao Pipeline Scheduler (แทน Windows Task Scheduler) ───────────────────
+  // รัน pipeline ตรงเวลา 00:00, 06:00, 12:00, 18:00 ทุกวัน (Asia/Bangkok)
+  const PIPELINE_HOURS = [0, 6, 12, 18];
+
+  function scheduleNextPipeline() {
+    const now   = new Date();
+    const bkk   = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+    const hh    = bkk.getHours();
+    const mm    = bkk.getMinutes();
+    const ss    = bkk.getSeconds();
+
+    // หาชั่วโมงถัดไปที่อยู่ใน PIPELINE_HOURS
+    const nextHour = PIPELINE_HOURS.find(h => h > hh) ?? (PIPELINE_HOURS[0] + 24);
+    const msUntil  = ((nextHour - hh) * 3600 - mm * 60 - ss) * 1000;
+
+    const nextTime = new Date(now.getTime() + msUntil);
+    console.log(`[Scheduler] 🍋 pipeline ถัดไป: ${nextTime.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}`);
+
+    setTimeout(() => {
+      runManaopiPeline();
+      scheduleNextPipeline();
+    }, msUntil);
+  }
+
+  function runManaopiPeline() {
+    const pipelineScript = path.join(AI_NEWS_DIR, 'run-pipeline.ps1');
+    if (!fs.existsSync(pipelineScript)) {
+      console.log('[Scheduler] ⚠️  ไม่พบ run-pipeline.ps1 — ข้าม');
+      return;
+    }
+    console.log(`[Scheduler] 🚀 เริ่ม manao pipeline ${new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}`);
+    const proc = spawn('powershell.exe', [
+      '-NonInteractive', '-WindowStyle', 'Hidden',
+      '-ExecutionPolicy', 'Bypass',
+      '-File', pipelineScript,
+    ], { cwd: AI_NEWS_DIR, detached: true, stdio: 'ignore' });
+    proc.unref();
+    console.log(`[Scheduler] 🍋 pipeline PID: ${proc.pid}`);
+  }
+
+  scheduleNextPipeline();
 });
 
 module.exports = { server, PORT, ROOT, AGENTS, deps };
