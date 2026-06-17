@@ -13,19 +13,14 @@ const path  = require('path');
 const https = require('https');
 const { TwitterApi } = require('twitter-api-v2');
 
-// ─── CLI args ─────────────────────────────────────────────────────────────────
+// ─── CLI args parser ──────────────────────────────────────────────────────────
 
-const args      = process.argv.slice(2);
-const postDate  = args.find(a => /^\d{4}-\d{2}-\d{2}$/.test(a));
-const itemIdArg = args.find(a => /^\d{8,}$/.test(a));   // ตัวเลข 8+ หลัก = item_id
-const platIdx = args.findIndex(a => a === '--platform' || a.startsWith('--platform='));
-let platforms;
-if (platIdx === -1) {
-  platforms = ['fb', 'ig', 'x'];
-} else if (args[platIdx].includes('=')) {
-  platforms = args[platIdx].split('=')[1].split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-} else {
-  platforms = (args[platIdx + 1] || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+function parsePlatforms(args) {
+  const platIdx = args.findIndex(a => a === '--platform' || a.startsWith('--platform='));
+  if (platIdx === -1) return ['fb', 'ig', 'x'];
+  if (args[platIdx].includes('='))
+    return args[platIdx].split('=')[1].split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  return (args[platIdx + 1] || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -256,11 +251,11 @@ async function postInstagram(itemId) {
 // ─── X (Twitter) ─────────────────────────────────────────────────────────────
 
 function parseTweets(content) {
-  // แยก ### Tweet N/N sections
+  // แยก ### Tweet N/N sections — parts[0] is preamble, parts[1..] are tweet bodies
   const tweets = [];
-  const sections = content.split(/^###\s+Tweet\s+\d+\/\d+/m).filter(s => s.trim());
-  for (const s of sections) {
-    const text = s.replace(/^```[\s\S]*?```/gm, '').trim(); // ลบ code block ถ้ามี
+  const parts = content.split(/^###\s+Tweet\s+\d+\/\d+[^\n]*/m);
+  for (let i = 1; i < parts.length; i++) {
+    const text = parts[i].replace(/^```[\s\S]*?```/gm, '').trim();
     if (text) tweets.push(text);
   }
   return tweets;
@@ -297,21 +292,29 @@ async function postX(itemId) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-async function main() {
+async function main(opts = {}) {
+  const args      = opts.args !== undefined ? opts.args : process.argv.slice(2);
+  const postDate  = opts.postDate  !== undefined ? opts.postDate  : args.find(a => /^\d{4}-\d{2}-\d{2}$/.test(a));
+  const itemIdArg = opts.itemIdArg !== undefined ? opts.itemIdArg : args.find(a => /^\d{8,}$/.test(a));
+  const platforms = opts.platforms !== undefined ? opts.platforms : parsePlatforms(args);
+
   if (!postDate && !itemIdArg) {
     console.error('❌ ระบุวันที่หรือ item_id ด้วย เช่น\n   node post.js 2026-05-18\n   node post.js 3991346022 --platform fb');
     process.exit(1);
+    return;
   }
 
   if (!platforms.length) {
     console.error('❌ --platform ระบุไม่ถูกต้อง ตัวอย่าง: --platform fb,ig,x');
     process.exit(1);
+    return;
   }
 
   // หาสินค้าของวันที่นั้น
   if (!fs.existsSync('products')) {
     console.log('❌ ไม่พบโฟลเดอร์ products/');
     process.exit(1);
+    return;
   }
 
   const productDirs = fs.readdirSync('products')
@@ -336,6 +339,7 @@ async function main() {
     const label = postDate ? `post_date = ${postDate}` : `item_id = ${itemIdArg}`;
     console.log(`❌ ไม่พบสินค้าที่มี ${label}`);
     process.exit(1);
+    return;
   }
 
   const filterLabel = postDate ? `วันที่: ${postDate}` : `item_id: ${itemIdArg}`;
@@ -436,6 +440,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  parsePlatforms,
   readContent,
   parseTweets,
   uploadImgBB,
