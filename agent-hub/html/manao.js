@@ -8,7 +8,7 @@ const fs   = require('fs');
 const path = require('path');
 
 // serve ai-news dashboard.html with rewritten API paths
-function serveNewsHTML(res) {
+function serveNewsHTML(res, AI_NEWS_DIR) {
   const htmlFile = path.join(AI_NEWS_DIR, 'dashboard.html');
   if (!fs.existsSync(htmlFile)) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });

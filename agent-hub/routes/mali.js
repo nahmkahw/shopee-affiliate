@@ -9,6 +9,8 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { buildShopeeHTML } = require('../html/mali');
 
+let ROOT = '';
+
 function loadProducts() {
   const baseDir = path.join(ROOT, 'products');
   if (!fs.existsSync(baseDir)) return [];
@@ -193,7 +195,7 @@ function serveProductImage(res, itemId, filename) {
 }
 
 function register(req, res, url, rawUrl, method, deps) {
-  const { ROOT } = deps;
+  ROOT = deps.ROOT;
 
     // ── Product images (Shopee dashboard) ──────────────────────────────────────
     const imgMatch = url.match(/^\/img\/(\d+)\/(.+)$/);

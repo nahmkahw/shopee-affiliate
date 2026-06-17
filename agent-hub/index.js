@@ -63,6 +63,7 @@ const deps = {
   readStatus, writeStatus, readLog, startAgent, stopAgent,
   comfyGetBinary, submitComfyJob, getComfyJobResult,
   STYLE_BASE, GENDER_BASE, OUTFIT_PROMPTS,
+  generateAnime, renderBalloonOnImage, postFacebookImage, postInstagramImage,
   get pipelineProcs() { return agentsMod.pipelineProcs; },
   get pipelineStatus() { return agentsMod.pipelineStatus; },
   set pipelineStatus(v) { agentsMod.pipelineStatus = v; },
@@ -78,11 +79,16 @@ const server = http.createServer(async (req, res) => {
 
   if (auth.gate(req, res)) return;
 
-  if (await maliRoute.register(req, res, url, rawUrl, method, deps))    return;
-  if (await manaoRoute.register(req, res, url, rawUrl, method, deps))   return;
-  if (await namkhaoRoute.register(req, res, url, rawUrl, method, deps)) return;
-  if (await animeRoute.register(req, res, url, rawUrl, method, deps))   return;
-  if (await commonRoute.register(req, res, url, rawUrl, method, deps))  return;
+  await maliRoute.register(req, res, url, rawUrl, method, deps);
+  if (res.writableEnded) return;
+  await manaoRoute.register(req, res, url, rawUrl, method, deps);
+  if (res.writableEnded) return;
+  await namkhaoRoute.register(req, res, url, rawUrl, method, deps);
+  if (res.writableEnded) return;
+  await animeRoute.register(req, res, url, rawUrl, method, deps);
+  if (res.writableEnded) return;
+  await commonRoute.register(req, res, url, rawUrl, method, deps);
+  if (res.writableEnded) return;
 
   res.writeHead(404); res.end('Not found');
 });

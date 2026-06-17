@@ -10,6 +10,8 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { serveNewsHTML } = require('../html/manao');
 
+let AI_NEWS_DIR = '';
+
 function readNewsEnv() {
   try {
     const envFile = path.join(AI_NEWS_DIR, '.env');
@@ -277,11 +279,12 @@ function buildNewsApiData() {
 }
 
 function register(req, res, url, rawUrl, method, deps) {
-  const { AI_NEWS_DIR, pipelineProcs, pipelineStatus, runPipelineSequential } = deps;
+  AI_NEWS_DIR = deps.AI_NEWS_DIR;
+  const { pipelineProcs, pipelineStatus, runPipelineSequential } = deps;
 
     // ── Dashboard: มะนาว (AI News) HTML ────────────────────────────────────────
     if (url === '/dashboard/manao') {
-      serveNewsHTML(res);
+      serveNewsHTML(res, AI_NEWS_DIR);
       return;
     }
   

@@ -6,6 +6,9 @@
 
 const fs   = require('fs');
 const path = require('path');
+const { generateAnime }                      = require('../../agents/anime/anime-gen');
+const { renderBalloonOnImage }               = require('../../agents/anime/balloon-canvas');
+const { postFacebookImage, postInstagramImage } = require('../../agents/anime/post-anime');
 
 function parseMultipart(buffer, contentType) {
   const m = /boundary=(.+)$/.exec(contentType || '');
@@ -40,7 +43,7 @@ function parseMultipart(buffer, contentType) {
   return { fields, file };
 }
 
-function handleAnimeGenerate(req, res) {
+function handleAnimeGenerate(req, res, ROOT) {
   const chunks = [];
   let size = 0;
   req.on('data', d => { chunks.push(d); size += d.length; if (size > 20 * 1024 * 1024) req.destroy(); });
@@ -99,109 +102,6 @@ function handleAnimeGenerate(req, res) {
   });
 }
 
-module.exports = {
-  readStatus, writeStatus, readLog,
-  startAgent, stopAgent,
-  buildComfyWorkflow,
-  comfyPost, comfyGet, comfyGetBinary,
-  spawnStep, runPipelineSequential,
-  parseSchedCSV,
-  escHtml, statusBadge, tgEscape,
-  buildMainPage, buildAgentPage, buildShopeeHTML,
-  serveNamkhaoHTML, serveNewsHTML,
-  loadProducts, readShopeeEnv, readNewsEnv,
-  getNewsItems, getNewsBotStatus, getNewsPipelineInfo, buildNewsApiData,
-  getScheduleStatus, editScheduleTimes, toggleScheduleTask, runScheduleNow,
-  parseMultipart,
-  server,
-};
-
-if (require.main === module) server.listen(PORT, () => {
-  console.log('\n🤖 Agent Hub — Single Server');
-  console.log(`🌐 http://localhost:${PORT}`);
-  console.log('');
-  console.log('Agents:');
-  Object.entries(AGENTS).forEach(([n, c]) => console.log(`  ${c.emoji} ${c.label} → http://localhost:${PORT}/agent/${n}`));
-  console.log('');
-  console.log('Dashboards:');
-  console.log(`  🌸 Shopee  → http://localhost:${PORT}/dashboard/mali`);
-  console.log(`  🍋 AI News → http://localhost:${PORT}/dashboard/manao`);
-  console.log('');
-
-  // ── Auto-start น้ำข้าว Telegram Bot ────────────────────────────────────────
-  (() => {
-    const botScript = path.join(ROOT, 'agents', 'namkhao', 'telegram-bot.js');
-    const pidFile   = path.join(ROOT, 'agents', 'namkhao', 'telegram-bot.pid');
-
-    // ตรวจว่า bot กำลังรันอยู่แล้วไหม
-    let alreadyRunning = false;
-    if (fs.existsSync(pidFile)) {
-      try {
-        const pid = parseInt(fs.readFileSync(pidFile, 'utf8').trim());
-        process.kill(pid, 0); // ถ้าไม่ throw = ยังรันอยู่
-        alreadyRunning = true;
-        console.log(`🍚 น้ำข้าว Telegram Bot กำลังรันอยู่แล้ว (PID: ${pid})`);
-      } catch {
-        fs.unlinkSync(pidFile); // process ตายแล้ว ลบ pid เก่า
-      }
-    }
-
-    if (!alreadyRunning && fs.existsSync(botScript)) {
-      const bot = spawn(process.execPath, [botScript], {
-        cwd: ROOT, detached: true, stdio: 'ignore'
-      });
-      bot.unref();
-      console.log(`🍚 น้ำข้าว Telegram Bot เริ่มแล้ว (PID: ${bot.pid})`);
-    }
-  })();
-
-  // ── Auto-start อนิเมะ Telegram Bot (ถ้าตั้ง token แล้ว) ─────────────────────
-  (() => {
-    if (!process.env.ANIME_TELEGRAM_BOT_TOKEN || !process.env.ANIME_TELEGRAM_CHAT_ID) {
-      console.log('🎨 anime-bot: ข้าม (ยังไม่ตั้ง ANIME_TELEGRAM_BOT_TOKEN/CHAT_ID ใน .env)');
-      return;
-    }
-    const botScript = path.join(ROOT, 'agents', 'anime', 'anime-bot.js');
-    const lock      = path.join(ROOT, 'agents', 'anime', '.anime-bot.lock');
-    let running = false;
-    if (fs.existsSync(lock)) {
-      try { process.kill(parseInt(fs.readFileSync(lock, 'utf8').trim()), 0); running = true; console.log('🎨 anime-bot กำลังรันอยู่แล้ว'); }
-      catch { try { fs.unlinkSync(lock); } catch {} }
-    }
-    if (!running && fs.existsSync(botScript)) {
-      const bot = spawn(process.execPath, [botScript], { cwd: ROOT, detached: true, stdio: 'ignore' });
-      bot.unref();
-      console.log(`🎨 anime-bot เริ่มแล้ว (PID: ${bot.pid})`);
-    }
-  })();
-
-  // ── Auto-start AI-News (manao) Telegram Bot — handle approve callback ──────
-  // เช็ค MANAO_TELEGRAM_BOT_TOKEN จาก pipeline/.env (bot โหลด .env นั้นเองตอนรัน)
-  (() => {
-    const envFile = path.join(AI_NEWS_DIR, '.env');
-    let hasToken = false;
-    try { hasToken = /^\s*MANAO_TELEGRAM_BOT_TOKEN\s*=\s*\S+/m.test(fs.readFileSync(envFile, 'utf8')); } catch {}
-    if (!hasToken) {
-      console.log('🍋 manao-bot: ข้าม (ยังไม่ตั้ง MANAO_TELEGRAM_BOT_TOKEN ใน agents/manao/pipeline/.env)');
-      return;
-    }
-    const botScript = path.join(AI_NEWS_DIR, 'telegram-bot.js');
-    const pidFile   = path.join(AI_NEWS_DIR, 'telegram-bot.pid');
-    let running = false;
-    if (fs.existsSync(pidFile)) {
-      try { process.kill(parseInt(fs.readFileSync(pidFile, 'utf8').trim()), 0); running = true; console.log('🍋 manao-bot กำลังรันอยู่แล้ว'); }
-      catch { try { fs.unlinkSync(pidFile); } catch {} }
-    }
-    if (!running && fs.existsSync(botScript)) {
-      // cwd = AI_NEWS_DIR → bot โหลด pipeline/.env (ได้ MANAO token)
-      const bot = spawn(process.execPath, [botScript], { cwd: AI_NEWS_DIR, detached: true, stdio: 'ignore' });
-      bot.unref();
-      console.log(`🍋 manao-bot (AI-News) เริ่มแล้ว (PID: ${bot.pid})`);
-    }
-  })();
-});
-
-
 function register(req, res, url, rawUrl, method, deps) {
   const { ROOT } = deps;
 
@@ -251,7 +151,7 @@ function register(req, res, url, rawUrl, method, deps) {
   
     // สร้างรูป: รับ multipart (image + prompt + text + faceWeight)
     if (url === '/dashboard/anime/api/generate' && method === 'POST') {
-      handleAnimeGenerate(req, res);
+      handleAnimeGenerate(req, res, ROOT);
       return;
     }
   
