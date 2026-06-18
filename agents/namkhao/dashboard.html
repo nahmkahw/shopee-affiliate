@@ -154,7 +154,6 @@
       <div class="actions-row">
         <button class="btn btn-run" onclick="runNow('reuters')">▶ รันตอนนี้</button>
         <button class="btn btn-edit" onclick="openEditModal('reuters')">✏️ แก้ไขเวลา</button>
-        <button class="btn btn-create" onclick="openCreateModal('reuters')">➕ สร้าง Schedule</button>
         <button class="btn" id="reuters-toggle-btn" onclick="toggleTask('reuters')">—</button>
       </div>
     </div>
@@ -196,7 +195,6 @@
       <div class="actions-row">
         <button class="btn btn-run" onclick="runNow('shopee')">▶ รันตอนนี้</button>
         <button class="btn btn-edit" onclick="openEditModal('shopee')">✏️ แก้ไขเวลา</button>
-        <button class="btn btn-create" onclick="openCreateModal('shopee')">➕ สร้าง Schedule</button>
         <button class="btn" id="shopee-toggle-btn" onclick="toggleTask('shopee')">—</button>
       </div>
     </div>
@@ -291,7 +289,10 @@
 
     // Badge
     const badge = document.getElementById(key + '-badge');
-    if (d.state === 'Ready') {
+    if (d.state === 'Scheduled') {
+      badge.className = 'badge badge-ready';
+      badge.textContent = '🤖 Auto Schedule';
+    } else if (d.state === 'Ready') {
       badge.className = 'badge badge-ready';
       badge.textContent = '✅ พร้อมทำงาน';
     } else if (d.state === 'Running') {
@@ -327,14 +328,16 @@
       timesEl.textContent = '—';
     }
 
-    // Toggle button
+    // Toggle button (Shopee only — Reuters ไม่มีปุ่มนี้)
     const toggleBtn = document.getElementById(key + '-toggle-btn');
-    if (d.state === 'Disabled') {
-      toggleBtn.className = 'btn btn-toggle-on';
-      toggleBtn.textContent = '✅ เปิดใช้งาน';
-    } else {
-      toggleBtn.className = 'btn btn-toggle-off';
-      toggleBtn.textContent = '🚫 ปิดใช้งาน';
+    if (toggleBtn) {
+      if (d.state === 'Disabled') {
+        toggleBtn.className = 'btn btn-toggle-on';
+        toggleBtn.textContent = '✅ เปิดใช้งาน';
+      } else {
+        toggleBtn.className = 'btn btn-toggle-off';
+        toggleBtn.textContent = '🚫 ปิดใช้งาน';
+      }
     }
   }
 

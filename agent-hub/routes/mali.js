@@ -233,6 +233,7 @@ function register(req, res, url, rawUrl, method, deps) {
     // สร้าง content (FB+IG+TikTok) ใหม่ทับของเดิม ด้วย generate-content.js --force
     if (url === '/dashboard/mali/api/generate-force' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => body += d);
       req.on('end', async () => {
         const { id } = (() => { try { return JSON.parse(body); } catch { return {}; } })();
@@ -269,6 +270,7 @@ function register(req, res, url, rawUrl, method, deps) {
     // สร้างวิดีโอ TikTok: รูปสินค้า → ComfyUI img2img → FFmpeg → video.mp4
     if (url === '/dashboard/mali/api/create-video' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => body += d);
       req.on('end', async () => {
         const { id } = (() => { try { return JSON.parse(body); } catch { return {}; } })();
@@ -324,6 +326,7 @@ function register(req, res, url, rawUrl, method, deps) {
     // โพสต์ FB / IG / X โดยใช้ post.js --force (โพสต์ได้เสมอ)
     if (url === '/dashboard/mali/api/post' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => body += d);
       req.on('end', async () => {
         const { id, platforms } = (() => { try { return JSON.parse(body); } catch { return {}; } })();
@@ -361,6 +364,7 @@ function register(req, res, url, rawUrl, method, deps) {
     // โพสต์ video.mp4 ไป Facebook Page พร้อม caption จาก facebook.md
     if (url === '/dashboard/mali/api/post-fb-clip' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => body += d);
       req.on('end', async () => {
         const { id } = (() => { try { return JSON.parse(body); } catch { return {}; } })();

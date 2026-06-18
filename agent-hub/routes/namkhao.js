@@ -36,15 +36,18 @@ function parseSchedCSV(raw) {
   if (!headerLine) return null;
   const headers = headerLine.split('","').map(h => h.replace(/^"|"$/g, '').trim());
 
-  // แปลงวันที่ Thai Buddhist → Gregorian (ปี พ.ศ. → ค.ศ.: ลบ 543)
+  // แปลงวันที่จาก schtasks → "YYYY-MM-DD HH:MM:SS"
+  // รองรับทั้ง พ.ศ. (>= 2500) และ ค.ศ. (<2500) และทั้ง DD/MM และ MM/DD
   function convertThaiDate(str) {
     if (!str || str === 'N/A') return 'N/A';
-    // รูปแบบ "31/5/2569 7:05:56" หรือ "31/5/2569 12:00:00"
     const m = str.match(/^(\d+)\/(\d+)\/(\d{4})\s+(.+)$/);
     if (!m) return str;
-    const [, dd, mm, bYear, time] = m;
-    const ceYear = parseInt(bYear, 10) - 543;
-    return `${ceYear}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')} ${time}`;
+    let [, a, b, yearStr, time] = m;
+    let year = parseInt(yearStr, 10);
+    if (year >= 2500) year -= 543;   // พ.ศ. → ค.ศ.
+    // ถ้า a > 12 แน่ว่าเป็น DD/MM, ไม่งั้นเป็น MM/DD (Windows en-US default)
+    const [dd, mm] = parseInt(a, 10) > 12 ? [a, b] : [b, a];
+    return `${year}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')} ${time}`;
   }
 
   // แปลงเวลา → "HH:MM" รูปแบบ 24 ชั่วโมง
@@ -105,20 +108,84 @@ function parseSchedCSV(raw) {
   return { state, lastRun, nextRun, lastResult, times };
 }
 
-function getScheduleStatus() {
-  function queryOne(taskName) {
-    try {
-      const raw = runCmd(`schtasks /query /fo CSV /v /tn "${taskName}"`);
-      const parsed = parseSchedCSV(raw);
-      if (!parsed) throw new Error('parse CSV ไม่สำเร็จ');
-      return parsed;
-    } catch (e) {
-      return { state: 'Error', lastRun: 'N/A', lastResult: null, nextRun: 'N/A', times: [], error: e.message.substring(0, 100) };
-    }
+// Reuters ใช้ in-process scheduler — อ่าน config จาก reuters-schedule.json
+function getReutersInfo(AI_NEWS_DIR, ROOT) {
+  let cfg = { times: ['00:00', '06:00', '12:00', '18:00'], enabled: true };
+  try { cfg = JSON.parse(fs.readFileSync(path.join(AI_NEWS_DIR, 'reuters-schedule.json'), 'utf8')); } catch {}
+
+  const slots = (cfg.times || ['00:00']).map(t => {
+    const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0);
+  }).filter(v => !isNaN(v)).sort((a, b) => a - b);
+
+  let nextRun = 'N/A';
+  if (cfg.enabled && slots.length) {
+    const now    = new Date();
+    const bkk    = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+    const nowMin = bkk.getHours() * 60 + bkk.getMinutes();
+    const nowSec = bkk.getSeconds();
+    const nextMin = slots.find(m => m > nowMin) ?? (slots[0] + 24 * 60);
+    const msUntil = ((nextMin - nowMin) * 60 - nowSec) * 1000;
+    const nt  = new Date(now.getTime() + msUntil);
+    const nb  = new Date(nt.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+    const pad = n => String(n).padStart(2, '0');
+    nextRun = `${nb.getFullYear()}-${pad(nb.getMonth()+1)}-${pad(nb.getDate())} ${pad(nb.getHours())}:${pad(nb.getMinutes())}:00`;
   }
+
+  let lastRun = 'N/A';
+  try {
+    const log   = fs.readFileSync(path.join(AI_NEWS_DIR, 'pipeline.log'), 'utf8');
+    const lines = log.split('\n').filter(l => l.includes('=== เริ่ม Pipeline ==='));
+    if (lines.length) lastRun = lines[lines.length - 1].replace(/[\r﻿]/g, '').substring(0, 19);
+  } catch {}
+
   return {
-    reuters: queryOne(SCHEDULE_TASKS.reuters),
-    shopee:  queryOne(SCHEDULE_TASKS.shopee),
+    state:      cfg.enabled ? 'Scheduled' : 'Disabled',
+    lastRun,
+    lastResult: null,
+    nextRun,
+    times:      cfg.times || [],
+    enabled:    cfg.enabled,
+  };
+}
+
+// Shopee ใช้ in-process scheduler เช่นกัน — อ่าน config จาก shopee-schedule.json
+function getShopeeInfo(ROOT) {
+  let cfg = { time: '11:05', enabled: true };
+  try { cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'agents', 'namkhao', 'shopee-schedule.json'), 'utf8')); } catch {}
+
+  const [tHH, tMM] = (cfg.time || '11:05').split(':').map(Number);
+  const now    = new Date();
+  const bkk    = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+  const curHH  = bkk.getHours(), curMM = bkk.getMinutes(), curSS = bkk.getSeconds();
+  let msUntil  = ((tHH - curHH) * 3600 + (tMM - curMM) * 60 - curSS) * 1000;
+  if (msUntil <= 0) msUntil += 24 * 3600 * 1000;
+  const nt     = new Date(now.getTime() + msUntil);
+  const nb     = new Date(nt.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+  const pad    = n => String(n).padStart(2, '0');
+  const nextRun = `${nb.getFullYear()}-${pad(nb.getMonth()+1)}-${pad(nb.getDate())} ${pad(nb.getHours())}:${pad(nb.getMinutes())}:00`;
+
+  // last run — อ่านจาก approval-bot.log ถ้ามี
+  let lastRun = 'N/A';
+  try {
+    const log   = fs.readFileSync(path.join(ROOT, 'approval-bot.log'), 'utf8');
+    const lines = log.split('\n').filter(Boolean);
+    if (lines.length) lastRun = lines[lines.length - 1].replace(/[\r﻿]/g, '').substring(0, 19);
+  } catch {}
+
+  return {
+    state:      cfg.enabled ? 'Scheduled' : 'Disabled',
+    lastRun,
+    lastResult: null,
+    nextRun:    cfg.enabled ? nextRun : 'N/A',
+    times:      [cfg.time || '11:05'],
+    enabled:    cfg.enabled,
+  };
+}
+
+function getScheduleStatus(AI_NEWS_DIR, ROOT) {
+  return {
+    reuters: getReutersInfo(AI_NEWS_DIR, ROOT),
+    shopee:  getShopeeInfo(ROOT),
   };
 }
 
@@ -205,7 +272,9 @@ function serveNamkhaoHTML(res, ROOT) {
 }
 
 function register(req, res, url, rawUrl, method, deps) {
-  const { ROOT } = deps;
+  const { ROOT, AI_NEWS_DIR, runPipelineSequential,
+          SHOPEE_SCHEDULE_FILE, rescheduleShopeeBot,
+          REUTERS_SCHEDULE_FILE, rescheduleReutersPipeline } = deps;
 
     // ── Dashboard: น้ำข้าว HTML ────────────────────────────────────────────────
     if (url === '/dashboard/namkhao') {
@@ -216,7 +285,7 @@ function register(req, res, url, rawUrl, method, deps) {
     // ── Dashboard API: น้ำข้าว /api/schedule-status ────────────────────────────
     if (url === '/dashboard/namkhao/api/schedule-status' && method === 'GET') {
       try {
-        const data = getScheduleStatus();
+        const data = getScheduleStatus(AI_NEWS_DIR, ROOT);  // eslint-disable-line
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
         res.end(JSON.stringify({ ok: true, ...data }));
       } catch (e) {
@@ -229,12 +298,27 @@ function register(req, res, url, rawUrl, method, deps) {
     // ── Dashboard API: น้ำข้าว /api/schedule-run ───────────────────────────────
     if (url === '/dashboard/namkhao/api/schedule-run' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => body += d);
       req.on('end', () => {
         const { taskName } = (() => { try { return JSON.parse(body); } catch { return {}; } })();
         if (!taskName) { res.writeHead(400); return res.end(JSON.stringify({ ok: false, error: 'Missing taskName' })); }
         try {
-          runScheduleNow(taskName);
+          if (taskName === SCHEDULE_TASKS.reuters) {
+            runPipelineSequential([]);
+          } else if (taskName === SCHEDULE_TASKS.shopee) {
+            // Shopee ใช้ in-process scheduler — spawn approval-bot.js โดยตรง
+            const { spawn } = require('child_process');
+            const botScript = path.join(ROOT, 'approval-bot.js');
+            const lockFile  = path.join(ROOT, '.approval-bot.lock');
+            if (fs.existsSync(lockFile)) {
+              try { process.kill(parseInt(fs.readFileSync(lockFile,'utf8').trim()), 0); throw new Error('approval-bot กำลังรันอยู่แล้ว'); } catch (le) { if (le.message.includes('กำลังรัน')) throw le; try { fs.unlinkSync(lockFile); } catch {} }
+            }
+            const bot = spawn(process.execPath, [botScript], { cwd: ROOT, detached: true, stdio: 'ignore' });
+            bot.unref();
+          } else {
+            runScheduleNow(taskName);
+          }
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ ok: true }));
         } catch (e) {
@@ -248,10 +332,39 @@ function register(req, res, url, rawUrl, method, deps) {
     // ── Dashboard API: น้ำข้าว /api/schedule-toggle ────────────────────────────
     if (url === '/dashboard/namkhao/api/schedule-toggle' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => body += d);
       req.on('end', () => {
         const { taskName, enable } = (() => { try { return JSON.parse(body); } catch { return {}; } })();
         if (!taskName) { res.writeHead(400); return res.end(JSON.stringify({ ok: false, error: 'Missing taskName' })); }
+        if (taskName === SCHEDULE_TASKS.reuters) {
+          try {
+            let cfg = { times: ['00:00','06:00','12:00','18:00'], enabled: true };
+            try { cfg = JSON.parse(fs.readFileSync(REUTERS_SCHEDULE_FILE, 'utf8')); } catch {}
+            cfg.enabled = !!enable;
+            fs.writeFileSync(REUTERS_SCHEDULE_FILE, JSON.stringify(cfg, null, 2), 'utf8');
+            rescheduleReutersPipeline();
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({ ok: true }));
+          } catch (e) {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({ ok: false, error: e.message }));
+          }
+        }
+        if (taskName === SCHEDULE_TASKS.shopee) {
+          try {
+            let cfg = { time: '11:05', enabled: true };
+            try { cfg = JSON.parse(fs.readFileSync(SHOPEE_SCHEDULE_FILE, 'utf8')); } catch {}
+            cfg.enabled = !!enable;
+            fs.writeFileSync(SHOPEE_SCHEDULE_FILE, JSON.stringify(cfg, null, 2), 'utf8');
+            rescheduleShopeeBot();
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({ ok: true }));
+          } catch (e) {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({ ok: false, error: e.message }));
+          }
+        }
         try {
           toggleScheduleTask(taskName, !!enable);
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -267,11 +380,40 @@ function register(req, res, url, rawUrl, method, deps) {
     // ── Dashboard API: น้ำข้าว /api/schedule-edit ──────────────────────────────
     if (url === '/dashboard/namkhao/api/schedule-edit' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => body += d);
       req.on('end', () => {
         const { taskName, times } = (() => { try { return JSON.parse(body); } catch { return {}; } })();
         if (!taskName || !Array.isArray(times) || times.length === 0) {
           res.writeHead(400); return res.end(JSON.stringify({ ok: false, error: 'Missing taskName or times' }));
+        }
+        if (taskName === SCHEDULE_TASKS.reuters) {
+          try {
+            let cfg = { times: ['00:00','06:00','12:00','18:00'], enabled: true };
+            try { cfg = JSON.parse(fs.readFileSync(REUTERS_SCHEDULE_FILE, 'utf8')); } catch {}
+            cfg.times = times;
+            fs.writeFileSync(REUTERS_SCHEDULE_FILE, JSON.stringify(cfg, null, 2), 'utf8');
+            rescheduleReutersPipeline();
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({ ok: true }));
+          } catch (e) {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({ ok: false, error: e.message }));
+          }
+        }
+        if (taskName === SCHEDULE_TASKS.shopee) {
+          try {
+            let cfg = { time: '11:05', enabled: true };
+            try { cfg = JSON.parse(fs.readFileSync(SHOPEE_SCHEDULE_FILE, 'utf8')); } catch {}
+            cfg.time = times[0];
+            fs.writeFileSync(SHOPEE_SCHEDULE_FILE, JSON.stringify(cfg, null, 2), 'utf8');
+            rescheduleShopeeBot();
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({ ok: true }));
+          } catch (e) {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({ ok: false, error: e.message }));
+          }
         }
         try {
           editScheduleTimes(taskName, times);
@@ -288,6 +430,7 @@ function register(req, res, url, rawUrl, method, deps) {
     // ── Dashboard API: น้ำข้าว /api/schedule-create ────────────────────────────
     if (url === '/dashboard/namkhao/api/schedule-create' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => body += d);
       req.on('end', () => {
         const { taskName, xmlPath } = (() => { try { return JSON.parse(body); } catch { return {}; } })();

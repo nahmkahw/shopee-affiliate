@@ -313,6 +313,7 @@ function register(req, res, url, rawUrl, method, deps) {
     // ── Dashboard API: มะนาว /api/config (POST) ─────────────────────────────────
     if (url === '/dashboard/manao/api/config' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => body += d);
       req.on('end', () => {
         try {
@@ -404,6 +405,7 @@ function register(req, res, url, rawUrl, method, deps) {
     // ── Dashboard API: มะนาว POST /api/generate-image ──────────────────────────
     if (url === '/dashboard/manao/api/generate-image' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => body += d);
       req.on('end', async () => {
         const { slug } = (() => { try { return JSON.parse(body); } catch { return {}; } })();
@@ -442,6 +444,7 @@ function register(req, res, url, rawUrl, method, deps) {
     // สร้าง content (FB+IG) + รูป ComfyUI ใหม่ทับของเดิม โดยไม่ส่ง Telegram
     if (url === '/dashboard/manao/api/generate-force' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => body += d);
       req.on('end', async () => {
         const { slug } = (() => { try { return JSON.parse(body); } catch { return {}; } })();
@@ -480,6 +483,7 @@ function register(req, res, url, rawUrl, method, deps) {
     // ── Dashboard API: มะนาว POST /api/request-approval ───────────────────────
     if (url === '/dashboard/manao/api/request-approval' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => body += d);
       req.on('end', async () => {
         const json = (() => { try { return JSON.parse(body); } catch { return {}; } })();
@@ -503,6 +507,7 @@ function register(req, res, url, rawUrl, method, deps) {
     // ── Dashboard API: มะนาว POST /api/post ────────────────────────────────────
     if (url === '/dashboard/manao/api/post' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => body += d);
       req.on('end', async () => {
         const json = (() => { try { return JSON.parse(body); } catch { return {}; } })();
@@ -555,6 +560,7 @@ function register(req, res, url, rawUrl, method, deps) {
     // ── Dashboard API: มะนาว POST /api/run-agent ────────────────────────────────
     if (url === '/dashboard/manao/api/run-agent' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => body += d);
       req.on('end', () => {
         const json = (() => { try { return JSON.parse(body); } catch { return {}; } })();

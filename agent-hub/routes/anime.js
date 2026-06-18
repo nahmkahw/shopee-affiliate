@@ -151,6 +151,7 @@ function register(req, res, url, rawUrl, method, deps) {
   
     // สร้างรูป: รับ multipart (image + prompt + text + faceWeight)
     if (url === '/dashboard/anime/api/generate' && method === 'POST') {
+      res._claimed = true;
       handleAnimeGenerate(req, res, ROOT);
       return;
     }
@@ -158,6 +159,7 @@ function register(req, res, url, rawUrl, method, deps) {
     // บันทึกรูปที่วาด balloon แล้ว (จากเบราว์เซอร์) → final.jpg + อัปเดต meta
     if (url === '/dashboard/anime/api/finalize' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => { body += d; if (body.length > 256 * 1024) req.destroy(); });
       req.on('end', async () => {
         const reply = (c, o) => { res.writeHead(c, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(o)); };
@@ -189,6 +191,7 @@ function register(req, res, url, rawUrl, method, deps) {
     // โพสต์รูปอนิเมะไป FB/IG: { id, platforms:['fb','ig'], caption }
     if (url === '/dashboard/anime/api/post' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => { body += d; if (body.length > 1024 * 1024) req.destroy(); });
       req.on('end', async () => {
         const reply = (c, o) => { res.writeHead(c, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(o)); };
@@ -227,6 +230,7 @@ function register(req, res, url, rawUrl, method, deps) {
     // ตั้ง active template สำหรับ Telegram bot: { id, time }
     if (url === '/dashboard/anime/api/schedule' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => { body += d; if (body.length > 64 * 1024) req.destroy(); });
       req.on('end', () => {
         const reply = (c, o) => { res.writeHead(c, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(o)); };

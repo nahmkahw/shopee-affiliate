@@ -49,6 +49,7 @@ async function register(req, res, url, rawUrl, method, deps) {
     // ── API: Generate avatar (submit 4 jobs) ─────────────────────────────────────
     if (url === '/api/generate-avatar' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => body += d);
       req.on('end', async () => {
         try {
@@ -92,6 +93,7 @@ async function register(req, res, url, rawUrl, method, deps) {
     // ── API: Save selected avatar ────────────────────────────────────────────────
     if (url === '/api/save-avatar' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => body += d);
       req.on('end', async () => {
         try {
@@ -114,6 +116,7 @@ async function register(req, res, url, rawUrl, method, deps) {
     // ── API: Reset avatar to SVG (ลบ PNG) ───────────────────────────────────────
     if (url === '/api/reset-avatar' && method === 'POST') {
       let body = '';
+      res._claimed = true;
       req.on('data', d => body += d);
       req.on('end', () => {
         try {
@@ -152,6 +155,7 @@ async function register(req, res, url, rawUrl, method, deps) {
       const name = startMatch[1];
       if (!AGENTS[name]) { res.writeHead(404); res.end(JSON.stringify({ ok:false, error:'not found' })); return; }
       let body = '';
+      res._claimed = true;
       req.on('data', d => body += d);
       req.on('end', () => {
         const { action = 'status' } = JSON.parse(body || '{}');
