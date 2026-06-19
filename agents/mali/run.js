@@ -10,7 +10,7 @@
 
 const fs          = require('fs');
 const path        = require('path');
-const { execSync, spawn } = require('child_process');
+const { execSync, execFileSync, spawn } = require('child_process');
 
 const ROOT        = path.resolve(__dirname, '..', '..');
 const STATUS_FILE = path.join(ROOT, 'agent-status.json');
@@ -99,7 +99,7 @@ function actionApproveToday() {
 function actionScrape() {
   log('🔍 เริ่ม Scrape สินค้า Shopee');
   try {
-    const out = execSync(`node scrape.js`, {
+    const out = execFileSync(process.execPath, ['scrape.js'], {
       cwd: ROOT, encoding: 'utf8', timeout: 5 * 60 * 1000
     });
     out.split('\n').filter(l => l.trim()).forEach(l => log(l));

@@ -208,14 +208,14 @@ describe('actionApproveToday()', () => {
 describe('actionScrape()', () => {
   test('runs scrape.js and logs success', () => {
     fs.readFileSync.mockReturnValue(JSON.stringify({ mali: {} }));
-    cp.execSync.mockReturnValue('scraped 5 products\nดึงสำเร็จ');
+    cp.execFileSync.mockReturnValue('scraped 5 products\nดึงสำเร็จ');
     actionScrape();
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('✅ Scrape'));
   });
 
-  test('logs error and exits when execSync throws', () => {
+  test('logs error and exits when execFileSync throws', () => {
     fs.readFileSync.mockReturnValue(JSON.stringify({ mali: {} }));
-    cp.execSync.mockImplementation(() => { throw new Error('ECONNREFUSED'); });
+    cp.execFileSync.mockImplementation(() => { throw new Error('ECONNREFUSED'); });
     const exitSpy = jest.spyOn(process, 'exit').mockImplementation(() => { throw new Error('EXIT1'); });
     expect(() => actionScrape()).toThrow('EXIT1');
     expect(exitSpy).toHaveBeenCalledWith(1);
@@ -226,7 +226,7 @@ describe('actionScrape()', () => {
     fs.readFileSync.mockReturnValue(JSON.stringify({ mali: {} }));
     const err = new Error('script error');
     err.stdout = 'stdout output from scrape';
-    cp.execSync.mockImplementation(() => { throw err; });
+    cp.execFileSync.mockImplementation(() => { throw err; });
     const exitSpy = jest.spyOn(process, 'exit').mockImplementation(() => { throw new Error('EXIT1'); });
     expect(() => actionScrape()).toThrow('EXIT1');
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('stdout output from scrape'));
@@ -330,10 +330,9 @@ describe('main()', () => {
 
     main({ action: 'approve-today' });
 
-    // Only updateStatus calls from updateStatus() — check writeFileSync was called for 'running' not 'idle'
-    // The key point: updateStatus({status:'idle'}) should NOT be called after approve-today
+    // updateStatus({status:'idle'}) would write JSON containing '"idle"' — none should appear
     const idleCalls = writeFileSpy.mock.calls.filter(c =>
-      String(c[1]).includes('"idle"') && String(c[1]).includes('"currentAction"')
+      String(c[0]).endsWith('agent-status.json') && String(c[1]).includes('"idle"')
     );
     expect(idleCalls).toHaveLength(0);
     writeFileSpy.mockRestore();
