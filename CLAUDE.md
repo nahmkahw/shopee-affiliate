@@ -12,8 +12,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > งานเล็ก (bug fix, แก้ config) ไม่ต้องทำ Draft PR ก่อนได้ แต่ยังต้องอัปเดต CLAUDE.md ถ้ามีผลต่อ architecture หรือ behavior
 
-### Changelog
-- **refactor/remove-agent-hub-monolith**: ลบ `agent-hub.js` (3,999 บรรทัด) + `tests/agent-hub.test.js` + scripts migration ออก; entry point หลักคือ `agent-hub/index.js`; tests ใหม่ใน `tests/agent-hub-agents.test.js` + `tests/agent-hub-comfy.test.js` (≥85% coverage ทุก metric)
+---
+
+## Code Rules
+
+**Invariants — ห้ามละเมิด:**
+- ห้าม `require('../agent-hub.js')` หรือ `require('./agent-hub.js')` โดยตรง — entry point คือ `agent-hub/index.js` เท่านั้น
+- เวลาต่ออายุ `FB_ACCESS_TOKEN` ต้องอัปเดต **2 ไฟล์**: `.env` (root) + `agents/manao/pipeline/.env`
+- ห้าม commit `.env` ไม่ว่ากรณีใด
+
+**Test gotchas:**
+- ห้ามใช้ `jest.resetModules()` ใน `beforeEach` — ทำให้ mock ของ `child_process`/`fs` หลุดออกจาก module ที่โหลดแล้ว, crash แบบ silent ที่ไม่มี stack trace ชัดเจน
+- `require` module ที่ต้องการ mock ที่ **top-level** ของ test file ครั้งเดียว, ใช้ `jest.clearAllMocks()` ใน `beforeEach` แทน
+
+**Ripple effects — เวลาแก้ไฟล์เหล่านี้ ต้องอัปเดตที่อื่นด้วย:**
+- `agent-hub/agents.js` — export ใหม่ต้องเพิ่มใน `agent-hub/index.js` ด้วย
+- `agent-status.json` schema — กระทบ `agents/*/run.js` ทุกตัวที่ `readStatus`/`writeStatus`
+- `.env` keys ใหม่ — ต้องเพิ่มใน `CLAUDE.md` section Environment และ `agents/manao/pipeline/.env`
 
 ---
 
