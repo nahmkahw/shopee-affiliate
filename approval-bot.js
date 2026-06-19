@@ -21,6 +21,7 @@ const { execFileSync } = require('child_process');
 
 const { createTelegramClient, sleep } = require('./lib/telegram');
 const { postFbClip, postAllPlatforms } = require('./lib/fb-post');
+const { createApprovalFlow, regenerateFromTemplate } = require('./lib/approval-flow');
 
 const ROOT      = path.resolve(__dirname);
 const LOCK_FILE = path.join(ROOT, '.approval-bot.lock');
@@ -30,9 +31,11 @@ const LOCK_FILE = path.join(ROOT, '.approval-bot.lock');
 const BOT_TOKEN = (process.env.MALI_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '').replace(/"/g, '').trim();
 const CHAT_ID   = (process.env.TELEGRAM_CHAT_ID || '').replace(/"/g, '').trim();
 
-// สร้าง Telegram client ที่ผูกกับ token/chatId จาก .env
 const tg = createTelegramClient(BOT_TOKEN, CHAT_ID);
 const { tgApi, sendMsg, editMsg, answerCb, initOffset, waitForCallback, waitForDecision } = tg;
+const { approveLoop, handleOldProducts, postAndReport } = createApprovalFlow({
+  sendMsg, editMsg, answerCb, waitForCallback, waitForDecision, sleep, postAllPlatforms, ROOT
+});
 
 // ─── Lock file — ป้องกันรันซ้อนกัน ──────────────────────────────────────────
 
@@ -60,186 +63,6 @@ function todayString() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
-// ─── Template — สร้าง Facebook content ใหม่ (ไม่ต้องใช้ API Key) ───────────────
-
-function regenerateFromTemplate(data, attempt) {
-  const hooks = [
-    `ใครกำลังมองหา "${(data.title || '').substring(0, 30)}" อยู่บ้าง? 🙋\n\nบอกเลยว่าเจอของตรงปกแล้ว!`,
-    `รู้สึกเสียดายเงินกับของที่ซื้อแล้วไม่คุ้มไหม? 💸\n\nครั้งนี้ขอแนะนำตัวเลือกที่น่าสนใจมากกว่านั้น`,
-    `ของดีราคาคุ้ม หายากแค่ไหน? 🔍\n\nไม่ต้องตามหาอีกต่อไป เจอแล้ว!`,
-    `ช้อปออนไลน์แล้วผิดหวังบ่อยไหม? 😅\n\nรายการนี้รีวิวดีมาก บอกต่อเลย`,
-    `ของที่ใช้แล้วชอบ อยากแชร์ให้เพื่อน ๆ รู้จัก 📢`,
-  ];
-  const hook = hooks[(attempt - 1) % hooks.length];
-
-  const features = [];
-  if (data.rating) features.push(`⭐ รีวิว ${data.rating}/5 — ผู้ซื้อให้คะแนนสูง`);
-  if (data.discount) features.push(`🏷️ ลดราคา ${data.discount} จากราคาปกติ`);
-  if (data.shop_name) features.push(`🏪 จากร้าน ${data.shop_name} ที่เชื่อถือได้`);
-  features.push(`✅ สินค้าพร้อมส่ง ของแท้ 100%`);
-
-  const priceSection = data.original_price
-    ? `~~${data.original_price} บาท~~ → เหลือแค่ **${data.price} บาท** เท่านั้น!`
-    : `ราคา **${data.price} บาท** เท่านั้น!`;
-
-  return `${hook}
-
-ขอแนะนำ ${data.title}
-
-${features.join('\n')}
-
-${priceSection}
-
-สั่งซื้อ / ดูรายละเอียดเพิ่ม 👉 ${data.affiliate_short_link}
-.
-.
-#Shopeeaffiliate #รีวิวของดี #Shopeeไทย #ของน่าซื้อ`;
-}
-
-// ─── Approval loop สำหรับสินค้า 1 ชิ้น ──────────────────────────────────────
-
-async function approveLoop(itemId, data) {
-  const title       = (data.title || '').substring(0, 35);
-  const contentPath = path.join('products', itemId, 'content', 'facebook.md');
-
-  if (!fs.existsSync(contentPath)) {
-    await sendMsg(
-      `⚠️ ไม่พบ facebook.md สำหรับ\n<b>${title}</b> (${itemId})\n` +
-      `กรุณารัน /สร้าง-content ก่อน`
-    );
-    return false;
-  }
-
-  let attempt = 0;
-  while (true) {
-    attempt++;
-    const content = fs.readFileSync(contentPath, 'utf8').trim();
-    const preview = content.length > 3200 ? content.substring(0, 3200) + '\n...' : content;
-
-    const header =
-      `📝 <b>รอ Approve (ครั้งที่ ${attempt})</b>\n` +
-      `🛍 ${title}\n💰 ${data.price} บาท | ⭐ ${data.rating}\n` +
-      `${'─'.repeat(28)}\n`;
-
-    const apData = `ap_${itemId}_${attempt}`;
-    const rgData = `rg_${itemId}_${attempt}`;
-
-    const msg   = await sendMsg(header + preview, [[
-      { text: '✅ โพสต์เลย',           callback_data: apData },
-      { text: '🔄 สร้าง Content ใหม่', callback_data: rgData }
-    ]]);
-    const msgId = msg.result?.message_id;
-
-    const { decision, cbId } = await waitForDecision(apData, rgData);
-
-    if (decision === 'timeout') {
-      if (msgId) await editMsg(msgId, header + preview + '\n\n⏰ <b>หมดเวลา — ข้ามสินค้านี้</b>');
-      return false;
-    }
-
-    if (decision === 'approve') {
-      await answerCb(cbId, '✅ กำลังโพสต์...');
-      if (msgId) await editMsg(msgId, header + preview + '\n\n✅ <b>Approved — กำลังโพสต์...</b>');
-      return true;
-    }
-
-    await answerCb(cbId, '🔄 กำลังสร้าง content ใหม่...');
-    try { if (msgId) await editMsg(msgId, header + preview + '\n\n🔄 <b>กำลังสร้าง content ใหม่...</b>'); } catch {}
-
-    try {
-      const newContent = regenerateFromTemplate(data, attempt);
-      fs.writeFileSync(contentPath, newContent, 'utf8');
-      console.log(`  ✓ สร้าง content ใหม่สำเร็จ (รอบที่ ${attempt})`);
-    } catch (e) {
-      await sendMsg(
-        `❌ สร้าง content ใหม่ไม่สำเร็จ: ${e.message.substring(0, 200)}\n` +
-        `กรุณาสร้างเองแล้วรัน approval-bot.js ใหม่`
-      );
-      return false;
-    }
-
-    await sendMsg(`🔄 สร้าง content ใหม่เรียบร้อยแล้ว!\nกำลังส่ง content รอบที่ ${attempt + 1} ให้ Approve 👇`);
-    await sleep(500);
-  }
-}
-
-// ─── เมนูสินค้าเก่า (paginated) ──────────────────────────────────────────────
-
-async function handleOldProducts(oldProducts) {
-  const PAGE = 8;
-  let page = 0;
-
-  while (true) {
-    const slice   = oldProducts.slice(page * PAGE, page * PAGE + PAGE);
-    const totalPg = Math.ceil(oldProducts.length / PAGE);
-    const hasNext = (page + 1) * PAGE < oldProducts.length;
-    const hasPrev = page > 0;
-
-    const keyboard = slice.map(({ id, data }) => [{
-      text: `${data.post_date} | ${(data.title || '').substring(0, 22)}`,
-      callback_data: `os_${id}`
-    }]);
-
-    const nav = [];
-    if (hasPrev) nav.push({ text: '⬅️ ก่อนหน้า', callback_data: `op_${page - 1}` });
-    nav.push({ text: '✅ เสร็จแล้ว', callback_data: 'old_done' });
-    if (hasNext) nav.push({ text: 'ถัดไป ➡️', callback_data: `op_${page + 1}` });
-    keyboard.push(nav);
-
-    const msg   = await sendMsg(
-      `📦 <b>สินค้าเก่า</b> — เลือกรายการที่ต้องการโพสต์\n` +
-      `หน้า ${page + 1}/${totalPg} (${oldProducts.length} รายการ)`,
-      keyboard
-    );
-    const msgId = msg.result?.message_id;
-
-    const validCbs = [
-      ...slice.map(({ id }) => `os_${id}`),
-      'old_done',
-      ...(hasPrev ? [`op_${page - 1}`] : []),
-      ...(hasNext ? [`op_${page + 1}`] : [])
-    ];
-
-    const { data, cbId } = await waitForCallback(validCbs, 10 * 60 * 1000);
-    if (cbId) await answerCb(cbId, '');
-
-    if (data === 'timeout' || data === 'old_done') {
-      if (msgId) await editMsg(msgId, `📦 สินค้าเก่า — ✅ เสร็จแล้ว`);
-      return;
-    }
-
-    if (data.startsWith('op_')) {
-      page = parseInt(data.slice(3));
-      if (msgId) await editMsg(msgId, `📦 กำลังโหลดหน้า ${page + 1}...`);
-      continue;
-    }
-
-    if (data.startsWith('os_')) {
-      const selId  = data.slice(3);
-      const selPrd = oldProducts.find(p => p.id === selId);
-      if (!selPrd) continue;
-
-      if (msgId) await editMsg(msgId,
-        `📝 กำลังแสดง content ของ\n<b>${(selPrd.data.title || '').substring(0, 40)}</b>...`
-      );
-
-      const approved = await approveLoop(selPrd.id, selPrd.data);
-      if (approved) {
-        const selTitle = (selPrd.data.title || '').substring(0, 35);
-        await sendMsg(`⏳ กำลังโพสต์ <b>${selTitle}</b> ไปยัง FB Schedule + FB Clip...`);
-        const r = await postAllPlatforms(selPrd.id, ROOT);
-        const summary =
-          `📘 Facebook: ${r.fb}\n` +
-          `📸 Instagram: ⏭ ข้าม\n` +
-          `🎬 FB Reels: ${r.fbClip}` +
-          (r.error ? `\n\n⚠️ Error: ${r.error}` : '');
-        const allOk = r.fb.startsWith('✅');
-        await sendMsg((allOk ? '✅' : '⚠️') + ` <b>โพสต์เสร็จแล้ว</b>\n🛍 ${selTitle}\n\n${summary}`);
-      }
-    }
-  }
-}
-
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -247,7 +70,6 @@ async function main() {
   const argItemId = process.argv[2]?.match(/^\d{8,}$/) ? process.argv[2] : null;
 
   console.log(`🤖 Approval Bot — ${argItemId ? 'ทดสอบ item_id: ' + argItemId : today}`);
-
   await initOffset();
 
   const dirs = fs.existsSync('products') ? fs.readdirSync('products') : [];
@@ -261,8 +83,7 @@ async function main() {
     });
 
   if (!products.length) {
-    const label = argItemId ? `item_id: ${argItemId}` : `วันที่ ${today}`;
-    await sendMsg(`📭 ไม่พบสินค้า ${label}`);
+    await sendMsg(`📭 ไม่พบสินค้า ${argItemId ? `item_id: ${argItemId}` : `วันที่ ${today}`}`);
     console.log('ไม่พบสินค้า');
     return;
   }
@@ -274,8 +95,7 @@ async function main() {
     `กด ✅ เพื่อโพสต์ หรือ 🔄 เพื่อสร้าง content ใหม่`
   );
 
-  const posted  = [];
-  const skipped = [];
+  const posted = [], skipped = [];
 
   for (const { id, data } of products) {
     const title = (data.title || '').substring(0, 35);
@@ -285,15 +105,10 @@ async function main() {
     const tiktokMdPath = path.join('products', id, 'content', 'tiktok.md');
 
     if (fs.existsSync(videoPath)) {
-      const sizeMB = (fs.statSync(videoPath).size / 1024 / 1024).toFixed(1);
-      console.log(`  🎬 มีวิดีโออยู่แล้ว (${sizeMB}MB) — ข้ามการสร้าง`);
+      console.log(`  🎬 มีวิดีโออยู่แล้ว (${(fs.statSync(videoPath).size / 1024 / 1024).toFixed(1)}MB) — ข้ามการสร้าง`);
     } else if (fs.existsSync(tiktokMdPath)) {
       console.log(`  🎬 กำลังสร้างวิดีโอ...`);
-      await sendMsg(
-        `🎬 กำลังสร้างวิดีโอ TikTok\n` +
-        `🛍 <b>${title}</b>\n` +
-        `⏳ กรุณารอสักครู่ (~2-5 นาที)`
-      );
+      await sendMsg(`🎬 กำลังสร้างวิดีโอ TikTok\n🛍 <b>${title}</b>\n⏳ กรุณารอสักครู่ (~2-5 นาที)`);
       try {
         execFileSync(process.execPath, ['make-tiktok-video.js', id], {
           cwd: ROOT, stdio: 'inherit', timeout: 10 * 60 * 1000,
@@ -311,17 +126,8 @@ async function main() {
     }
 
     const approved = await approveLoop(id, data);
-
     if (approved) {
-      await sendMsg(`⏳ กำลังโพสต์ <b>${title}</b> ไปยัง FB Schedule + FB Clip...`);
-      const r = await postAllPlatforms(id, ROOT);
-      const summary =
-        `📘 Facebook: ${r.fb}\n` +
-        `📸 Instagram: ⏭ ข้าม\n` +
-        `🎬 FB Reels: ${r.fbClip}` +
-        (r.error ? `\n\n⚠️ Error: ${r.error}` : '');
-      const allOk = r.fb.startsWith('✅');
-      await sendMsg((allOk ? '✅' : '⚠️') + ` <b>โพสต์เสร็จแล้ว</b>\n🛍 ${title}\n\n${summary}`);
+      const allOk = await postAndReport(id, title);
       if (allOk) posted.push(id); else skipped.push(id);
     } else {
       skipped.push(id);
@@ -343,19 +149,21 @@ async function main() {
       .sort((a, b) => b.data.post_date.localeCompare(a.data.post_date));
 
     if (oldProducts.length) {
-      const askMsg = await sendMsg(
-        `📦 มีสินค้าเก่า <b>${oldProducts.length}</b> รายการ\nต้องการโพสต์ด้วยไหม?`,
-        [[
-          { text: '📋 แสดงรายการ', callback_data: 'old_show' },
-          { text: '❌ ไม่ต้องการ',  callback_data: 'old_skip' }
-        ]]
-      );
-      const { data: ask, cbId: askCb } = await waitForCallback(['old_show', 'old_skip'], 5 * 60 * 1000);
+      const { data: ask, cbId: askCb } = await (async () => {
+        await sendMsg(
+          `📦 มีสินค้าเก่า <b>${oldProducts.length}</b> รายการ\nต้องการโพสต์ด้วยไหม?`,
+          [[{ text: '📋 แสดงรายการ', callback_data: 'old_show' },
+            { text: '❌ ไม่ต้องการ',  callback_data: 'old_skip' }]]
+        );
+        return waitForCallback(['old_show', 'old_skip'], 5 * 60 * 1000);
+      })();
       if (askCb) await answerCb(askCb, '');
       if (ask === 'old_show') await handleOldProducts(oldProducts);
     }
   }
 }
+
+// ─── Startup ──────────────────────────────────────────────────────────────────
 
 function startup(token = BOT_TOKEN, chatId = CHAT_ID) {
   if (!token || !chatId) {
