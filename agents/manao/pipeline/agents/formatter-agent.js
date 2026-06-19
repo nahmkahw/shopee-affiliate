@@ -228,7 +228,7 @@ async function sendApprovalNotification(slug, data, master) {
   const shortId    = crypto.createHash('md5').update(slug).digest('hex').substring(0, 12);
   const queueFile  = path.join(PIPELINE_ROOT, '_tg_queue.json');
   const queue      = (() => { try { return JSON.parse(fs.readFileSync(queueFile, 'utf8')); } catch { return {}; } })();
-  queue[shortId]   = { slug, platform: 'fb' };
+  queue[shortId]   = { slug, platform: 'fb', pipelineRoot: PIPELINE_ROOT };
   try { fs.writeFileSync(queueFile, JSON.stringify(queue, null, 2), 'utf8'); } catch {}
 
   const title   = (data.title || slug).replace(/[<>&"]/g, '');

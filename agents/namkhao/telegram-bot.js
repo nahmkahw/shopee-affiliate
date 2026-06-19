@@ -185,10 +185,15 @@ async function poll() {
         if (cbData.startsWith('run:')) { await handleRunCallback(cbData, cbq, cbChat); continue; }
 
         // news callbacks (approve:/skip:/approve__/skip__)
+        // merge queues จากทุก pipeline แล้วใช้ pipelineRoot จาก entry
+        const mergedQueue = {
+          ...loadQueue(path.join(AI_NEWS_DIR, '_tg_queue.json')),
+          ...loadQueue(path.join(MAKRUT_DIR, '_tg_queue.json')),
+        };
         const newsDone = await handleNewsCallback(cbData, cbq, cbChat, {
           tgRequest: tg, sendMsg: send,
-          loadQueueFn: () => loadQueue(path.join(AI_NEWS_DIR, '_tg_queue.json')),
-          newsDir: path.join(AI_NEWS_DIR, 'news'),
+          loadQueueFn: () => mergedQueue,
+          newsDir: path.join(AI_NEWS_DIR, 'news'),   // fallback (override ด้วย entry.pipelineRoot)
           aiNewsDir: AI_NEWS_DIR, env, log,
         });
         if (!newsDone) log(`⚠️ [cb] ไม่รู้จัก callback: ${cbData}`);

@@ -121,7 +121,7 @@ async function sendTelegramApproval(slug, data, fbContent) {
   // ใช้ short ID เพราะ Telegram จำกัด callback_data ไม่เกิน 64 bytes
   const shortId = makeShortId(slug);
   const queue = loadQueue();
-  queue[shortId] = { slug, platform: 'fb' };   // ← โพสต์เฉพาะ FB (schedule); IG ข้าม
+  queue[shortId] = { slug, platform: 'fb', pipelineRoot: PIPELINE_ROOT };   // ← โพสต์เฉพาะ FB (schedule); IG ข้าม
   saveQueue(queue);
 
   const keyboard = {
