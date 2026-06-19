@@ -20,7 +20,9 @@ const PIPELINE_DIR = path.join(MAKRUT_ROOT, 'pipeline');
 const STATUS_FILE  = path.join(HUB_ROOT, 'agent-status.json');
 const LOG_FILE     = path.join(MAKRUT_ROOT, 'makrut.log');
 
-const pipelineEnv = { ...process.env, PIPELINE_ROOT: PIPELINE_DIR };
+const MANAO_DIR   = path.join(HUB_ROOT, 'agents', 'manao', 'pipeline');
+// EXTRA_SCHEDULE_DIRS → post.js scan ทุก pipeline ก่อนจองเวลา ไม่ให้ชนกับมะนาว
+const pipelineEnv = { ...process.env, PIPELINE_ROOT: PIPELINE_DIR, EXTRA_SCHEDULE_DIRS: MANAO_DIR };
 
 function log(msg) {
   const line = `[${new Date().toLocaleTimeString('th-TH')}] ${msg}`;

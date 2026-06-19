@@ -81,21 +81,28 @@ function httpsPostBinary(hostname, urlPath, body, headers) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// ─── หาเวลา schedule ล่าสุดที่ยังอยู่ในอนาคต ──────────────────────────────────
-// ใช้ field `scheduled_publish_time` (Unix) ที่บันทึกไว้ใน data.json ตอน schedule
+// ─── หาเวลา schedule ล่าสุดที่ยังอยู่ในอนาคต (scan ทุก pipeline) ───────────────
+// EXTRA_SCHEDULE_DIRS = path1:path2 → scan เพิ่มเติม เพื่อไม่ให้ชนกับ pipeline อื่น
 function getLastScheduledTime() {
-  if (!fs.existsSync(NEWS_DIR)) return null;
   const nowUnix = Math.floor(Date.now() / 1000);
   let maxTime = null;
-  for (const d of fs.readdirSync(NEWS_DIR)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(path.join(NEWS_DIR, d, 'data.json'), 'utf8'));
-      if (data.status === 'scheduled' && data.scheduled_publish_time) {
-        const t = parseInt(data.scheduled_publish_time);
-        // นับเฉพาะที่ยังเป็นอนาคต (Meta API ต้องการ > now + 10 นาที)
-        if (t > nowUnix + 600 && (!maxTime || t > maxTime)) maxTime = t;
-      }
-    } catch { /* ข้ามถ้าอ่านไม่ได้ */ }
+
+  const dirsToScan = [NEWS_DIR];
+  const extra = (process.env.EXTRA_SCHEDULE_DIRS || '').split(':').map(s => s.trim()).filter(Boolean);
+  for (const d of extra) dirsToScan.push(path.join(d, 'news'));
+
+  for (const newsDir of dirsToScan) {
+    if (!fs.existsSync(newsDir)) continue;
+    for (const d of fs.readdirSync(newsDir)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(path.join(newsDir, d, 'data.json'), 'utf8'));
+        if (data.status === 'scheduled' && data.scheduled_publish_time) {
+          const t = parseInt(data.scheduled_publish_time);
+          // นับเฉพาะที่ยังเป็นอนาคต (Meta API ต้องการ > now + 10 นาที)
+          if (t > nowUnix + 600 && (!maxTime || t > maxTime)) maxTime = t;
+        }
+      } catch { /* ข้ามถ้าอ่านไม่ได้ */ }
+    }
   }
   return maxTime;
 }
