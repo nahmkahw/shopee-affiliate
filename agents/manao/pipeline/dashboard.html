@@ -525,6 +525,21 @@
     content:''; flex:1; border-top: 1px solid var(--border);
   }
 
+  /* ── Live Log ── */
+  .live-log-header { display:flex; align-items:center; gap:8px; }
+  .live-log-badge { font-size:10px; padding:2px 8px; border-radius:10px; font-weight:700; }
+  .live-log-badge.active  { background:rgba(248,113,113,0.15); border:1px solid rgba(248,113,113,0.4); color:#f87171; }
+  .live-log-badge.idle    { background:rgba(255,255,255,0.06); border:1px solid var(--border); color:var(--text-dim); }
+  .live-log-mtime { font-size:10px; color:var(--text-dim); margin-left:auto; }
+  .live-log-body {
+    font-family: monospace; font-size: 11px; color: var(--text-dim);
+    background: rgba(0,0,0,0.25); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; max-height: 260px; overflow-y: auto;
+    white-space: pre-wrap; word-break: break-all; line-height: 1.6;
+    margin-top: 10px;
+  }
+  .live-log-body:empty::before { content: '— ยังไม่มี log —'; opacity: 0.4; }
+
   /* ── Toast ── */
   .toast {
     position: fixed; bottom: 24px; right: 24px;
@@ -657,6 +672,19 @@
     <div class="agent-hub" id="agent-hub-grid">
       <!-- filled by JS -->
     </div>
+  </div>
+
+  <!-- 📋 Live Pipeline Log -->
+  <div class="card" style="margin-bottom:24px">
+    <div class="card-title">
+      <div class="live-log-header">
+        <span>📋 Live Pipeline Log</span>
+        <span id="live-log-badge" class="live-log-badge idle">⚫ Idle</span>
+        <span id="live-log-mtime" class="live-log-mtime">—</span>
+        <button class="btn" id="live-log-pause-btn" onclick="toggleLiveLog()" style="margin-left:8px;font-size:11px;padding:3px 10px;background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text-dim);border-radius:6px;cursor:pointer">⏸ หยุด</button>
+      </div>
+    </div>
+    <div class="live-log-body" id="live-log-body"></div>
   </div>
 
   <!-- ⚙️ Config: Filter & Formatter -->
@@ -1004,7 +1032,7 @@
       updateStats(data.stats);
       updateBotStatus(data.bot);
       updatePipelineInfo(data.pipeline);
-      updateAgentHub(data.agent_hub);
+      updateAgentHub(data.hub);
       updateChart(data.stats);
       renderTable();
       const now = new Date();
@@ -1690,6 +1718,11 @@
   function renderPipelineStatus(data) {
     if (!data) return;
     const panel = document.getElementById('pipeline-status-panel');
+    // hide panel when server has no pipeline state (e.g. after restart)
+    if (panel && !data.running && (!data.steps || !data.steps.length)) {
+      panel.style.display = 'none';
+      return;
+    }
     if (panel && (data.running || (data.steps && data.steps.length))) {
       panel.style.display = 'block';
     }
@@ -1919,6 +1952,59 @@
     } catch { /* ignore */ }
   }
 
+  // ─── Live Pipeline Log ───────────────────────────────────────────────────────
+
+  let liveLogInterval = null;
+  let liveLogPaused   = false;
+  let liveLogLastContent = '';
+  let liveLogActive = false;
+
+  async function pollLiveLog() {
+    if (liveLogPaused) return;
+    try {
+      const r    = await fetch('/api/log-live?t=' + Date.now());
+      const data = await r.json();
+
+      const badge = document.getElementById('live-log-badge');
+      const mtime = document.getElementById('live-log-mtime');
+      const body  = document.getElementById('live-log-body');
+
+      const wasActive = liveLogActive;
+      liveLogActive = !!data.active;
+
+      if (data.active) {
+        badge.className   = 'live-log-badge active';
+        badge.textContent = '🔴 Active';
+      } else {
+        badge.className   = 'live-log-badge idle';
+        badge.textContent = '⚫ Idle';
+      }
+      if (data.mtime) {
+        const d = new Date(data.mtime);
+        mtime.textContent = 'อัปเดต: ' + d.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' });
+      }
+      if (body && data.lines !== undefined) {
+        const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
+        body.textContent = data.lines || '';
+        if (atBottom || data.active) body.scrollTop = body.scrollHeight;
+      }
+      liveLogLastContent = data.lines || '';
+
+      // Adjust poll rate: 3s when active, 30s when idle
+      if (wasActive !== liveLogActive) {
+        clearInterval(liveLogInterval);
+        liveLogInterval = setInterval(pollLiveLog, liveLogActive ? 3000 : 30000);
+      }
+    } catch { /* ignore */ }
+  }
+
+  function toggleLiveLog() {
+    liveLogPaused = !liveLogPaused;
+    const btn = document.getElementById('live-log-pause-btn');
+    btn.textContent = liveLogPaused ? '▶ เล่น' : '⏸ หยุด';
+    if (!liveLogPaused) pollLiveLog();
+  }
+
   // ─── Auto-refresh every 30s ───────────────────────────────────────────────────
 
   function startAutoRefresh() {
@@ -2038,6 +2124,8 @@
   loadData(false);
   startAutoRefresh();
   loadConfigUI();
+  pollLiveLog();
+  liveLogInterval = setInterval(pollLiveLog, 30000); // starts idle; switches to 3s when active
 </script>
 </body>
 </html>

@@ -203,10 +203,10 @@ async function fetchArticleDetail(page, googleUrl) {
     const slug = slugify(item.title, pubDate);
     const dataFile = path.join(NEWS_DIR, slug, 'data.json');
 
-    const isNew = !seenUrls.has(realUrl);
+    const isDuplicate = seenUrls.has(realUrl);
     const hasSaved = fs.existsSync(dataFile);
 
-    if (!force && hasSaved) {
+    if (!force && (hasSaved || isDuplicate)) {
       console.log(`  ⏭  ข้าม: ${item.title.substring(0, 60)}`);
       continue;
     }
