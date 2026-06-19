@@ -10,7 +10,7 @@
 
 const fs          = require('fs');
 const path        = require('path');
-const { execSync, spawn } = require('child_process');
+const { execSync, execFileSync, spawn } = require('child_process');
 
 const ROOT        = path.resolve(__dirname, '..', '..');
 const STATUS_FILE = path.join(ROOT, 'agent-status.json');
@@ -78,10 +78,11 @@ function actionApproveToday() {
   if (!fs.existsSync(botPath)) {
     log('❌ ไม่พบ approval-bot.js');
     process.exit(1);
+    return;
   }
 
-  const child = spawn(`"C:\\Program Files\\nodejs\\node.exe"`, [botPath], {
-    cwd: ROOT, shell: true,
+  const child = spawn(process.execPath, [botPath], {
+    cwd: ROOT, shell: false,
     env: { ...process.env }
   });
 
@@ -93,14 +94,12 @@ function actionApproveToday() {
   });
 
   updateStatus({ status: 'running', currentAction: 'approve-today', pid: child.pid, lastRun: new Date().toISOString() });
-  // รอ child process จบ
-  child.on('close', () => {});
 }
 
 function actionScrape() {
   log('🔍 เริ่ม Scrape สินค้า Shopee');
   try {
-    const out = execSync(`"C:\\Program Files\\nodejs\\node.exe" scrape.js`, {
+    const out = execFileSync(process.execPath, ['scrape.js'], {
       cwd: ROOT, encoding: 'utf8', timeout: 5 * 60 * 1000
     });
     out.split('\n').filter(l => l.trim()).forEach(l => log(l));
@@ -133,35 +132,43 @@ function actionCreateContent() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-// ล้าง log เก่า (เก็บแค่ 500 บรรทัดล่าสุด)
-try {
-  if (fs.existsSync(LOG_FILE)) {
-    const lines = fs.readFileSync(LOG_FILE, 'utf8').split('\n');
-    if (lines.length > 500) fs.writeFileSync(LOG_FILE, lines.slice(-500).join('\n'), 'utf8');
-  }
-} catch {}
+function main(opts = {}) {
+  const args   = opts.args !== undefined ? opts.args : process.argv.slice(2);
+  const action = opts.action || args[args.indexOf('--action') + 1] || 'status';
 
-const args   = process.argv.slice(2);
-const action = args[args.indexOf('--action') + 1] || 'status';
+  // ล้าง log เก่า (เก็บแค่ 500 บรรทัดล่าสุด)
+  try {
+    if (fs.existsSync(LOG_FILE)) {
+      const lines = fs.readFileSync(LOG_FILE, 'utf8').split('\n');
+      if (lines.length > 500) fs.writeFileSync(LOG_FILE, lines.slice(-500).join('\n'), 'utf8');
+    }
+  } catch {}
 
-updateStatus({ status: 'running', currentAction: action, lastRun: new Date().toISOString() });
-log(`▶ มะลิ เริ่มทำงาน action=${action}`);
+  updateStatus({ status: 'running', currentAction: action, lastRun: new Date().toISOString() });
+  log(`▶ มะลิ เริ่มทำงาน action=${action}`);
 
-try {
-  switch (action) {
-    case 'status':         actionStatus();        break;
-    case 'approve-today':  actionApproveToday();  break;
-    case 'scrape':         actionScrape();         break;
-    case 'create-content': actionCreateContent();  break;
-    default:
-      log(`❌ ไม่รู้จัก action: ${action}`);
-      process.exit(1);
+  try {
+    switch (action) {
+      case 'status':         actionStatus();        break;
+      case 'approve-today':  actionApproveToday();  break;
+      case 'scrape':         actionScrape();         break;
+      case 'create-content': actionCreateContent();  break;
+      default:
+        log(`❌ ไม่รู้จัก action: ${action}`);
+        process.exit(1);
+        return;
+    }
+    if (action !== 'approve-today') {
+      updateStatus({ status: 'idle' });
+    }
+  } catch (e) {
+    log(`❌ Error: ${e.message}`);
+    updateStatus({ status: 'error', lastResult: e.message.substring(0, 100) });
+    process.exit(1);
   }
-  if (action !== 'approve-today') {
-    updateStatus({ status: 'idle' });
-  }
-} catch (e) {
-  log(`❌ Error: ${e.message}`);
-  updateStatus({ status: 'error', lastResult: e.message.substring(0, 100) });
-  process.exit(1);
 }
+
+/* istanbul ignore next */
+if (require.main === module) { main(); }
+
+module.exports = { log, updateStatus, todayString, actionStatus, actionApproveToday, actionScrape, actionCreateContent, main };
