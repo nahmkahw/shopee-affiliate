@@ -232,23 +232,44 @@ function getNewsBotStatus() {
 }
 
 function getNewsPipelineInfo() {
+  let last_run = null, last_finish = null, log_lines = 0;
   try {
     const logFile = path.join(AI_NEWS_DIR, 'pipeline.log');
-    if (!fs.existsSync(logFile)) return { last_run: null };
-    let content = fs.readFileSync(logFile, 'utf8');
-    if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
-    const lines = content.split('\n').filter(Boolean);
-    const startLines  = lines.filter(l => l.includes('=== เริ่ม Pipeline ==='));
-    const finishLines = lines.filter(l => l.includes('=== Pipeline เสร็จแล้ว'));
-    return {
-      last_run:    startLines.length  ? startLines[startLines.length-1].replace(/[\r﻿]/g,'').substring(0,19) : null,
-      last_finish: finishLines.length ? finishLines[finishLines.length-1].replace(/[\r﻿]/g,'').substring(0,19) : null,
-      log_lines: lines.length,
-    };
-  } catch { return { last_run: null }; }
+    if (fs.existsSync(logFile)) {
+      let content = fs.readFileSync(logFile, 'utf8');
+      if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
+      const lines = content.split('\n').filter(Boolean);
+      const startLines  = lines.filter(l => l.includes('=== เริ่ม Pipeline ==='));
+      const finishLines = lines.filter(l => l.includes('=== Pipeline เสร็จแล้ว'));
+      last_run    = startLines.length  ? startLines[startLines.length-1].replace(/[\r﻿]/g,'').substring(0,19) : null;
+      last_finish = finishLines.length ? finishLines[finishLines.length-1].replace(/[\r﻿]/g,'').substring(0,19) : null;
+      log_lines   = lines.length;
+    }
+  } catch {}
+
+  // compute next_run_utc from reuters-schedule.json
+  let next_run_utc = null;
+  try {
+    const schedFile = path.join(AI_NEWS_DIR, 'reuters-schedule.json');
+    const cfg = JSON.parse(fs.readFileSync(schedFile, 'utf8'));
+    if (cfg.enabled !== false && cfg.times && cfg.times.length) {
+      const slots = cfg.times
+        .map(t => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); })
+        .filter(v => !isNaN(v)).sort((a, b) => a - b);
+      const now    = new Date();
+      const bkk    = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+      const nowMin = bkk.getHours() * 60 + bkk.getMinutes();
+      const nowSec = bkk.getSeconds();
+      const nextMin = slots.find(m => m > nowMin) ?? (slots[0] + 24 * 60);
+      const msUntil = ((nextMin - nowMin) * 60 - nowSec) * 1000;
+      next_run_utc = new Date(now.getTime() + msUntil).toISOString();
+    }
+  } catch {}
+
+  return { last_run, last_finish, log_lines, next_run_utc };
 }
 
-function buildNewsApiData() {
+function buildNewsApiData(pipelineProcs) {
   const items = getNewsItems();
   const counts = { scraped:0, draft:0, pending_approval:0, scheduled:0, posted:0 };
   for (const item of items) { const s = item.status||'scraped'; if (counts[s]!==undefined) counts[s]++; else counts.scraped++; }
@@ -290,7 +311,7 @@ function register(req, res, url, rawUrl, method, deps) {
   
     // ── Dashboard API: มะนาว /api/data ──────────────────────────────────────────
     if (url.startsWith('/dashboard/manao/api/data')) {
-      const data = JSON.stringify(buildNewsApiData(), null, 2);
+      const data = JSON.stringify(buildNewsApiData(pipelineProcs), null, 2);
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
       res.end(data);
       return;
@@ -371,6 +392,22 @@ function register(req, res, url, rawUrl, method, deps) {
     }
   
     // ── Dashboard API: มะนาว /api/log ───────────────────────────────────────────
+    if (url.startsWith('/dashboard/manao/api/log-live')) {
+      const logFile = path.join(AI_NEWS_DIR, 'pipeline.log');
+      if (!fs.existsSync(logFile)) {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
+        return res.end(JSON.stringify({ lines: '', mtime: null, active: false }));
+      }
+      const stat  = fs.statSync(logFile);
+      const mtime = stat.mtime.toISOString();
+      const active = (Date.now() - stat.mtime.getTime()) < 5 * 60 * 1000;  // modified within 5 min
+      let content = fs.readFileSync(logFile, 'utf8');
+      if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
+      const lines = content.split('\n').filter(Boolean).slice(-50).join('\n');
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
+      return res.end(JSON.stringify({ lines, mtime, active }));
+    }
+
     if (url.startsWith('/dashboard/manao/api/log')) {
       const logFile = path.join(AI_NEWS_DIR, 'pipeline.log');
       if (!fs.existsSync(logFile)) { res.writeHead(404); return res.end('No log'); }

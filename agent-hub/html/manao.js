@@ -21,6 +21,8 @@ function serveNewsHTML(res, AI_NEWS_DIR) {
     .replace(/['"]\/api\/data['"]/g, "'/dashboard/manao/api/data'")
     .replace(/['"]\/api\/facebook-content['"]/g, "'/dashboard/manao/api/facebook-content'")
     .replace(/['"]\/api\/ig-content['"]/g, "'/dashboard/manao/api/ig-content'")
+    .replace(/['"]\/api\/log-live\?/g,   "'/dashboard/manao/api/log-live?")
+    .replace(/['"]\/api\/log-live['"]/g, "'/dashboard/manao/api/log-live'")
     .replace(/['"]\/api\/log\?/g, "'/dashboard/manao/api/log?")
     .replace(/['"]\/api\/log['"]/g, "'/dashboard/manao/api/log'")
     .replace(/['"]\/api\/post['"]/g, "'/dashboard/manao/api/post'")

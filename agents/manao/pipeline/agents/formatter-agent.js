@@ -9,14 +9,19 @@
  * แล้วปรับเป็น content สไตล์น้ำข้าวตาม format ของแต่ละ platform
  */
 
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
-const fs   = require('fs');
-const path = require('path');
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env'), override: true });
+const fs     = require('fs');
+const path   = require('path');
+const crypto = require('crypto');
 const { ollamaChat, checkOllama } = require('./ollama');
 const { loadConfig } = require('../config');
 
+const http = require('http');
+
 // โหลดค่าตั้งจาก config.json (แก้ค่าได้ที่ pipeline/config.json)
-const FMT_CFG     = loadConfig().formatter;
+const _cfg        = loadConfig();
+const FMT_CFG     = _cfg.formatter;
+const COMFY_CFG   = _cfg.comfyui || {};
 const SKIP_STATUS = FMT_CFG.skipStatus || ['posted'];   // สถานะที่ข้าม
 const FMT_MIN_SCORE = FMT_CFG.minScore || 0;            // ข้ามข่าว filter_score < ค่านี้ (0 = ไม่กรอง)
 const SKIP_PLATFORMS = (FMT_CFG.skipPlatforms || []).map(s => String(s).trim().toLowerCase()); // platform ที่ไม่สร้าง
@@ -40,6 +45,79 @@ const PLATFORM_FILE = { fb: 'facebook.md', ig: 'instagram.md', x: 'x.md', tiktok
 const RETRY_LIMIT   = 3;   // สร้างซ้ำสูงสุดกี่ครั้งเมื่อ validate ไม่ผ่าน
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─── ComfyUI image generation ─────────────────────────────────────────────────
+
+const NEG_PROMPT = 'lowres, bad anatomy, text, watermark, signature, blurry, nsfw';
+
+function _comfyPost(path_, body) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(body);
+    const req = http.request({
+      hostname: COMFY_CFG.host || '10.3.17.118', port: COMFY_CFG.port || 8188,
+      path: path_, method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+    }, res => { let out = ''; res.on('data', d => out += d); res.on('end', () => { try { resolve(JSON.parse(out)); } catch(e) { reject(e); } }); });
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('comfy timeout')); });
+    req.on('error', reject); req.write(data); req.end();
+  });
+}
+
+function _comfyGet(path_) {
+  return new Promise((resolve, reject) => {
+    const req = http.get({ hostname: COMFY_CFG.host || '10.3.17.118', port: COMFY_CFG.port || 8188, path: path_ },
+      res => { let out = ''; res.on('data', d => out += d); res.on('end', () => { try { resolve(JSON.parse(out)); } catch(e) { reject(e); } }); });
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('comfy timeout')); });
+    req.on('error', reject);
+  });
+}
+
+function _comfyGetBinary(path_) {
+  return new Promise((resolve, reject) => {
+    const req = http.get({ hostname: COMFY_CFG.host || '10.3.17.118', port: COMFY_CFG.port || 8188, path: path_ },
+      res => { const chunks = []; res.on('data', d => chunks.push(d)); res.on('end', () => resolve(Buffer.concat(chunks))); });
+    req.setTimeout(30000, () => { req.destroy(); reject(new Error('comfy binary timeout')); });
+    req.on('error', reject);
+  });
+}
+
+async function generateNewsImage(slug, title) {
+  if (!COMFY_CFG.enabled) return false;
+
+  const prompt = `news illustration, technology concept, artificial intelligence, futuristic digital world, glowing circuit, modern, clean, professional, photorealistic, ${title.substring(0, 80)}`;
+  const seed = Math.floor(Math.random() * 99999999999);
+  const clientId = crypto.randomUUID();
+  const workflow = {
+    '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'AnythingXL_xl.safetensors' } },
+    '2': { class_type: 'CLIPTextEncode', inputs: { clip: ['1', 1], text: prompt } },
+    '3': { class_type: 'CLIPTextEncode', inputs: { clip: ['1', 1], text: NEG_PROMPT } },
+    '4': { class_type: 'EmptyLatentImage', inputs: { width: 1024, height: 1024, batch_size: 1 } },
+    '5': { class_type: 'KSampler', inputs: { model: ['1', 0], positive: ['2', 0], negative: ['3', 0], latent_image: ['4', 0], seed, steps: 20, cfg: 7, sampler_name: 'dpmpp_2m', scheduler: 'karras', denoise: 1 } },
+    '6': { class_type: 'VAEDecode', inputs: { samples: ['5', 0], vae: ['1', 2] } },
+    '7': { class_type: 'SaveImage', inputs: { images: ['6', 0], filename_prefix: 'news' } },
+  };
+
+  const { prompt_id } = await _comfyPost('/prompt', { client_id: clientId, prompt: workflow });
+  if (!prompt_id) throw new Error('no prompt_id from ComfyUI');
+
+  // poll ผล
+  const timeout = COMFY_CFG.timeoutMs || 120000;
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    await sleep(3000);
+    const history = await _comfyGet('/history/' + prompt_id);
+    const job = history[prompt_id];
+    if (!job) continue;
+    if (job.status?.status_str === 'error') throw new Error('ComfyUI job error');
+    const img = job.outputs?.['7']?.images?.[0];
+    if (!img) continue;
+    // ดาวน์โหลดรูป
+    const buf = await _comfyGetBinary(`/view?filename=${encodeURIComponent(img.filename)}&subfolder=${encodeURIComponent(img.subfolder||'')}&type=${encodeURIComponent(img.type||'output')}`);
+    fs.writeFileSync(imagePath, buf);
+    return true;
+  }
+  throw new Error('ComfyUI timeout');
+}
 
 // ─── Validation helpers ───────────────────────────────────────────────────────
 
@@ -144,6 +222,13 @@ async function sendApprovalNotification(slug, data, master) {
   const chatId = process.env.TELEGRAM_CHAT_ID;
   if (!token || !chatId) return;   // ไม่มี config → ข้ามเงียบๆ
 
+  // ลงทะเบียน shortId → queue เพื่อให้ telegram-bot.js resolve slug ได้
+  const shortId    = crypto.createHash('md5').update(slug).digest('hex').substring(0, 12);
+  const queueFile  = path.join(NEWS_DIR, '..', '_tg_queue.json');
+  const queue      = (() => { try { return JSON.parse(fs.readFileSync(queueFile, 'utf8')); } catch { return {}; } })();
+  queue[shortId]   = { slug, platform: 'fb' };
+  try { fs.writeFileSync(queueFile, JSON.stringify(queue, null, 2), 'utf8'); } catch {}
+
   const title   = (data.title || slug).replace(/[<>&"]/g, '');
   const date    = (data.published_at || '').substring(0, 10);
   const preview = master.substring(0, 280).replace(/[<>&"]/g, '');
@@ -153,13 +238,11 @@ async function sendApprovalNotification(slug, data, master) {
                `<b>${title}</b>\n📅 ${date}\n\n` +
                `<i>${preview}${dots}</i>`;
 
-  // slug สูงสุด 54 chars เพื่อให้ "approve__" + slug ≤ 64 bytes
-  const cb = slug.substring(0, 54);
-
   const replyMarkup = {
     inline_keyboard: [[
-      { text: '✅ อนุมัติ', callback_data: `approve__${cb}` },
-      { text: '❌ ข้าม',   callback_data: `skip__${cb}` },
+      { text: '✅ อนุมัติ & โพสต์', callback_data: `approve:${shortId}` },
+      { text: '🔄 สร้างใหม่',       callback_data: `regen:${shortId}`   },
+      { text: '❌ ยกเลิก',           callback_data: `cancel:${shortId}`  },
     ]]
   };
 
@@ -582,6 +665,20 @@ function getItems() {
 
     // ส่ง Telegram preview รอ approve (เฉพาะข่าวที่สร้าง content สำเร็จอย่างน้อย 1 platform)
     if (okForItem > 0) {
+      // generate รูปด้วย ComfyUI ถ้าไม่มี og_image และไม่มี image.jpg
+      const imagePath   = path.join(NEWS_DIR, slug, 'image.jpg');
+      const hasLocalImg = fs.existsSync(imagePath);
+      const hasOgImage  = !!(data.og_image || '').trim();
+      if (!hasLocalImg && !hasOgImage && COMFY_CFG.enabled) {
+        process.stdout.write(`     🎨 generate รูปด้วย ComfyUI...`);
+        try {
+          await generateNewsImage(slug, data.title || '');
+          process.stdout.write(` ✓\n`);
+        } catch (e) {
+          process.stdout.write(` ⚠️ ${e.message.substring(0, 60)} (ส่ง text-only)\n`);
+        }
+      }
+
       process.stdout.write(`     📲 ส่ง Telegram รอ approve...`);
       try {
         await sendApprovalNotification(slug, data, master);

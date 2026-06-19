@@ -227,7 +227,7 @@ if (require.main === module) server.listen(PORT, () => {
   (() => {
     const envFile = path.join(AI_NEWS_DIR, '.env');
     let hasToken = false;
-    try { hasToken = /^s*MANAO_TELEGRAM_BOT_TOKENs*=s*S+/m.test(fs.readFileSync(envFile,'utf8')); } catch {}
+    try { hasToken = /^\s*MANAO_TELEGRAM_BOT_TOKEN\s*=\s*\S+/m.test(fs.readFileSync(envFile,'utf8')); } catch {}
     if (!hasToken) return;
     const botScript = path.join(AI_NEWS_DIR, 'telegram-bot.js');
     const pidFile   = path.join(AI_NEWS_DIR, 'telegram-bot.pid');
@@ -248,6 +248,7 @@ if (require.main === module) server.listen(PORT, () => {
 
   // ── Manao Pipeline Scheduler ─────────────────────────────────────────────────
   scheduleNextPipeline();
+
 });
 
 module.exports = { server, PORT, ROOT, AGENTS, deps };
