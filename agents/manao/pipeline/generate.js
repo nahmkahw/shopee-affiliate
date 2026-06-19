@@ -21,7 +21,8 @@ const fs     = require('fs');
 const path   = require('path');
 
 // queue file สำหรับ map shortId → slug (Telegram callback_data จำกัด 64 bytes)
-const TG_QUEUE_FILE = path.join(__dirname, '_tg_queue.json');
+const PIPELINE_ROOT = process.env.PIPELINE_ROOT || __dirname;
+const TG_QUEUE_FILE = path.join(PIPELINE_ROOT, '_tg_queue.json');
 function loadQueue() {
   try { return JSON.parse(fs.readFileSync(TG_QUEUE_FILE, 'utf8')); } catch { return {}; }
 }
@@ -165,7 +166,7 @@ async function sendTelegramApproval(slug, data, fbContent) {
   }
 }
 
-const NEWS_DIR   = path.join(__dirname, 'news');
+const NEWS_DIR   = path.join(PIPELINE_ROOT, 'news');
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://10.3.17.118:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2:latest';
 

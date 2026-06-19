@@ -14,7 +14,8 @@ const fs    = require('fs');
 const path  = require('path');
 const https = require('https');
 
-const NEWS_DIR = path.join(__dirname, 'news');
+const PIPELINE_ROOT = process.env.PIPELINE_ROOT || __dirname;
+const NEWS_DIR = path.join(PIPELINE_ROOT, 'news');
 
 // ─── CLI args ─────────────────────────────────────────────────────────────────
 const args       = process.argv.slice(2);

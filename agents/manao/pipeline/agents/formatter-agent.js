@@ -14,7 +14,9 @@ const fs     = require('fs');
 const path   = require('path');
 const crypto = require('crypto');
 const { ollamaChat, checkOllama } = require('./ollama');
-const { loadConfig } = require('../config');
+
+const PIPELINE_ROOT = process.env.PIPELINE_ROOT || path.join(__dirname, '..');
+const { loadConfig } = require(path.join(PIPELINE_ROOT, 'config'));
 
 const http = require('http');
 
@@ -26,7 +28,7 @@ const SKIP_STATUS = FMT_CFG.skipStatus || ['posted'];   // สถานะที
 const FMT_MIN_SCORE = FMT_CFG.minScore || 0;            // ข้ามข่าว filter_score < ค่านี้ (0 = ไม่กรอง)
 const SKIP_PLATFORMS = (FMT_CFG.skipPlatforms || []).map(s => String(s).trim().toLowerCase()); // platform ที่ไม่สร้าง
 
-const NEWS_DIR = path.join(__dirname, '..', 'news');
+const NEWS_DIR = path.join(PIPELINE_ROOT, 'news');
 const https    = require('https');
 const args     = process.argv.slice(2);
 const force    = args.includes('--force');
@@ -224,7 +226,7 @@ async function sendApprovalNotification(slug, data, master) {
 
   // ลงทะเบียน shortId → queue เพื่อให้ telegram-bot.js resolve slug ได้
   const shortId    = crypto.createHash('md5').update(slug).digest('hex').substring(0, 12);
-  const queueFile  = path.join(NEWS_DIR, '..', '_tg_queue.json');
+  const queueFile  = path.join(PIPELINE_ROOT, '_tg_queue.json');
   const queue      = (() => { try { return JSON.parse(fs.readFileSync(queueFile, 'utf8')); } catch { return {}; } })();
   queue[shortId]   = { slug, platform: 'fb' };
   try { fs.writeFileSync(queueFile, JSON.stringify(queue, null, 2), 'utf8'); } catch {}

@@ -16,13 +16,16 @@ const { loadQueue, handleNewsCallback }  = require('../../lib/namkhao-bot-news')
 const { buildStatusMessage, checkConnections } = require('../../lib/namkhao-bot-status');
 const { schedulerLoop } = require('../../lib/namkhao-bot-scheduler');
 
-const ROOT        = path.resolve(__dirname, '..', '..');
-const STATUS_FILE = path.join(ROOT, 'agent-status.json');
-const PID_FILE    = path.join(__dirname, 'telegram-bot.pid');
-const LOG_FILE    = path.join(__dirname, 'namkhao-bot.log');
-const AI_NEWS_DIR = path.join(ROOT, 'agents', 'manao', 'pipeline');
+const ROOT          = path.resolve(__dirname, '..', '..');
+const STATUS_FILE   = path.join(ROOT, 'agent-status.json');
+const PID_FILE      = path.join(__dirname, 'telegram-bot.pid');
+const LOG_FILE      = path.join(__dirname, 'namkhao-bot.log');
+const AI_NEWS_DIR   = path.join(ROOT, 'agents', 'manao', 'pipeline');
 const PIPELINE_LOCK = path.join(ROOT, 'agents', 'manao', '.pipeline.lock');
-const MANAO_RUN   = path.join(AI_NEWS_DIR, 'manao.js');
+const MANAO_RUN     = path.join(AI_NEWS_DIR, 'manao.js');
+const MAKRUT_DIR    = path.join(ROOT, 'agents', 'makrut', 'pipeline');
+const MAKRUT_RUN    = path.join(MAKRUT_DIR, 'makrut.js');
+const MAKRUT_LOCK   = path.join(ROOT, 'agents', 'makrut', '.pipeline.lock');
 
 // ─── .env reader ──────────────────────────────────────────────────────────────
 function readEnv() {
@@ -106,10 +109,12 @@ function spawnAgent(agentName, action) {
 
 // ─── handle run:* callback ────────────────────────────────────────────────────
 const RUN_LABELS = {
-  'run:mali:scrape':         { agent: 'mali',  action: 'scrape',         label: '🌸 ดึงสินค้า'   },
-  'run:mali:approve-today':  { agent: 'mali',  action: 'approve-today',  label: '🌸 โพสต์วันนี้'  },
-  'run:manao:full':          { agent: 'manao', action: 'full',           label: '🍋 รันทั้งหมด'   },
-  'run:manao:status':        { agent: 'manao', action: 'status',         label: '🍋 ดูสถานะ'      },
+  'run:mali:scrape':         { agent: 'mali',   action: 'scrape',        label: '🌸 ดึงสินค้า'    },
+  'run:mali:approve-today':  { agent: 'mali',   action: 'approve-today', label: '🌸 โพสต์วันนี้'  },
+  'run:manao:full':          { agent: 'manao',  action: 'full',          label: '🍋 มะนาว รัน'    },
+  'run:manao:status':        { agent: 'manao',  action: 'status',        label: '🍋 มะนาว สถานะ'  },
+  'run:makrut:full':         { agent: 'makrut', action: 'full',          label: '⚽ มะกรูด รัน'   },
+  'run:makrut:status':       { agent: 'makrut', action: 'status',        label: '⚽ มะกรูด สถานะ' },
 };
 
 async function handleRunCallback(cbData, cbq, cbChat) {
@@ -218,7 +223,9 @@ async function poll() {
   log('🍚 น้ำข้าว Telegram Bot เริ่มทำงาน');
   await initOffset();
 
-  schedulerLoop({ root: ROOT, lockFile: PIPELINE_LOCK, manaoRun: MANAO_RUN, sendMsg: send, chatId: CHAT_ID, log });
+  schedulerLoop({ root: ROOT, lockFile: PIPELINE_LOCK, manaoRun: MANAO_RUN,
+                  makrutRun: MAKRUT_RUN, makrutLock: MAKRUT_LOCK,
+                  sendMsg: send, chatId: CHAT_ID, log });
 
   while (true) { await poll(); }
 })();
