@@ -29,6 +29,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `agent-hub/agents.js` — export ใหม่ต้องเพิ่มใน `agent-hub/index.js` ด้วย
 - `agent-status.json` schema — กระทบ `agents/*/run.js` ทุกตัวที่ `readStatus`/`writeStatus`
 - `.env` keys ใหม่ — ต้องเพิ่มใน `CLAUDE.md` section Environment และ `agents/manao/pipeline/.env`
+- `agent-hub/routes/manao/` หรือ `namkhao/` — sub-handler ใหม่ต้อง import และ dispatch ใน `manao.js` / `namkhao.js` ด้วย
 
 ---
 
@@ -73,25 +74,50 @@ shopee-affiliate/
 ├── post.js                ← โพสต์ FB / IG / X ผ่าน API
 ├── approval-bot.js        ← Telegram Bot: preview → กด Approve → โพสต์ Facebook
 ├── dashboard.js           ← Web dashboard สินค้า (port 3001)
+├── make-tiktok-video.js   ← entry point สร้างวิดีโอ TikTok (delegate ไปที่ lib/tiktok-*)
+├── generate-content.js    ← helper สร้าง content markdown
 ├── agent-hub/             ← Multi-agent control hub (port 3002) — entry point: node agent-hub/index.js
 │   ├── index.js           ← HTTP server bootstrap + request dispatch
 │   ├── agents.js          ← startAgent, stopAgent, spawnStep, pipeline lifecycle
 │   ├── comfy.js           ← ComfyUI workflow builder + poll/download helpers
 │   ├── routes/
 │   │   ├── mali.js        ← Shopee Affiliate routes
-│   │   ├── manao.js       ← Reuters AI News routes
-│   │   ├── namkhao.js     ← Supervisor routes + scheduler API
+│   │   ├── manao.js       ← Reuters AI News routes (thin dispatcher)
+│   │   ├── manao/         ← sub-handlers: news-api.js, news-data.js, pipeline.js, telegram.js
+│   │   ├── namkhao.js     ← Supervisor routes + scheduler API (thin dispatcher)
+│   │   ├── namkhao/       ← sub-handlers: handlers.js, scheduler.js, status.js
 │   │   ├── anime.js       ← Anime generator routes
 │   │   └── common.js      ← shared routes (health, status)
 │   └── html/
 │       ├── main.js        ← buildMainPage, buildAgentPage, shared UI helpers
 │       ├── mali.js        ← Mali dashboard HTML
 │       └── manao.js       ← Manao dashboard HTML (rewrite API paths)
-├── make-video.js          ← สร้างวิดีโอด้วย FFmpeg จาก tiktok.md
-├── generate-content.js    ← helper สร้าง content markdown
+├── lib/                   ← shared helpers (ใช้ข้าม agents)
+│   ├── approval-flow.js   ← Mali approval flow logic
+│   ├── fb-post.js         ← Facebook Graph API helpers
+│   ├── telegram.js        ← shared Telegram request helper
+│   ├── tiktok-ffmpeg.js   ← FFmpeg video assembly
+│   ├── tiktok-parser.js   ← parse tiktok.md script table
+│   ├── tiktok-tts.js      ← msedge-tts TTS generation
+│   ├── namkhao-bot-news.js     ← news approval callbacks (ใช้ทั้ง manao + makrut)
+│   ├── namkhao-bot-scheduler.js ← schedule loop + trigger logic
+│   ├── namkhao-bot-status.js   ← pipeline status readers
+│   ├── namkhao-bot-tg.js       ← Telegram polling helpers
+│   ├── namkhao-health.js       ← health check endpoints
+│   └── namkhao-status.js       ← namkhao status aggregator
 ├── agents/
-│   ├── mali/run.js        ← Agent มะลิ (Shopee Affiliate) — actions: status, scrape, create-content, approve-today
-│   └── manao/pipeline/    ← Agent มะนาว (Reuters AI News pipeline)
+│   ├── mali/run.js        ← Agent มะลิ (Shopee Affiliate)
+│   ├── manao/pipeline/    ← Agent มะนาว (Reuters AI News pipeline)
+│   │   ├── generate.js    ← entry point (delegate ไปที่ pipeline/lib/)
+│   │   ├── lib/           ← sub-modules: content.js, ollama.js, queue-items.js, telegram.js, tg-queue.js
+│   │   ├── agents/        ← filter-agent.js, formatter-agent.js, editor-agent.js, ollama.js
+│   │   └── post.js        ← โพสต์ข่าวไปยัง FB (ใช้ PIPELINE_ROOT env เพื่อรองรับหลาย pipeline)
+│   ├── makrut/            ← Agent มะกรูด (FIFA World Cup 2026 news pipeline)
+│   │   ├── run.js         ← actions: status, scrape, generate, resend
+│   │   └── pipeline/      ← makrut.js, scrape.js, config.js, agents/ (editor-agent, ollama)
+│   ├── namkhao/           ← Agent น้ำข้าว (Supervisor + scheduler)
+│   │   └── telegram-bot.js ← Telegram bot + inline keyboard menu
+│   └── anime/             ← Anime image generator
 ├── input/urls.txt         ← รายการสินค้า (3 คอลัมน์คั่น |)
 ├── products/{item_id}/    ← ข้อมูล + content ต่อสินค้า
 ├── tracking.xlsx          ← ตารางสรุปสถานะ (sort ตาม post_date)
@@ -100,6 +126,7 @@ shopee-affiliate/
 
 ### Data Flow
 
+**Shopee Affiliate:**
 ```
 input/urls.txt
     → scrape.js (Playwright + Chrome debug port 9222)
@@ -110,39 +137,40 @@ input/urls.txt
     → post.js (FB Graph API / IG carousel / X thread)
 ```
 
+**AI News (manao / makrut):**
+```
+RSS/scrape → generate.js (Ollama Typhoon2) → news/{slug}/content/
+    → formatter-agent.js → Telegram approval
+    → [Approve] → lib/namkhao-bot-news.js → post.js --schedule --platform fb
+```
+
 ### Agent Hub (port 3002)
 
 `agent-hub/index.js` เป็น HTTP server ควบคุม sub-agents ผ่าน web UI:
-- **Daily PR Scheduler** — ทุกเที่ยงคืน (Bangkok) รัน `daily-pr.js` อัตโนมัติ: commit changes → push branch `daily/YYYY-MM-DD` → เปิด PR เข้า master พร้อม description สรุป commits + diff stat (ข้ามถ้าไม่มี changes)
+- **Daily PR Scheduler** — ทุกเที่ยงคืน (Bangkok) รัน `daily-pr.js` อัตโนมัติ
 - `/dashboard/mali` — Shopee Affiliate status
 - `/dashboard/manao` — Reuters AI News pipeline
+- `/dashboard/namkhao` — Supervisor + schedule status
 - Spawn/kill node processes ผ่าน `child_process.spawn`
 - อ่าน/เขียนสถานะกลางที่ `agent-status.json`
 - แต่ละ route module export `register(req, res, url, rawUrl, method, deps)` — ไม่ใช้ Express
+- route ที่ซับซ้อน (`manao`, `namkhao`) แยก sub-handler ไว้ใน sub-directory ชื่อเดียวกัน
 
 ### Agent มะลิ (`agents/mali/run.js`)
 
-รับ `--action` flag:
-- `status` — สรุปจำนวนสินค้า/content
-- `scrape` — รัน `scrape.js`
-- `create-content` — แจ้งเตือนให้ใช้ `/สร้าง-content`
-- `approve-today` — spawn `approval-bot.js`
+รับ `--action` flag: `status` | `scrape` | `create-content` | `approve-today`
 
-> **หมายเหตุ:** ยังไม่มี action `create-video` — ถ้าต้องการรัน `/สร้างวิดีโอ` ผ่าน agent ต้องเพิ่มเอง
-
-**approval-bot.js พฤติกรรม (ปัจจุบัน):**
+**approval-bot.js พฤติกรรม:**
 - ใช้ `MALI_TELEGRAM_BOT_TOKEN` (fallback → `TELEGRAM_BOT_TOKEN`)
 - กด Approve → โพสต์ **FB เท่านั้น** แบบ `--schedule` (IG ข้าม เพราะ IG ไม่รองรับ schedule)
 - FB Reels ใช้ Page Access Token (แลกจาก User Token ใน `agent-hub/index.js` อัตโนมัติ)
 
 ### Agent มะนาว (`agents/manao/pipeline/`)
 
-**กรณีบทความค้าง (status = `pending_approval` ไม่ถูกโพสต์):**
-สาเหตุ: `start-all-agents.bat` kill process ขณะ bot กำลัง post → Telegram freeze ที่ "กำลังโพสต์..."
+Scheduler ใน namkhao bot ทริกเกอร์ที่ **07:00 และ 13:00 BKK**
 
-วิธีแก้:
+**กรณีบทความค้าง (status = `pending_approval`):**
 ```powershell
-# เปลี่ยน status เป็น approved แล้วโพสต์ด้วยมือ
 cd agents\manao\pipeline
 node -e "
 const fs = require('fs');
@@ -155,21 +183,44 @@ glob.sync('news/*/data.json').forEach(f => {
 node post.js --pending --platform fb --schedule
 ```
 
+**กรณี Telegram ไม่ส่ง approval (resend):**
+```powershell
+node agents\manao\pipeline\agents\formatter-agent.js --resend
+# หรือผ่าน makrut:
+node agents\makrut\pipeline\makrut.js --resend
+```
+
 > ⚠️ ห้ามรัน `start-all-agents.bat` ขณะบอทกำลัง Approve — จะ kill mid-execution
+
+### Agent มะกรูด (`agents/makrut/`)
+
+FIFA World Cup 2026 news pipeline — ทำงานเหมือน manao แต่ scrape จากแหล่งข่าว FIFA/กีฬา
+
+Scheduler ใน namkhao bot ทริกเกอร์ที่ **06:00 และ 18:00 BKK**
+
+- ใช้ `post.js` ของ manao pipeline ร่วมกัน (pass `PIPELINE_ROOT` env)
+- `EXTRA_SCHEDULE_DIRS` — post.js ตรวจ pipeline ทั้งหมดก่อน schedule เพื่อหลีกเลี่ยงโพสต์ทับเวลา FB
 
 ---
 
 ## Node.js Scripts (Terminal)
 
 ```powershell
+# Shopee Affiliate
 node scrape.js                    # ดึงสินค้าที่ยังไม่มี data.json
 node scrape.js --force            # ดึงใหม่ทั้งหมด
 node scrape.js --dry-run          # แสดงรายการโดยไม่ดึงจริง
 node approval-bot.js              # รัน Telegram Approval Bot (วันปัจจุบัน)
 node approval-bot.js {item_id}    # ทดสอบกับสินค้าที่ระบุ
+node post.js {date} --platform fb # โพสต์โดยตรงไม่ผ่าน Approve
+
+# Dashboards
 node dashboard.js                 # เปิด Dashboard ที่ http://localhost:3001
 node agent-hub/index.js           # เปิด Agent Hub ที่ http://localhost:3002
-node post.js {date} --platform fb # โพสต์โดยตรงไม่ผ่าน Approve
+
+# AI News
+node agents/manao/pipeline/agents/formatter-agent.js --resend   # resend Telegram approval
+node agents/makrut/pipeline/makrut.js --resend                  # resend makrut approval
 ```
 
 ---
@@ -221,9 +272,12 @@ TELEGRAM_CHAT_ID=
 MALI_TELEGRAM_BOT_TOKEN=    # approval-bot.js ใช้ก่อน TELEGRAM_BOT_TOKEN
 MANAO_TELEGRAM_BOT_TOKEN=   # manao pipeline bot
 NAMKHAO_TELEGRAM_BOT_TOKEN= # namkhao bot
+# Ollama (AI News generation)
+OLLAMA_HOST=http://10.3.17.118:11434
+OLLAMA_MODEL=scb10x/llama3.1-typhoon2-8b-instruct:latest  # default — รองรับภาษาไทย
 ```
 
-> ⚠️ **`agents/manao/pipeline/.env` เป็นไฟล์แยก** — `post.js` ของ manao โหลด dotenv จาก CWD ตัวเอง
+> ⚠️ **`agents/manao/pipeline/.env` เป็นไฟล์แยก** — `post.js` และ `telegram-bot.js` ของ manao โหลด dotenv จาก `__dirname` ด้วย `override: true`
 > ทุกครั้งที่ต่ออายุ `FB_ACCESS_TOKEN` ต้องอัปเดต **ทั้ง 2 ไฟล์**:
 > - `shopee-affiliate/.env`
 > - `shopee-affiliate/agents/manao/pipeline/.env`
@@ -257,6 +311,12 @@ products/{item_id}/
     ├── instagram.md
     ├── x.md
     └── tiktok.md       ← มี script table + caption
+
+agents/{pipeline}/pipeline/news/{slug}/
+├── data.json           ← ข้อมูลข่าว + status (draft/pending_approval/scheduled/posted)
+└── content/
+    ├── facebook.md
+    └── master.md       ← (manao เท่านั้น)
 
 tracking.xlsx           ← sort ตาม post_date | status: scraped → draft → posted
 ```
@@ -301,7 +361,9 @@ tracking.xlsx           ← sort ตาม post_date | status: scraped → draft
 | X Rate Limit | รอ 15 นาที หรือโพสต์ทีละ item_id |
 | IG Carousel ล้มเหลว | ตรวจ IMGBB_API_KEY + รูปต้อง >50KB |
 | `Cannot find module` | `npm install` |
-| TikTok video TTS error (Python) | `make-tiktok-video.js` ใช้ `msedge-tts` npm แล้ว (ไม่ต้องการ Python) — รัน `npm install msedge-tts` ถ้าพัง |
+| TikTok video TTS error | `make-tiktok-video.js` ใช้ `msedge-tts` npm — รัน `npm install msedge-tts` ถ้าพัง |
+| ข่าว makrut/manao ค้างใน Telegram | รัน `--resend` (ดู Node.js Scripts) |
+| Ollama output เป็น `??????` | ตรวจว่าใช้ model Typhoon2 (`OLLAMA_MODEL` ใน `.env`) — `llama3.2` ไม่รองรับไทย |
 
 ---
 
