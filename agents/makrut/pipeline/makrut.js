@@ -37,6 +37,7 @@ const NO_SCRAPE = hasFlag('--no-scrape');
 const NO_FILTER = hasFlag('--no-filter');
 const NO_EDIT   = hasFlag('--no-edit');
 const NO_FORMAT = hasFlag('--no-format');
+const RESEND    = hasFlag('--resend');
 
 // PIPELINE_ROOT → ทำให้ shared scripts (filter/formatter/post) ชี้มาที่ makrut's news/ + config.json
 const sharedEnv = { ...process.env, PIPELINE_ROOT: MAKRUT_DIR };
@@ -81,7 +82,11 @@ function run(label, scriptPath, extraArgs = [], env = sharedEnv) {
 if (!NO_SCRAPE) run('Agent 1 — ดึงข่าว',     path.join(MAKRUT_DIR, 'scrape.js'));
 if (!NO_FILTER) run('Agent 2 — กรองข่าว',     path.join(MANAO_DIR, 'agents', 'filter-agent.js'));
 if (!NO_EDIT)   run('Agent 3 — เขียนบทความ',  path.join(MAKRUT_DIR, 'agents', 'editor-agent.js'));
-if (!NO_FORMAT) run('Agent 4 — สร้าง content', path.join(MANAO_DIR, 'agents', 'formatter-agent.js'), ['--platform', PLATFORM]);
+if (!NO_FORMAT) {
+  const fmtArgs = ['--platform', PLATFORM];
+  if (RESEND) fmtArgs.push('--resend');
+  run('Agent 4 — สร้าง content', path.join(MANAO_DIR, 'agents', 'formatter-agent.js'), fmtArgs);
+}
 if (DO_POST) {
   const postArgs = ['--pending', '--platform', PLATFORM];
   if (SCHEDULE) postArgs.push('--schedule');

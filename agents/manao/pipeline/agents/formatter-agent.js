@@ -32,6 +32,7 @@ const NEWS_DIR = path.join(PIPELINE_ROOT, 'news');
 const https    = require('https');
 const args     = process.argv.slice(2);
 const force    = args.includes('--force');
+const resend   = args.includes('--resend');
 const dateIdx  = args.findIndex(a => a === '--date');
 const dateArg  = dateIdx !== -1 ? args[dateIdx + 1] : null;
 const slugArg  = args.find(a => !a.startsWith('--') && !/^\d{4}-\d{2}-\d{2}$/.test(a));
@@ -546,7 +547,9 @@ ${master}
 function getItems() {
   if (!fs.existsSync(NEWS_DIR)) return [];
   return fs.readdirSync(NEWS_DIR)
-    .filter(d => fs.existsSync(path.join(NEWS_DIR, d, 'content', 'master.md')))
+    .filter(d => resend
+      ? fs.existsSync(path.join(NEWS_DIR, d, 'data.json'))
+      : fs.existsSync(path.join(NEWS_DIR, d, 'content', 'master.md')))
     .map(slug => {
       const data       = JSON.parse(fs.readFileSync(path.join(NEWS_DIR, slug, 'data.json'), 'utf8'));
       const contentDir = path.join(NEWS_DIR, slug, 'content');
@@ -563,6 +566,13 @@ function getItems() {
         const pub = (data.published_at || data.scraped_at || '').substring(0, 10);
         if (pub !== dateArg) return false;
       }
+      if (resend) {
+        // resend mode: ส่ง Telegram ซ้ำเฉพาะข่าวที่มี facebook.md แต่ยังไม่ approve
+        const hasFB = fs.existsSync(path.join(contentDir, 'facebook.md'));
+        if (!hasFB) return false;
+        if (data.status !== 'pending_approval' && data.status !== 'draft') return false;
+        return true;
+      }
       if (!force) {
         // ผ่านถ้ายังมี platform ที่ยังไม่ได้สร้าง
         return PLATFORMS.some(p => !fs.existsSync(path.join(contentDir, PLATFORM_FILE[p] || p + '.md')));
@@ -574,7 +584,35 @@ function getItems() {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 (async function main() {
-  console.log(`\n📐 Agent 4 — สร้าง content (formatter-agent) [${PLATFORMS.join(', ')}]\n`);
+  console.log(`\n📐 Agent 4 — สร้าง content (formatter-agent) [${PLATFORMS.join(', ')}]${resend ? ' [--resend]' : ''}\n`);
+
+  // ── resend mode: ส่ง Telegram ซ้ำโดยไม่ regenerate ──────────────────────────
+  if (resend) {
+    const items = getItems();
+    if (!items.length) {
+      console.log('✅ ไม่มีข่าวที่ต้อง resend (pending_approval/draft + มี facebook.md)');
+      process.exit(0);
+    }
+    console.log(`📋 resend: ${items.length} รายการ\n`);
+    for (const { slug, data, contentDir } of items) {
+      console.log(`  📰 ${(data.title || '').substring(0, 55)}`);
+      const masterPath = path.join(contentDir, 'master.md');
+      const fbPath     = path.join(contentDir, 'facebook.md');
+      const master = fs.existsSync(masterPath) ? fs.readFileSync(masterPath, 'utf8')
+                   : fs.existsSync(fbPath)     ? fs.readFileSync(fbPath, 'utf8')
+                   : '';
+      process.stdout.write(`     📲 ส่ง Telegram ซ้ำ...`);
+      try {
+        await sendApprovalNotification(slug, data, master);
+        process.stdout.write(` ✓\n`);
+      } catch (e) {
+        process.stdout.write(` ⚠️ ${e.message.substring(0, 60)}\n`);
+      }
+      await sleep(300);
+    }
+    console.log(`\n✅ Resend เสร็จ: ${items.length} รายการ`);
+    process.exit(0);
+  }
 
   try {
     await checkOllama();
