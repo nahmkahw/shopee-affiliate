@@ -14,7 +14,9 @@ const fs     = require('fs');
 const path   = require('path');
 const crypto = require('crypto');
 const { ollamaChat, checkOllama } = require('./ollama');
-const { loadConfig } = require('../config');
+
+const PIPELINE_ROOT = process.env.PIPELINE_ROOT || path.join(__dirname, '..');
+const { loadConfig } = require(path.join(PIPELINE_ROOT, 'config'));
 
 const http = require('http');
 
@@ -26,10 +28,11 @@ const SKIP_STATUS = FMT_CFG.skipStatus || ['posted'];   // สถานะที
 const FMT_MIN_SCORE = FMT_CFG.minScore || 0;            // ข้ามข่าว filter_score < ค่านี้ (0 = ไม่กรอง)
 const SKIP_PLATFORMS = (FMT_CFG.skipPlatforms || []).map(s => String(s).trim().toLowerCase()); // platform ที่ไม่สร้าง
 
-const NEWS_DIR = path.join(__dirname, '..', 'news');
+const NEWS_DIR = path.join(PIPELINE_ROOT, 'news');
 const https    = require('https');
 const args     = process.argv.slice(2);
 const force    = args.includes('--force');
+const resend   = args.includes('--resend');
 const dateIdx  = args.findIndex(a => a === '--date');
 const dateArg  = dateIdx !== -1 ? args[dateIdx + 1] : null;
 const slugArg  = args.find(a => !a.startsWith('--') && !/^\d{4}-\d{2}-\d{2}$/.test(a));
@@ -224,9 +227,9 @@ async function sendApprovalNotification(slug, data, master) {
 
   // ลงทะเบียน shortId → queue เพื่อให้ telegram-bot.js resolve slug ได้
   const shortId    = crypto.createHash('md5').update(slug).digest('hex').substring(0, 12);
-  const queueFile  = path.join(NEWS_DIR, '..', '_tg_queue.json');
+  const queueFile  = path.join(PIPELINE_ROOT, '_tg_queue.json');
   const queue      = (() => { try { return JSON.parse(fs.readFileSync(queueFile, 'utf8')); } catch { return {}; } })();
-  queue[shortId]   = { slug, platform: 'fb' };
+  queue[shortId]   = { slug, platform: 'fb', pipelineRoot: PIPELINE_ROOT };
   try { fs.writeFileSync(queueFile, JSON.stringify(queue, null, 2), 'utf8'); } catch {}
 
   const title   = (data.title || slug).replace(/[<>&"]/g, '');
@@ -544,7 +547,9 @@ ${master}
 function getItems() {
   if (!fs.existsSync(NEWS_DIR)) return [];
   return fs.readdirSync(NEWS_DIR)
-    .filter(d => fs.existsSync(path.join(NEWS_DIR, d, 'content', 'master.md')))
+    .filter(d => resend
+      ? fs.existsSync(path.join(NEWS_DIR, d, 'data.json'))
+      : fs.existsSync(path.join(NEWS_DIR, d, 'content', 'master.md')))
     .map(slug => {
       const data       = JSON.parse(fs.readFileSync(path.join(NEWS_DIR, slug, 'data.json'), 'utf8'));
       const contentDir = path.join(NEWS_DIR, slug, 'content');
@@ -561,6 +566,13 @@ function getItems() {
         const pub = (data.published_at || data.scraped_at || '').substring(0, 10);
         if (pub !== dateArg) return false;
       }
+      if (resend) {
+        // resend mode: ส่ง Telegram ซ้ำเฉพาะข่าวที่มี facebook.md แต่ยังไม่ approve
+        const hasFB = fs.existsSync(path.join(contentDir, 'facebook.md'));
+        if (!hasFB) return false;
+        if (data.status !== 'pending_approval' && data.status !== 'draft') return false;
+        return true;
+      }
       if (!force) {
         // ผ่านถ้ายังมี platform ที่ยังไม่ได้สร้าง
         return PLATFORMS.some(p => !fs.existsSync(path.join(contentDir, PLATFORM_FILE[p] || p + '.md')));
@@ -572,7 +584,35 @@ function getItems() {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 (async function main() {
-  console.log(`\n📐 Agent 4 — สร้าง content (formatter-agent) [${PLATFORMS.join(', ')}]\n`);
+  console.log(`\n📐 Agent 4 — สร้าง content (formatter-agent) [${PLATFORMS.join(', ')}]${resend ? ' [--resend]' : ''}\n`);
+
+  // ── resend mode: ส่ง Telegram ซ้ำโดยไม่ regenerate ──────────────────────────
+  if (resend) {
+    const items = getItems();
+    if (!items.length) {
+      console.log('✅ ไม่มีข่าวที่ต้อง resend (pending_approval/draft + มี facebook.md)');
+      process.exit(0);
+    }
+    console.log(`📋 resend: ${items.length} รายการ\n`);
+    for (const { slug, data, contentDir } of items) {
+      console.log(`  📰 ${(data.title || '').substring(0, 55)}`);
+      const masterPath = path.join(contentDir, 'master.md');
+      const fbPath     = path.join(contentDir, 'facebook.md');
+      const master = fs.existsSync(masterPath) ? fs.readFileSync(masterPath, 'utf8')
+                   : fs.existsSync(fbPath)     ? fs.readFileSync(fbPath, 'utf8')
+                   : '';
+      process.stdout.write(`     📲 ส่ง Telegram ซ้ำ...`);
+      try {
+        await sendApprovalNotification(slug, data, master);
+        process.stdout.write(` ✓\n`);
+      } catch (e) {
+        process.stdout.write(` ⚠️ ${e.message.substring(0, 60)}\n`);
+      }
+      await sleep(300);
+    }
+    console.log(`\n✅ Resend เสร็จ: ${items.length} รายการ`);
+    process.exit(0);
+  }
 
   try {
     await checkOllama();

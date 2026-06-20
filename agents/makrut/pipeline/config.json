@@ -1,0 +1,95 @@
+{
+  "_comment": "config สำหรับ มะกรูด — ข่าวบอลโลก 2026 | แก้ได้ที่นี่โดยไม่ต้องแตะโค้ด",
+  "rss": {
+    "query": "FIFA World Cup 2026",
+    "url": "https://news.google.com/rss/search?q=FIFA+World+Cup+2026&hl=en-US&gl=US&ceid=US:en"
+  },
+  "filter": {
+    "minScore": 4,
+    "weights": {
+      "high": 20,
+      "medium": 5,
+      "low": 10
+    },
+    "labels": {
+      "football": 80,
+      "tournament": 50,
+      "team": 30
+    },
+    "keywords": {
+      "high": [
+        "world cup 2026",
+        "fifa world cup",
+        "world cup",
+        "messi",
+        "ronaldo",
+        "neymar",
+        "mbappe",
+        "haaland",
+        "bellingham",
+        "vinicius",
+        "kylian",
+        "group stage",
+        "knockout",
+        "quarterfinal",
+        "semifinal",
+        "final",
+        "penalty shootout",
+        "golden boot",
+        "golden ball",
+        "hat trick",
+        "goal scorer",
+        "clean sheet",
+        "var decision",
+        "offside",
+        "red card",
+        "injury time",
+        "extra time"
+      ],
+      "medium": [
+        "football",
+        "soccer",
+        "match",
+        "squad",
+        "lineup",
+        "manager",
+        "coach",
+        "stadium",
+        "mexico city",
+        "los angeles",
+        "new york",
+        "dallas",
+        "miami",
+        "seattle",
+        "toronto",
+        "boston",
+        "qualifier",
+        "friendly",
+        "preview",
+        "recap"
+      ],
+      "low": [
+        "transfer",
+        "contract",
+        "sponsorship",
+        "ticket price",
+        "broadcast rights",
+        "merchandise",
+        "fan zone",
+        "betting odds",
+        "fantasy football"
+      ]
+    }
+  },
+  "comfyui": {
+    "host": "10.3.17.118",
+    "port": 8188,
+    "enabled": true,
+    "timeoutMs": 120000
+  },
+  "formatter": {
+    "skipStatus": ["posted", "scheduled"],
+    "minScore": 5,
+    "skipPlatforms": ["ig", "x", "tiktok"]
+  }
+}

@@ -1,4 +1,4 @@
-# run-pipeline.ps1 — AI News Pipeline
+﻿# run-pipeline.ps1 — AI News Pipeline
 # รันโดย Windows Task Scheduler ทุก 6 ชั่วโมง (00:00, 06:00, 12:00, 18:00)
 
 $projectDir = "C:\Users\lenovo3\agent\shopee-affiliate\agents\manao\pipeline"
@@ -50,6 +50,14 @@ $r4 | ForEach-Object { Log "  $_" }
 if ($LASTEXITCODE -ne 0) {
     Log "[ERROR] formatter-agent.js ล้มเหลว (exit $LASTEXITCODE)"
     exit 1
+}
+
+# ── Step 5: สรุปผลส่ง Telegram ────────────────────────────────────────────────
+Log "[5/5] กำลังส่งสรุปผลไปยัง Telegram..."
+$r5 = & $node summary.js 2>&1
+$r5 | ForEach-Object { Log "  $_" }
+if ($LASTEXITCODE -ne 0) {
+    Log "[WARN] summary.js ล้มเหลว (exit $LASTEXITCODE) — pipeline ยังสำเร็จ"
 }
 
 Log "=== Pipeline เสร็จแล้ว — รอ approve ใน Telegram ===`n"

@@ -9,9 +9,10 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const fs   = require('fs');
 const path = require('path');
-const { loadConfig } = require('../config');
 
-const NEWS_DIR = path.join(__dirname, '..', 'news');
+const PIPELINE_ROOT = process.env.PIPELINE_ROOT || path.join(__dirname, '..');
+const { loadConfig } = require(path.join(PIPELINE_ROOT, 'config'));
+const NEWS_DIR = path.join(PIPELINE_ROOT, 'news');
 const args     = process.argv.slice(2);
 const force    = args.includes('--force');
 const dryRun   = args.includes('--dry-run');
