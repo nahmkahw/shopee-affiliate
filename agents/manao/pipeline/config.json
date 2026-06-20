@@ -113,13 +113,20 @@
       ]
     }
   },
+  "comfyui": {
+    "_comment": "ComfyUI server สำหรับ generate รูปข่าว",
+    "host": "10.3.17.118",
+    "port": 8188,
+    "enabled": true,
+    "timeoutMs": 120000
+  },
   "formatter": {
     "_comment": "formatter-agent.js — เงื่อนไขข้ามข่าว | skipStatus: ข้ามข่าวที่มีสถานะเหล่านี้ | minScore: ข้ามข่าวที่ filter_score ต่ำกว่าค่านี้ (0 = ไม่กรองด้วยคะแนน) | skipPlatforms: ไม่สร้าง content platform เหล่านี้ (fb/ig/x/tiktok)",
     "skipStatus": [
       "posted",
       "scheduled"
     ],
-    "minScore": 10,
+    "minScore": 5,
     "skipPlatforms": [
       "ig",
       "x",

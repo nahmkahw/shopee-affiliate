@@ -48,9 +48,11 @@ function runAiNews(script, extraArgs = []) {
 
   return new Promise((resolve, reject) => {
     const nodeBin = process.execPath; // ใช้ node ตัวเดียวกับที่รัน run.js อยู่
+    const makrutDir = path.join(HUB_ROOT, 'agents', 'makrut', 'pipeline');
     const child = spawn(nodeBin, [scriptPath, ...extraArgs], {
-      cwd: AI_NEWS_DIR,
+      cwd:  AI_NEWS_DIR,
       stdio: ['ignore', 'pipe', 'pipe'],
+      env:  { ...process.env, EXTRA_SCHEDULE_DIRS: makrutDir },
     });
 
     child.stdout.setEncoding('utf8');
