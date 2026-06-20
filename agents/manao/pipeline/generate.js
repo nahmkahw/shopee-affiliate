@@ -168,7 +168,7 @@ async function sendTelegramApproval(slug, data, fbContent) {
 
 const NEWS_DIR   = path.join(PIPELINE_ROOT, 'news');
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://10.3.17.118:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2:latest';
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'scb10x/llama3.1-typhoon2-8b-instruct:latest';
 
 const args    = process.argv.slice(2);
 const slugArg = args.find(a => !a.startsWith('--'));

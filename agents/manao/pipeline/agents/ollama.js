@@ -7,7 +7,7 @@ const http = require('http');
 
 function ollamaChat(prompt, opts = {}) {
   const host  = process.env.OLLAMA_HOST  || 'http://10.3.17.118:11434';
-  const model = opts.model || process.env.OLLAMA_MODEL || 'llama3.2:latest';
+  const model = opts.model || process.env.OLLAMA_MODEL || 'scb10x/llama3.1-typhoon2-8b-instruct:latest';
 
   return new Promise((resolve, reject) => {
     const url  = new URL('/api/chat', host);
@@ -47,7 +47,7 @@ function ollamaChat(prompt, opts = {}) {
 
 async function checkOllama() {
   const host  = process.env.OLLAMA_HOST  || 'http://10.3.17.118:11434';
-  const model = process.env.OLLAMA_MODEL || 'llama3.2:latest';
+  const model = process.env.OLLAMA_MODEL || 'scb10x/llama3.1-typhoon2-8b-instruct:latest';
 
   return new Promise((resolve, reject) => {
     const url = new URL('/api/tags', host);
