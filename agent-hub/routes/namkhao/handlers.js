@@ -66,38 +66,29 @@ function handleScheduleRun(req, res, deps) {
   });
 }
 
+function updateScheduleFile(file, patch, reschedule) {
+  const cfg = (() => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; } })();
+  Object.assign(cfg, patch);
+  fs.writeFileSync(file, JSON.stringify(cfg, null, 2), 'utf8');
+  reschedule();
+}
+
 function handleScheduleToggle(req, res, deps) {
   const { SHOPEE_SCHEDULE_FILE, rescheduleShopeeBot, REUTERS_SCHEDULE_FILE, rescheduleReutersPipeline } = deps;
   res._claimed = true;
   readBody(req, raw => {
     const { taskName, enable } = parseBody(raw);
     if (!taskName) { res.writeHead(400); return res.end(JSON.stringify({ ok: false, error: 'Missing taskName' })); }
-    if (taskName === SCHEDULE_TASKS.reuters) {
-      try {
-        let cfg = { times: ['00:00','06:00','12:00','18:00'], enabled: true };
-        try { cfg = JSON.parse(fs.readFileSync(REUTERS_SCHEDULE_FILE, 'utf8')); } catch {}
-        cfg.enabled = !!enable;
-        fs.writeFileSync(REUTERS_SCHEDULE_FILE, JSON.stringify(cfg, null, 2), 'utf8');
-        rescheduleReutersPipeline();
-        return jsonOk(res, { ok: true });
-      } catch (e) { return jsonOk(res, { ok: false, error: e.message }); }
-    }
-    if (taskName === SCHEDULE_TASKS.shopee) {
-      try {
-        let cfg = { time: '11:05', enabled: true };
-        try { cfg = JSON.parse(fs.readFileSync(SHOPEE_SCHEDULE_FILE, 'utf8')); } catch {}
-        cfg.enabled = !!enable;
-        fs.writeFileSync(SHOPEE_SCHEDULE_FILE, JSON.stringify(cfg, null, 2), 'utf8');
-        rescheduleShopeeBot();
-        return jsonOk(res, { ok: true });
-      } catch (e) { return jsonOk(res, { ok: false, error: e.message }); }
-    }
     try {
-      toggleScheduleTask(taskName, !!enable);
+      if (taskName === SCHEDULE_TASKS.reuters) {
+        updateScheduleFile(REUTERS_SCHEDULE_FILE, { enabled: !!enable }, rescheduleReutersPipeline);
+      } else if (taskName === SCHEDULE_TASKS.shopee) {
+        updateScheduleFile(SHOPEE_SCHEDULE_FILE, { enabled: !!enable }, rescheduleShopeeBot);
+      } else {
+        toggleScheduleTask(taskName, !!enable);
+      }
       jsonOk(res, { ok: true });
-    } catch (e) {
-      jsonOk(res, { ok: false, error: e.message });
-    }
+    } catch (e) { jsonOk(res, { ok: false, error: e.message }); }
   });
 }
 
@@ -109,32 +100,16 @@ function handleScheduleEdit(req, res, deps) {
     if (!taskName || !Array.isArray(times) || times.length === 0) {
       res.writeHead(400); return res.end(JSON.stringify({ ok: false, error: 'Missing taskName or times' }));
     }
-    if (taskName === SCHEDULE_TASKS.reuters) {
-      try {
-        let cfg = { times: ['00:00','06:00','12:00','18:00'], enabled: true };
-        try { cfg = JSON.parse(fs.readFileSync(REUTERS_SCHEDULE_FILE, 'utf8')); } catch {}
-        cfg.times = times;
-        fs.writeFileSync(REUTERS_SCHEDULE_FILE, JSON.stringify(cfg, null, 2), 'utf8');
-        rescheduleReutersPipeline();
-        return jsonOk(res, { ok: true });
-      } catch (e) { return jsonOk(res, { ok: false, error: e.message }); }
-    }
-    if (taskName === SCHEDULE_TASKS.shopee) {
-      try {
-        let cfg = { time: '11:05', enabled: true };
-        try { cfg = JSON.parse(fs.readFileSync(SHOPEE_SCHEDULE_FILE, 'utf8')); } catch {}
-        cfg.time = times[0];
-        fs.writeFileSync(SHOPEE_SCHEDULE_FILE, JSON.stringify(cfg, null, 2), 'utf8');
-        rescheduleShopeeBot();
-        return jsonOk(res, { ok: true });
-      } catch (e) { return jsonOk(res, { ok: false, error: e.message }); }
-    }
     try {
-      editScheduleTimes(taskName, times);
+      if (taskName === SCHEDULE_TASKS.reuters) {
+        updateScheduleFile(REUTERS_SCHEDULE_FILE, { times }, rescheduleReutersPipeline);
+      } else if (taskName === SCHEDULE_TASKS.shopee) {
+        updateScheduleFile(SHOPEE_SCHEDULE_FILE, { time: times[0] }, rescheduleShopeeBot);
+      } else {
+        editScheduleTimes(taskName, times);
+      }
       jsonOk(res, { ok: true });
-    } catch (e) {
-      jsonOk(res, { ok: false, error: e.message });
-    }
+    } catch (e) { jsonOk(res, { ok: false, error: e.message }); }
   });
 }
 

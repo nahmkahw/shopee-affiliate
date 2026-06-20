@@ -4,16 +4,18 @@ const path = require('path');
 function getPendingItems(newsDir, { slugArg, dateArg, force, resend, noTelegram } = {}) {
   if (!fs.existsSync(newsDir)) return [];
 
-  const dirs = fs.readdirSync(newsDir)
-    .filter(d => fs.existsSync(path.join(newsDir, d, 'data.json')));
+  const dirs = fs.readdirSync(newsDir);
 
   return dirs
     .map(slug => {
-      const data = JSON.parse(fs.readFileSync(path.join(newsDir, slug, 'data.json'), 'utf8'));
+      const dataPath = path.join(newsDir, slug, 'data.json');
+      let data;
+      try { data = JSON.parse(fs.readFileSync(dataPath, 'utf8')); } catch { return null; }
       const contentDir = path.join(newsDir, slug, 'content');
       const hasFB = fs.existsSync(path.join(contentDir, 'facebook.md'));
       return { slug, data, hasFB };
     })
+    .filter(Boolean)
     .filter(({ slug, data, hasFB }) => {
       if (resend) {
         if (!hasFB) return false;

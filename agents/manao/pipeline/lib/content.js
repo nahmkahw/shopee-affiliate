@@ -39,15 +39,18 @@ function stripEnglishHeaders(text) {
   }).join('\n');
 }
 
-function cleanFacebook(text, url) {
+function cleanBase(text) {
   let t = stripEnglishHeaders(stripCJK(text)).trim();
   t = t.replace(/^-{3,}\s*$/gm, '').trim();
   t = t.replace(/^\[[^\]]+\]\s*/gm, '').trim();
   t = t.replace(/^\*{0,2}[\w฀-๿-]+\*{0,2}:\s*/gm, '').trim();
+  return t;
+}
+
+function cleanFacebook(text, url) {
+  let t = cleanBase(text);
   t = t.replace(/\n\*?หมายเหตุ[^]*$/m, '').trim();
   t = t.replace(/\n\*?Note:[^]*$/im, '').trim();
-  t = t.replace(/\n\*หมายเหตุ[^]*$/m, '').trim();
-  t = t.replace(/\n\*Note:[^]*$/im, '').trim();
   t = t.replace(/\n{3,}/g, '\n\n').trim();
   if (!t.includes(url)) t += `\n\n🔗 อ่านเพิ่มเติม: ${url}`;
   if (!t.includes('#AIข่าว')) t += '\n#AIข่าว #เทคโนโลยีAI #ข่าวAI';
@@ -55,10 +58,7 @@ function cleanFacebook(text, url) {
 }
 
 function cleanInstagram(text) {
-  let t = stripEnglishHeaders(stripCJK(text)).trim();
-  t = t.replace(/^-{3,}\s*$/gm, '').trim();
-  t = t.replace(/^\[[^\]]+\]\s*/gm, '').trim();
-  t = t.replace(/^\*{0,2}[\w฀-๿-]+\*{0,2}:\s*/gm, '').trim();
+  let t = cleanBase(text);
   t = t.replace(/# ([^\s#]+)/g, '#$1');
   const count = (t.match(/#\S+/g) || []).length;
   if (count < 10) {
