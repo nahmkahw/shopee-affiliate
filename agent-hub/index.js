@@ -23,7 +23,9 @@ const COMFYUI_HOST        = '10.3.17.118';
 const COMFYUI_PORT        = 8188;
 const STATUS_FILE         = path.join(ROOT, 'agent-status.json');
 const SHOPEE_SCHEDULE_FILE  = path.join(ROOT, 'agents', 'namkhao', 'shopee-schedule.json');
-const REUTERS_SCHEDULE_FILE = path.join(ROOT, 'agents', 'manao', 'pipeline', 'reuters-schedule.json');
+const AI_NEWS_SCHEDULE_FILE = path.join(ROOT, 'agents', 'manao', 'pipeline', 'ai-news-schedule.json');
+const MAKRUT_DIR            = path.join(ROOT, 'agents', 'makrut', 'pipeline');
+const SPORT_SCHEDULE_FILE   = path.join(MAKRUT_DIR, 'sport-schedule.json');
 
 // ─── Domain modules ───────────────────────────────────────────────────────────
 
@@ -53,6 +55,7 @@ const runPipelineSequential = (args) => _runPipeline(args, AI_NEWS_DIR);
 
 const maliRoute    = require('./routes/mali');
 const manaoRoute   = require('./routes/manao');
+const makrutRoute  = require('./routes/makrut');
 const namkhaoRoute = require('./routes/namkhao');
 const animeRoute   = require('./routes/anime');
 const commonRoute  = require('./routes/common');
@@ -98,15 +101,57 @@ function runShopeeApprovalBot() {
   console.log(`[Shopee Scheduler] 🌸 approval-bot started PID: ${bot.pid}`);
 }
 
-// ─── Reuters Pipeline Scheduler ──────────────────────────────────────────────
+// ─── Sport (Makrut) Pipeline Scheduler ───────────────────────────────────────
 
-let reutersTimeout = null;
+let sportTimeout = null;
+
+function scheduleNextSportPipeline() {
+  if (sportTimeout) { clearTimeout(sportTimeout); sportTimeout = null; }
+  let cfg = { times: ['06:00', '18:00'], enabled: true };
+  try { Object.assign(cfg, JSON.parse(fs.readFileSync(SPORT_SCHEDULE_FILE, 'utf8'))); } catch {}
+  if (!cfg.enabled) { console.log('[Sport Scheduler] 🍈 makrut disabled — ข้าม'); return; }
+
+  const slots = (cfg.times || ['06:00', '18:00'])
+    .map(t => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); })
+    .filter(v => !isNaN(v)).sort((a, b) => a - b);
+  if (!slots.length) return;
+
+  const now    = new Date();
+  const bkk    = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+  const nowMin = bkk.getHours() * 60 + bkk.getMinutes();
+  const nowSec = bkk.getSeconds();
+  const nextMin = slots.find(m => m > nowMin) ?? (slots[0] + 24 * 60);
+  const msUntil = ((nextMin - nowMin) * 60 - nowSec) * 1000;
+
+  const nextTime = new Date(now.getTime() + msUntil);
+  console.log(`[Sport Scheduler] 🍈 makrut ถัดไป: ${nextTime.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}`);
+
+  sportTimeout = setTimeout(() => {
+    runSportPipeline();
+    scheduleNextSportPipeline();
+  }, msUntil);
+}
+
+function runSportPipeline() {
+  const pipelineScript = path.join(MAKRUT_DIR, 'run-pipeline.ps1');
+  if (!fs.existsSync(pipelineScript)) { console.log('[Sport Scheduler] ⚠️  ไม่พบ run-pipeline.ps1 — ข้าม'); return; }
+  console.log(`[Sport Scheduler] 🚀 เริ่ม makrut pipeline ${new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}`);
+  const proc = spawn('powershell.exe', [
+    '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', pipelineScript,
+  ], { cwd: MAKRUT_DIR, detached: true, stdio: 'ignore' });
+  proc.unref();
+  console.log(`[Sport Scheduler] 🍈 makrut PID: ${proc.pid}`);
+}
+
+// ─── AI News (Manao) Pipeline Scheduler ──────────────────────────────────────
+
+let aiNewsTimeout = null;
 
 function scheduleNextPipeline() {
-  if (reutersTimeout) { clearTimeout(reutersTimeout); reutersTimeout = null; }
+  if (aiNewsTimeout) { clearTimeout(aiNewsTimeout); aiNewsTimeout = null; }
   let cfg = { times: ['00:00', '06:00', '12:00', '18:00'], enabled: true };
-  try { cfg = JSON.parse(fs.readFileSync(REUTERS_SCHEDULE_FILE, 'utf8')); } catch {}
-  if (!cfg.enabled) { console.log('[Scheduler] 🍋 Reuters disabled — ข้าม'); return; }
+  try { cfg = JSON.parse(fs.readFileSync(AI_NEWS_SCHEDULE_FILE, 'utf8')); } catch {}
+  if (!cfg.enabled) { console.log('[AI News Scheduler] 🍋 disabled — ข้าม'); return; }
 
   const slots = (cfg.times || ['00:00', '06:00', '12:00', '18:00'])
     .map(t => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); })
@@ -123,7 +168,7 @@ function scheduleNextPipeline() {
   const nextTime = new Date(now.getTime() + msUntil);
   console.log(`[Scheduler] 🍋 pipeline ถัดไป: ${nextTime.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}`);
 
-  reutersTimeout = setTimeout(() => {
+  aiNewsTimeout = setTimeout(() => {
     runManaopiPeline();
     scheduleNextPipeline();
   }, msUntil);
@@ -153,10 +198,14 @@ const deps = {
   get pipelineStatus() { return agentsMod.pipelineStatus; },
   set pipelineStatus(v) { agentsMod.pipelineStatus = v; },
   runPipelineSequential,
+  runSportPipeline,
   SHOPEE_SCHEDULE_FILE,
   rescheduleShopeeBot: () => scheduleShopeeBot(),
-  REUTERS_SCHEDULE_FILE,
-  rescheduleReutersPipeline: () => scheduleNextPipeline(),  // fn defined below at module scope
+  AI_NEWS_SCHEDULE_FILE,
+  rescheduleAiNewsPipeline: () => scheduleNextPipeline(),
+  SPORT_SCHEDULE_FILE,
+  rescheduleSportPipeline: () => scheduleNextSportPipeline(),
+  MAKRUT_DIR,
 };
 
 // ─── HTTP Server ──────────────────────────────────────────────────────────────
@@ -173,6 +222,8 @@ const server = http.createServer(async (req, res) => {
   await maliRoute.register(req, res, url, rawUrl, method, deps);
   if (done()) return;
   await manaoRoute.register(req, res, url, rawUrl, method, deps);
+  if (done()) return;
+  await makrutRoute.register(req, res, url, rawUrl, method, deps);
   if (done()) return;
   await namkhaoRoute.register(req, res, url, rawUrl, method, deps);
   if (done()) return;
@@ -248,6 +299,9 @@ if (require.main === module) server.listen(PORT, () => {
 
   // ── Manao Pipeline Scheduler ─────────────────────────────────────────────────
   scheduleNextPipeline();
+
+  // ── Makrut Sport Pipeline Scheduler ──────────────────────────────────────────
+  scheduleNextSportPipeline();
 
 });
 
