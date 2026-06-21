@@ -13,6 +13,7 @@ require('dotenv').config();
 const fs    = require('fs');
 const path  = require('path');
 const https = require('https');
+const { sleep } = require('../../../lib/utils');
 
 const PIPELINE_ROOT = process.env.PIPELINE_ROOT || __dirname;
 const NEWS_DIR = path.join(PIPELINE_ROOT, 'news');
@@ -78,8 +79,6 @@ function httpsPostBinary(hostname, urlPath, body, headers) {
     req.end();
   });
 }
-
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ─── หาเวลา schedule ล่าสุดที่ยังอยู่ในอนาคต (scan ทุก pipeline) ───────────────
 // EXTRA_SCHEDULE_DIRS = path1:path2 → scan เพิ่มเติม เพื่อไม่ให้ชนกับ pipeline อื่น
