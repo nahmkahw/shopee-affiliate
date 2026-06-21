@@ -33,14 +33,37 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## File Size Constraint
+## Clean Code — Auto-Checks (ทำทุกครั้งที่สร้างหรือแก้ไขไฟล์)
 
+ก่อน/หลังทุก Edit หรือ Write ให้ผ่าน 4 gate นี้เสมอ:
+
+### Gate 1 — Size
 **Hard limit: 300 บรรทัดต่อไฟล์** (test files: 500 บรรทัด)
+- ก่อนแก้ไข: นับบรรทัดปัจจุบันด้วย `wc -l <file>` หรือดูจาก Read tool
+- ถ้าหลังแก้แล้วจะเกิน limit → **หยุดทันที แจ้ง user + เสนอ split plan ก่อน ห้ามดำเนินการต่อ**
+- ยกเว้น: ไฟล์ HTML template ล้วน (`html/*.js`) ที่ไม่มี business logic
 
-- ก่อนสร้างไฟล์ใหม่ ให้ประเมินว่าจะเกิน 300 บรรทัดไหม — ถ้าใช่ ให้แจ้งและเสนอแผน split ก่อน
-- ถ้าแก้ไขไฟล์ที่มีอยู่แล้วแล้วจะทำให้เกิน 300 บรรทัด ให้แจ้ง user ก่อนดำเนินการ
-- **ยกเว้น:** ไฟล์ HTML template ล้วน ๆ (`html/*.js`) ที่ไม่มี business logic สามารถเกินได้
-- ไฟล์ที่เกินอยู่แล้ว (legacy) ให้ refactor เมื่อถึงเวลาแก้ไขตามธรรมชาติ ไม่ต้อง refactor ทันที
+### Gate 2 — Shared Logic → lib/
+- Logic ที่ถูกใช้ (หรืออาจถูกใช้) ใน pipeline >1 ที่ → ต้องอยู่ใน `lib/` เสมอ
+- Pipeline-specific file ต้องเป็น **thin wrapper** (~10–20 บรรทัด) ที่ `require` จาก `lib/`
+- ตัวอย่าง pattern ที่ถูก: `lib/comfy-news.js`, `lib/tg-approval.js`, `lib/news-prompts.js`
+- `lib/` module รับ dependency ผ่าน **params** (dependency injection) ไม่ใช่ global closure
+- ก่อนเขียน function ใหม่ใน pipeline file → grep `lib/` ว่ามีอยู่แล้วหรือเปล่า
+
+### Gate 3 — Duplication
+- ก่อนเขียน logic ใหม่ → `grep -rn "function <name>\|const <name>" lib/` + ไฟล์ใกล้เคียง
+- ถ้าพบ logic คล้ายกัน 2+ ที่ → extract ไป `lib/` แทนที่จะ copy-paste
+- ห้ามมี implementation เดียวกัน 2 ไฟล์ (เช่น `fixMixedThaiEng` ต้องอยู่ใน `lib/thai-text.js` ที่เดียว)
+
+### Gate 4 — Dead Code
+- หลัง refactor: ตรวจว่า require/function เดิมยังมีใครเรียกอยู่ไหม
+  ```bash
+  grep -rn "require('./comfy-gen')" .      # ตัวอย่าง: ถ้าไม่พบ → ลบได้
+  grep -rn "functionName" --include="*.js" .
+  ```
+- ถ้า module ไม่มี caller → ลบทิ้งทันทีอย่าปล่อยไว้เป็น legacy
+
+> **ไฟล์ที่เกิน 300 บรรทัดอยู่แล้ว (legacy):** refactor เมื่อแตะไฟล์นั้นตามธรรมชาติ ไม่ต้อง refactor ทันที แต่ห้ามเพิ่มบรรทัด
 
 ---
 
