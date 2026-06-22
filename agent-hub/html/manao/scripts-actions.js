@@ -123,7 +123,7 @@ function getScriptsActions() {
 
   // แปลง textarea → array (คั่นด้วย , หรือขึ้นบรรทัดใหม่)
   function parseKw(text) {
-    return text.split(/[,\n]/).map(s => s.trim().toLowerCase()).filter(Boolean);
+    return text.split(/[,\\n]/).map(s => s.trim().toLowerCase()).filter(Boolean);
   }
 
   async function saveConfig() {
@@ -176,7 +176,6 @@ function getScriptsActions() {
   loadConfigUI();
   pollLiveLog();
   liveLogInterval = setInterval(pollLiveLog, 30000); // starts idle; switches to 3s when active
-</script>
 `;
 }
 module.exports = { getScriptsActions };

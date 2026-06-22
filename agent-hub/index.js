@@ -32,7 +32,7 @@ const SPORT_SCHEDULE_FILE   = path.join(MAKRUT_DIR, 'sport-schedule.json');
 const agentsMod = require('./agents');
 const comfyMod  = require('./comfy');
 
-const { AGENTS, pipelineProcs, spawnStep, runPipelineSequential: _runPipeline,
+const { AGENTS, pipelineProcs, makrutPipelineProcs, spawnStep, runPipelineSequential: _runPipeline,
         startAgent: _startAgent, stopAgent: _stopAgent,
         readStatus: _readStatus, writeStatus: _writeStatus, readLog: _readLog } = agentsMod;
 
@@ -49,7 +49,22 @@ const stopAgent      = (name) => _stopAgent(ROOT, STATUS_FILE, name);
 const comfyGetBinary = (p) => _comfyGetBinary(COMFYUI_HOST, COMFYUI_PORT, p);
 const submitComfyJob = (prompt) => _submitComfyJob(COMFYUI_HOST, COMFYUI_PORT, prompt);
 const getComfyJobResult = (id) => _getComfyJobResult(COMFYUI_HOST, COMFYUI_PORT, id);
-const runPipelineSequential = (args) => _runPipeline(args, AI_NEWS_DIR);
+// State objects isolate pipeline procs + status per pipeline
+const manaoState  = {
+  get procs()  { return pipelineProcs; },
+  get status() { return agentsMod.pipelineStatus; },
+  set status(v){ agentsMod.pipelineStatus = v; },
+};
+const makrutState = {
+  get procs()  { return makrutPipelineProcs; },
+  get status() { return agentsMod.makrutPipelineStatus; },
+  set status(v){ agentsMod.makrutPipelineStatus = v; },
+  fallbackDir:   AI_NEWS_DIR,   // scripts ที่ makrut ไม่มี (filter/formatter/post) ให้หาใน manao
+  pipelineRoot:  MAKRUT_DIR,   // env PIPELINE_ROOT สำหรับ shared manao scripts
+};
+
+const runPipelineSequential       = (args) => _runPipeline(args, AI_NEWS_DIR, manaoState);
+const runMakrutPipelineSequential = (args) => _runPipeline(args, MAKRUT_DIR,  makrutState);
 
 // ─── Route modules ────────────────────────────────────────────────────────────
 
@@ -57,7 +72,8 @@ const maliRoute    = require('./routes/mali');
 const manaoRoute   = require('./routes/manao');
 const makrutRoute  = require('./routes/makrut');
 const namkhaoRoute = require('./routes/namkhao');
-const animeRoute   = require('./routes/anime');
+const animeRoute     = require('./routes/anime');
+const mammuangRoute  = require('./routes/mammuang');
 const commonRoute  = require('./routes/common');
 
 // ─── Shared deps object passed to all route handlers ─────────────────────────
@@ -198,6 +214,10 @@ const deps = {
   get pipelineStatus() { return agentsMod.pipelineStatus; },
   set pipelineStatus(v) { agentsMod.pipelineStatus = v; },
   runPipelineSequential,
+  get makrutPipelineProcs() { return agentsMod.makrutPipelineProcs; },
+  get makrutPipelineStatus() { return agentsMod.makrutPipelineStatus; },
+  set makrutPipelineStatus(v) { agentsMod.makrutPipelineStatus = v; },
+  runMakrutPipelineSequential,
   runSportPipeline,
   SHOPEE_SCHEDULE_FILE,
   rescheduleShopeeBot: () => scheduleShopeeBot(),
@@ -228,6 +248,8 @@ const server = http.createServer(async (req, res) => {
   await namkhaoRoute.register(req, res, url, rawUrl, method, deps);
   if (done()) return;
   await animeRoute.register(req, res, url, rawUrl, method, deps);
+  if (done()) return;
+  await mammuangRoute.register(req, res, url, rawUrl, method, deps);
   if (done()) return;
   await commonRoute.register(req, res, url, rawUrl, method, deps);
   if (done()) return;

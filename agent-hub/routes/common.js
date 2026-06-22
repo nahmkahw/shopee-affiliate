@@ -58,10 +58,7 @@ async function register(req, res, url, rawUrl, method, deps) {
           const outfitTags = (OUTFIT_PROMPTS[outfit] || OUTFIT_PROMPTS['นักเรียน'])[gKey];
           const positive = `${STYLE_BASE}, ${GENDER_BASE[gKey]}, ${outfitTags}`;
   
-          // submit 4 jobs concurrently
           const promptIds = await Promise.all([
-            submitComfyJob(positive),
-            submitComfyJob(positive),
             submitComfyJob(positive),
             submitComfyJob(positive),
           ]);
@@ -113,6 +110,51 @@ async function register(req, res, url, rawUrl, method, deps) {
       return;
     }
   
+    // ── API: Upload image as avatar directly ────────────────────────────────────
+    if (url === '/api/upload-avatar' && method === 'POST') {
+      res._claimed = true;
+      const chunks = []; let size = 0;
+      req.on('data', d => { chunks.push(d); size += d.length; if (size > 10 * 1024 * 1024) req.destroy(); });
+      req.on('end', () => {
+        try {
+          const buf = Buffer.concat(chunks);
+          const ct  = req.headers['content-type'] || '';
+          const m   = /boundary=(.+)$/.exec(ct);
+          if (!m) { res.writeHead(400); return res.end(JSON.stringify({ ok: false, error: 'no boundary' })); }
+          const boundary = '--' + m[1].trim().replace(/^"|"$/g, '');
+          const bBuf = Buffer.from(boundary);
+          let agentName = '', imgBuf = null;
+          let start = buf.indexOf(bBuf);
+          while (start !== -1) {
+            const next = buf.indexOf(bBuf, start + bBuf.length);
+            if (next === -1) break;
+            const part = buf.slice(start + bBuf.length + 2, next - 2);
+            const headEnd = part.indexOf('\r\n\r\n');
+            if (headEnd !== -1) {
+              const header = part.slice(0, headEnd).toString('utf8');
+              const body2  = part.slice(headEnd + 4);
+              const nameM  = /name="([^"]*)"/.exec(header);
+              const fileM  = /filename="([^"]*)"/.exec(header);
+              if (nameM) {
+                if (fileM && fileM[1]) imgBuf = body2;
+                else if (nameM[1] === 'agentName') agentName = body2.toString('utf8').trim();
+              }
+            }
+            start = next;
+          }
+          if (!agentName || !imgBuf) throw new Error('ข้อมูลไม่ครบ');
+          const savePath = path.join(ROOT, 'agents', agentName, 'avatar.png');
+          fs.writeFileSync(savePath, imgBuf);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+        } catch(e) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: e.message }));
+        }
+      });
+      return;
+    }
+
     // ── API: Reset avatar to SVG (ลบ PNG) ───────────────────────────────────────
     if (url === '/api/reset-avatar' && method === 'POST') {
       let body = '';

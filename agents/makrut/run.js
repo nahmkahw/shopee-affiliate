@@ -82,8 +82,6 @@ function actionStatus() {
   updateStatus({ lastResult: `total:${stats.total} posted:${stats.posted} today:${stats.todayCount}` });
 }
 
-const MANAO_DIR = path.join(HUB_ROOT, 'agents', 'manao', 'pipeline');
-
 async function actionScrape(extraArgs = []) {
   log('🌐 มะกรูด → scrape.js (FIFA World Cup 2026 via Google RSS)');
   await runScript('scrape', path.join(PIPELINE_DIR, 'scrape.js'), extraArgs);

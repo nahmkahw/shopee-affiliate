@@ -32,16 +32,17 @@ function handleScheduleStatus(req, res, deps) {
 }
 
 function handleScheduleRun(req, res, deps) {
-  const { ROOT, runPipelineSequential } = deps;
+  const { ROOT, runPipelineSequential, runSportPipeline } = deps;
   res._claimed = true;
   readBody(req, raw => {
     const { taskName } = parseBody(raw);
     if (!taskName) { res.writeHead(400); return res.end(JSON.stringify({ ok: false, error: 'Missing taskName' })); }
     try {
-      if (taskName === SCHEDULE_TASKS.reuters) {
+      if (taskName === SCHEDULE_TASKS['ai-news']) {
         runPipelineSequential([]);
+      } else if (taskName === SCHEDULE_TASKS['sport-news']) {
+        runSportPipeline();
       } else if (taskName === SCHEDULE_TASKS.shopee) {
-        // Shopee ใช้ in-process scheduler — spawn approval-bot.js โดยตรง
         const { spawn } = require('child_process');
         const botScript = path.join(ROOT, 'approval-bot.js');
         const lockFile  = path.join(ROOT, '.approval-bot.lock');
@@ -57,7 +58,7 @@ function handleScheduleRun(req, res, deps) {
         const bot = spawn(process.execPath, [botScript], { cwd: ROOT, detached: true, stdio: 'ignore' });
         bot.unref();
       } else {
-        runScheduleNow(taskName);
+        throw new Error(`ไม่รู้จัก taskName: ${taskName}`);
       }
       jsonOk(res, { ok: true });
     } catch (e) {
@@ -74,18 +75,20 @@ function updateScheduleFile(file, patch, reschedule) {
 }
 
 function handleScheduleToggle(req, res, deps) {
-  const { SHOPEE_SCHEDULE_FILE, rescheduleShopeeBot, REUTERS_SCHEDULE_FILE, rescheduleReutersPipeline } = deps;
+  const { SHOPEE_SCHEDULE_FILE, rescheduleShopeeBot, AI_NEWS_SCHEDULE_FILE, rescheduleAiNewsPipeline, SPORT_SCHEDULE_FILE, rescheduleSportPipeline } = deps;
   res._claimed = true;
   readBody(req, raw => {
     const { taskName, enable } = parseBody(raw);
     if (!taskName) { res.writeHead(400); return res.end(JSON.stringify({ ok: false, error: 'Missing taskName' })); }
     try {
-      if (taskName === SCHEDULE_TASKS.reuters) {
-        updateScheduleFile(REUTERS_SCHEDULE_FILE, { enabled: !!enable }, rescheduleReutersPipeline);
+      if (taskName === SCHEDULE_TASKS['ai-news']) {
+        updateScheduleFile(AI_NEWS_SCHEDULE_FILE, { enabled: !!enable }, rescheduleAiNewsPipeline);
+      } else if (taskName === SCHEDULE_TASKS['sport-news']) {
+        updateScheduleFile(SPORT_SCHEDULE_FILE, { enabled: !!enable }, rescheduleSportPipeline);
       } else if (taskName === SCHEDULE_TASKS.shopee) {
         updateScheduleFile(SHOPEE_SCHEDULE_FILE, { enabled: !!enable }, rescheduleShopeeBot);
       } else {
-        toggleScheduleTask(taskName, !!enable);
+        throw new Error(`ไม่รู้จัก taskName: ${taskName}`);
       }
       jsonOk(res, { ok: true });
     } catch (e) { jsonOk(res, { ok: false, error: e.message }); }
@@ -93,7 +96,7 @@ function handleScheduleToggle(req, res, deps) {
 }
 
 function handleScheduleEdit(req, res, deps) {
-  const { SHOPEE_SCHEDULE_FILE, rescheduleShopeeBot, REUTERS_SCHEDULE_FILE, rescheduleReutersPipeline } = deps;
+  const { SHOPEE_SCHEDULE_FILE, rescheduleShopeeBot, AI_NEWS_SCHEDULE_FILE, rescheduleAiNewsPipeline, SPORT_SCHEDULE_FILE, rescheduleSportPipeline } = deps;
   res._claimed = true;
   readBody(req, raw => {
     const { taskName, times } = parseBody(raw);
@@ -101,12 +104,14 @@ function handleScheduleEdit(req, res, deps) {
       res.writeHead(400); return res.end(JSON.stringify({ ok: false, error: 'Missing taskName or times' }));
     }
     try {
-      if (taskName === SCHEDULE_TASKS.reuters) {
-        updateScheduleFile(REUTERS_SCHEDULE_FILE, { times }, rescheduleReutersPipeline);
+      if (taskName === SCHEDULE_TASKS['ai-news']) {
+        updateScheduleFile(AI_NEWS_SCHEDULE_FILE, { times }, rescheduleAiNewsPipeline);
+      } else if (taskName === SCHEDULE_TASKS['sport-news']) {
+        updateScheduleFile(SPORT_SCHEDULE_FILE, { times }, rescheduleSportPipeline);
       } else if (taskName === SCHEDULE_TASKS.shopee) {
         updateScheduleFile(SHOPEE_SCHEDULE_FILE, { time: times[0] }, rescheduleShopeeBot);
       } else {
-        editScheduleTimes(taskName, times);
+        throw new Error(`ไม่รู้จัก taskName: ${taskName}`);
       }
       jsonOk(res, { ok: true });
     } catch (e) { jsonOk(res, { ok: false, error: e.message }); }

@@ -4,15 +4,19 @@ const fs   = require('fs');
 const path = require('path');
 
 const SCHEDULE_TASKS = {
-  reuters: 'AI-News-Pipeline',
-  shopee:  'ShopeeAffiliate-DailyFBPost',
+  'ai-news':   'ai-news',
+  'sport-news': 'sport-news',
+  shopee:       'ShopeeAffiliate-DailyFBPost',
 };
 
 function getScheduleTR(ROOT) {
   return {
-    'AI-News-Pipeline':
+    'ai-news':
       'powershell.exe -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File ""' +
       ROOT + '\\agents\\manao\\pipeline\\run-pipeline.ps1""',
+    'sport-news':
+      'powershell.exe -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File ""' +
+      ROOT + '\\agents\\makrut\\pipeline\\run-pipeline.ps1""',
     'ShopeeAffiliate-DailyFBPost':
       '"' + ROOT + '\\post-daily-fb.bat"',
   };

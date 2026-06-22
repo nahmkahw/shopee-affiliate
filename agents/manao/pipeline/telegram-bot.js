@@ -20,9 +20,10 @@ const fs   = require('fs');
 const path = require('path');
 
 // queue file สำหรับ map shortId → {slug, platform}  (Telegram callback_data จำกัด 64 bytes)
-const TG_QUEUE_FILE = path.join(__dirname, '_tg_queue.json');
-function loadQueue() {
-  try { return JSON.parse(fs.readFileSync(TG_QUEUE_FILE, 'utf8')); } catch { return {}; }
+const TG_QUEUE_FILE        = path.join(__dirname, '_tg_queue.json');
+const MAKRUT_QUEUE_FILE    = path.join(__dirname, '..', '..', 'makrut', 'pipeline', '_tg_queue.json');
+function loadQueue(file) {
+  try { return JSON.parse(fs.readFileSync(file || TG_QUEUE_FILE, 'utf8')); } catch { return {}; }
 }
 function saveQueue(queue) {
   try { fs.writeFileSync(TG_QUEUE_FILE, JSON.stringify(queue, null, 2), 'utf8'); } catch {}
@@ -30,9 +31,10 @@ function saveQueue(queue) {
 function makeShortId(slug) {
   return crypto.createHash('md5').update(slug).digest('hex').substring(0, 12);
 }
-// คืน {slug, platform} หรือ null — รองรับ queue เก่า (string)
+// คืน {slug, platform, pipelineRoot?} หรือ null — merge queue ทุก pipeline
 function resolveEntry(shortId) {
-  const queue = loadQueue();
+  // manao ก่อน, makrut ถัดไป (manao takes precedence ถ้า shortId ชนกัน)
+  const queue = { ...loadQueue(MAKRUT_QUEUE_FILE), ...loadQueue(TG_QUEUE_FILE) };
   const val = queue[shortId];
   if (!val) return null;
   if (typeof val === 'string') return { slug: val, platform: 'fb' }; // backward compat
@@ -186,15 +188,20 @@ async function sendForApproval(slug, platform = 'fb') {
 
 // ─── Handlers ────────────────────────────────────────────────────────────────
 
-async function handleApprove(slug, platform, chatId, messageId, callbackId) {
+async function handleApprove(slug, platform, chatId, messageId, callbackId, pipelineRoot) {
   const pfLabels = { fb: '📘 Facebook', ig: '📸 Instagram', 'fb,ig': '📘 Facebook + 📸 Instagram' };
   const pfLabel  = pfLabels[platform] || platform;
   await answerCallback(callbackId, `⏳ กำลังโพสต์ไปที่ ${pfLabel}...`);
   await editMessage(chatId, messageId,
     `⏳ <b>กำลังโพสต์...</b>\n🗞 ${escapeHtml(slug)}\n🎯 ${pfLabel}`);
   try {
+    // ถ้า pipelineRoot ต่างจาก manao → ใช้ PIPELINE_ROOT env เพื่อให้ post.js ชี้ถูก pipeline
+    const cwd = __dirname; // post.js อยู่ใน manao/pipeline เสมอ
+    const env = (pipelineRoot && pipelineRoot !== __dirname)
+      ? { ...process.env, PIPELINE_ROOT: pipelineRoot }
+      : process.env;
     const out = execSync(`node post.js "${slug}" --platform ${platform} --schedule`, {
-      cwd: __dirname, encoding: 'utf8', timeout: 5 * 60 * 1000,
+      cwd, env, encoding: 'utf8', timeout: 5 * 60 * 1000,
     });
     console.log(`[Bot] post.js output: ${out.substring(0, 500)}`);
     const pfDone  = [];
@@ -276,10 +283,10 @@ async function poll() {
           continue;
         }
 
-        const { slug, platform = 'fb' } = entry;
+        const { slug, platform = 'fb', pipelineRoot } = entry;
         console.log(`[Bot] callback: ${action} → ${slug} [${platform}]`);
 
-        if (action === 'approve') await handleApprove(slug, platform, msgChatId, msgId, cb.id);
+        if (action === 'approve') await handleApprove(slug, platform, msgChatId, msgId, cb.id, pipelineRoot);
         else if (action === 'regen') await handleRegen(slug, msgChatId, msgId, cb.id);
         else if (action === 'cancel') {
           await answerCallback(cb.id, '❌ ยกเลิกแล้ว');

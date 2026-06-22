@@ -250,8 +250,8 @@ function getScriptsPipeline() {
       const el   = document.getElementById('agent-log-' + agentId);
       if (el && data.log) {
         // show last 3 lines
-        const lines = data.log.split('\n').filter(l => l.trim()).slice(-3);
-        el.textContent = lines.join('\n');
+        const lines = data.log.split('\\n').filter(l => l.trim()).slice(-3);
+        el.textContent = lines.join('\\n');
       }
       if (!data.running) {
         clearInterval(agentLogPolls[agentId]);

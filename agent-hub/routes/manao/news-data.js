@@ -72,7 +72,7 @@ function getNewsPipelineInfo(AI_NEWS_DIR) {
 
   let next_run_utc = null;
   try {
-    const schedFile = path.join(AI_NEWS_DIR, 'reuters-schedule.json');
+    const schedFile = path.join(AI_NEWS_DIR, 'ai-news-schedule.json');
     const cfg = JSON.parse(fs.readFileSync(schedFile, 'utf8'));
     if (cfg.enabled !== false && cfg.times && cfg.times.length) {
       const slots = cfg.times
@@ -97,7 +97,7 @@ function buildNewsApiData(AI_NEWS_DIR, pipelineProcs) {
   for (const item of items) { const s = item.status||'scraped'; if (counts[s]!==undefined) counts[s]++; else counts.scraped++; }
 
   const agentDefs = [
-    { id: 'scrape',    name: 'Scraper (Reuters)',  icon: '🌐' },
+    { id: 'scrape',    name: 'Scraper (AI News)',  icon: '🌐' },
     { id: 'filter',    name: 'Filter Agent',        icon: '🔍' },
     { id: 'editor',    name: 'Editor Agent',         icon: '✍️' },
     { id: 'formatter', name: 'Formatter Agent',      icon: '📱' },

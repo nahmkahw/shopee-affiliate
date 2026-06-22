@@ -22,7 +22,9 @@ function sendTelegramApproval(slug, platform) {
 
 function register(req, res, url, rawUrl, method, deps) {
   MAKRUT_DIR = deps.MAKRUT_DIR;
-  const { pipelineProcs, pipelineStatus, runPipelineSequential } = deps;
+  const pipelineProcs       = deps.makrutPipelineProcs;
+  const pipelineStatus      = deps.makrutPipelineStatus;
+  const runPipelineSequential = deps.runMakrutPipelineSequential;
 
   if (url === '/dashboard/makrut') {
     serveSportHTML(res);
