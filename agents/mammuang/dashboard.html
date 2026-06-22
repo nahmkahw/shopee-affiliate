@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🥭 มะม่วง — Character Creator</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0f1117;--card:#1a1d27;--border:rgba(255,255,255,.08);--text:#e2e8f0;--dim:#8892a4;--accent:#f59e0b;--green:#34d399;--red:#f87171;--user-bg:#1e3a5f;--ai-bg:#1a1d27}
+  *{box-sizing:border-box;margin:0;padding:0;font-family:'Sarabun','Segoe UI',sans-serif}
+  body{background:var(--bg);color:var(--text);font-size:14px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  .header{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0}
+  .header h1{font-size:18px}.header .sub{font-size:12px;color:var(--dim)}
+  .main{display:flex;flex:1;overflow:hidden}
+
+  /* ── Chat panel ── */
+  .chat-panel{width:460px;display:flex;flex-direction:column;border-right:1px solid var(--border);flex-shrink:0}
+  .messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+  .msg{max-width:90%;border-radius:12px;padding:12px 14px;line-height:1.55;font-size:13.5px}
+  .msg.user{background:var(--user-bg);align-self:flex-end;border-bottom-right-radius:4px}
+  .msg.ai{background:var(--ai-bg);border:1px solid var(--border);align-self:flex-start;border-bottom-left-radius:4px}
+  .msg.ai .label{font-size:11px;color:var(--accent);font-weight:700;margin-bottom:6px}
+  .msg.ai .section{margin-top:8px}
+  .msg.ai .section-title{font-size:11px;color:var(--dim);font-weight:700;margin-bottom:3px}
+  .msg.ai .section-body{color:var(--text)}
+  .msg.ai .speech-box{background:#0f1117;border:1px solid var(--accent);border-radius:8px;padding:8px 12px;margin-top:8px;font-style:italic;color:var(--accent)}
+  .msg.system{align-self:center;font-size:12px;color:var(--dim);font-style:italic}
+  .msg.thinking{align-self:flex-start;color:var(--dim);font-style:italic;font-size:13px}
+  .input-area{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0}
+  .input-area textarea{flex:1;background:#0f1117;border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:14px;resize:none;height:60px;font-family:inherit}
+  .input-area textarea:focus{outline:none;border-color:var(--accent)}
+  .send-btn{background:var(--accent);border:none;border-radius:10px;padding:0 18px;color:#0f1117;font-size:18px;cursor:pointer;font-weight:700;flex-shrink:0}
+  .send-btn:hover{background:#d97706}.send-btn:disabled{opacity:.4;cursor:not-allowed}
+
+  /* ── Right panel ── */
+  .right-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+  .result-area{flex:1;padding:16px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:14px}
+
+  /* ── Edit panel ── */
+  .edit-panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px}
+  .edit-panel .panel-title{font-size:12px;font-weight:700;color:var(--accent);letter-spacing:.06em;text-transform:uppercase}
+  .field-label{font-size:11px;font-weight:700;color:var(--dim);margin-bottom:5px;display:flex;align-items:center;gap:6px}
+  .field-label span{font-weight:400;color:#4b5563}
+  textarea.field,input.field{width:100%;background:#0f1117;border:1px solid var(--border);border-radius:8px;padding:9px 11px;color:var(--text);font-size:13px;font-family:inherit;resize:vertical}
+  textarea.field:focus,input.field:focus{outline:none;border-color:var(--accent)}
+  textarea.field{min-height:72px}
+
+  /* Size picker */
+  .size-picker{display:flex;gap:7px}
+  .size-btn{flex:1;padding:8px 4px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--dim);cursor:pointer;font-size:12px;font-family:inherit;font-weight:600;transition:all .15s;text-align:center}
+  .size-btn.active{border-color:var(--accent);background:rgba(245,158,11,.12);color:var(--accent)}
+  .size-btn .size-icon{font-size:16px;display:block;margin-bottom:3px}
+
+  /* Negative prompt collapsible */
+  .neg-toggle{font-size:12px;color:var(--dim);cursor:pointer;display:flex;align-items:center;gap:5px;user-select:none;width:fit-content}
+  .neg-toggle:hover{color:var(--text)}
+  .neg-toggle .arrow{transition:transform .2s;display:inline-block}
+  .neg-toggle.open .arrow{transform:rotate(90deg)}
+  .neg-wrap{display:none}
+  .neg-wrap.open{display:block}
+
+  /* Generate button */
+  .btn-gen{background:var(--accent);color:#0f1117;border:none;border-radius:10px;padding:11px 20px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;transition:all .15s;display:flex;align-items:center;gap:7px}
+  .btn-gen:hover{background:#d97706}.btn-gen:disabled{opacity:.4;cursor:not-allowed}
+  .btn-copy{background:transparent;color:var(--dim);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  .btn-copy:hover{color:var(--text);border-color:var(--dim)}
+  .gen-row{display:flex;gap:8px;align-items:center}
+  .gen-progress{font-size:13px;color:var(--accent);padding:4px 0}
+
+  /* Image */
+  .current-result img{max-width:100%;max-height:52vh;border-radius:12px;border:1px solid var(--border);object-fit:contain;cursor:zoom-in}
+
+  /* Placeholder */
+  .placeholder{color:var(--dim);text-align:center;padding:40px 20px;font-size:13px}
+  .placeholder .ph-icon{font-size:48px;margin-bottom:12px}
+
+  /* Gallery */
+  .gallery-title{font-size:12px;color:var(--dim);font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+  .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+  .gitem{background:#0f1117;border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer}
+  .gitem:hover{border-color:var(--accent)}
+  .gitem img{width:100%;aspect-ratio:3/4;object-fit:cover;display:block}
+  .gitem .gmeta{padding:5px 8px;font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  .toast{position:fixed;bottom:20px;right:20px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-size:13px;opacity:0;transform:translateY(8px);transition:all .3s;pointer-events:none;z-index:99}
+  .toast.show{opacity:1;transform:translateY(0)}
+  .lightbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:100;align-items:center;justify-content:center;padding:30px}
+  .lightbox.open{display:flex}.lightbox img{max-width:90%;max-height:90%;border-radius:10px}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span style="font-size:28px">🥭</span>
+  <div><h1>มะม่วง — Character Creator</h1>
+  <div class="sub">บอก concept → AI คิดรายละเอียด → ปรับ prompt → สร้างภาพ</div></div>
+  <a href="/" style="margin-left:auto;color:var(--dim);text-decoration:none;font-size:13px">← กลับ Hub</a>
+</div>
+
+<div class="main">
+
+  <!-- ── Left: Chat ── -->
+  <div class="chat-panel">
+    <div class="messages" id="messages">
+      <div class="msg system">👋 บอก concept เช่น "นักรบหญิงผมแดง ถือดาบ ในป่าวิเศษ" — AI จะคิดรายละเอียดให้ แล้วปรับ prompt ฝั่งขวาก่อนสร้าง</div>
+    </div>
+    <div class="input-area">
+      <textarea id="input" placeholder="บอก concept หรือขอแก้ไข…" onkeydown="handleKey(event)"></textarea>
+      <button class="send-btn" id="send-btn" onclick="sendMessage()" title="ส่ง (Enter)">➤</button>
+    </div>
+  </div>
+
+  <!-- ── Right: Edit + Image ── -->
+  <div class="right-panel">
+    <div class="result-area" id="result-area">
+
+      <!-- Edit panel (hidden until AI responds) -->
+      <div class="edit-panel" id="edit-panel" style="display:none">
+        <div class="panel-title">✏️ ปรับก่อนสร้าง</div>
+
+        <!-- Positive prompt -->
+        <div>
+          <div class="field-label">🔖 Prompt (EN) <span>— กระทบรูปโดยตรง</span></div>
+          <textarea class="field" id="f-prompt" rows="4" placeholder="masterpiece, best quality, anime style…"></textarea>
+        </div>
+
+        <!-- Speech -->
+        <div>
+          <div class="field-label">💬 คำพูดในลูกโป่ง <span>— ภาษาไทย</span></div>
+          <input class="field" id="f-speech" type="text" placeholder="ประโยคที่ตัวละครพูด" oninput="if(typeof setBalloonText==='function')setBalloonText(this.value)">
+          <div class="size-picker" style="margin-top:7px">
+            <button class="size-btn active" id="tmpl-speech"  onclick="pickTemplate('speech',this)"><span class="size-icon">💬</span>Speech</button>
+            <button class="size-btn"        id="tmpl-thought" onclick="pickTemplate('thought',this)"><span class="size-icon">💭</span>Thought</button>
+            <button class="size-btn"        id="tmpl-shout"   onclick="pickTemplate('shout',this)"><span class="size-icon">💥</span>Shout</button>
+            <button class="size-btn"        id="tmpl-whisper" onclick="pickTemplate('whisper',this)"><span class="size-icon">🤫</span>Whisper</button>
+          </div>
+        </div>
+
+        <!-- Image size -->
+        <div>
+          <div class="field-label">📐 ขนาดภาพ</div>
+          <div class="size-picker" style="grid-template-columns:repeat(4,1fr)">
+            <button class="size-btn" data-w="896" data-h="1152" onclick="setSize(this)">
+              <span class="size-icon">📸</span>IG Feed<br><span style="font-size:10px;opacity:.6">4:5 · 896×1152</span>
+            </button>
+            <button class="size-btn active" data-w="1024" data-h="1024" onclick="setSize(this)">
+              <span class="size-icon">⬛</span>IG Square<br><span style="font-size:10px;opacity:.6">1:1 · 1024×1024</span>
+            </button>
+            <button class="size-btn" data-w="768" data-h="1344" onclick="setSize(this)">
+              <span class="size-icon">📱</span>Story<br><span style="font-size:10px;opacity:.6">9:16 · 768×1344</span>
+            </button>
+            <button class="size-btn" data-w="1216" data-h="640" onclick="setSize(this)">
+              <span class="size-icon">📘</span>FB Feed<br><span style="font-size:10px;opacity:.6">1.9:1 · 1216×640</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Negative prompt (collapsible) -->
+        <div>
+          <div class="neg-toggle" id="neg-toggle" onclick="toggleNeg()">
+            <span class="arrow">▶</span> Negative Prompt <span style="font-size:11px;opacity:.5">(คลิกเพื่อแก้ไข)</span>
+          </div>
+          <div class="neg-wrap" id="neg-wrap">
+            <textarea class="field" id="f-neg" style="margin-top:8px;min-height:60px;font-size:12px"></textarea>
+          </div>
+        </div>
+
+        <!-- Product attachment -->
+        <div>
+          <div class="field-label">📦 สินค้า <span>— optional</span></div>
+          <div class="gen-row" style="flex-wrap:wrap;gap:6px">
+            <button class="btn-copy" onclick="document.getElementById('pf').click()">📎 แนบรูป</button>
+            <input id="pf" type="file" accept="image/*" style="display:none" onchange="attachProd(this)">
+            <input class="field" id="f-pname" placeholder="ชื่อสินค้า" style="flex:1;min-width:90px;height:36px">
+            <button class="btn-copy" id="ai-rv-btn" onclick="genRevSpeech()">✨ AI แนะนำ</button>
+          </div>
+          <div id="pthumb" style="display:none;margin-top:5px;align-items:center;gap:6px"><img id="ptimg" style="height:44px;border-radius:5px;border:1px solid var(--border)" alt=""><button onclick="clearProd()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:15px;padding:0">✕</button></div>
+        </div>
+
+        <!-- Reference image -->
+        <div>
+          <div class="field-label">🖼️ รูปต้นแบบ <span>— ล็อคหน้าตาตัวละคร (IPAdapter FaceID)</span></div>
+          <div id="ref-empty" style="display:flex;align-items:center;gap:8px">
+            <button class="btn-copy" onclick="document.getElementById('ref-file').click()">📎 อัปโหลด</button>
+            <input id="ref-file" type="file" accept="image/*" style="display:none" onchange="uploadRef(this)">
+            <span style="font-size:12px;color:var(--dim)">ไม่มีรูปต้นแบบ — ใช้ txt2img</span>
+          </div>
+          <div id="ref-preview" style="display:none;align-items:center;gap:8px;margin-top:4px">
+            <img id="ref-img" style="height:52px;width:52px;object-fit:cover;border-radius:8px;border:1px solid var(--accent)" alt="">
+            <div style="flex:1;font-size:12px;color:var(--accent)">✅ มีรูปต้นแบบ — generate จะล็อคหน้าตา</div>
+            <button onclick="removeRef()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:15px;padding:0" title="ลบรูปต้นแบบ">✕</button>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="gen-row">
+          <button class="btn-gen" id="gen-btn" onclick="generateImage()">🎨 สร้างรูป</button>
+          <button class="btn-copy" onclick="copyPrompt()">📋 Copy Prompt</button>
+          <div class="gen-progress" id="gen-progress" style="display:none"></div>
+        </div>
+      </div>
+
+      <div id="placeholder-wrap" class="placeholder"><div class="ph-icon">🖼️</div><div>คุยกับ AI ฝั่งซ้ายก่อน<br><span style="font-size:12px">จากนั้นปรับ prompt แล้วกด "สร้างรูป"</span></div></div>
+      <div class="current-result" id="current-wrap" style="display:none"></div>
+      <div id="balloon-save-row" style="display:none;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn-gen" style="font-size:13px;padding:9px 16px" onclick="rerenderBalloon()">💾 บันทึกลูกโป่ง</button><button class="btn-copy" onclick="previewCanvas()">🔍 Preview</button><button class="btn-copy" onclick="downloadCanvas()">⬇️ Download</button><span id="balloon-save-status" style="font-size:13px;color:var(--accent)"></span></div>
+      <div class="gallery-title" id="gal-title" style="display:none">ประวัติ</div>
+      <div class="gallery" id="gallery"></div>
+
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="lightbox" id="lightbox" onclick="closeLightbox()"><img id="lb-img" src=""></div>
+
+<script>
+const API = '/dashboard/mammuang/api';
+
+const DEFAULT_NEG = 'photorealistic, realistic, 3d render, photograph, hyperrealistic, dark colors, gritty, horror, scary, violent, lowres, worst quality, low quality, jpeg artifacts, blurry, grainy, watermark, signature, username, bad anatomy, deformed, disfigured, mutated, extra limbs, extra fingers, nsfw, adult content';
+
+let chatHistory = [];
+let currentData = null;
+let currentId   = null;
+let selW = 1024, selH = 1024;
+let galleryItems = [];
+let productFilename = null;
+const TMPL_EMOJI = { speech:'💬', thought:'💭', shout:'💥', whisper:'🤫' };
+
+// ── Neg prompt toggle ──────────────────────────────────────────────
+function toggleNeg() {
+  const toggle = document.getElementById('neg-toggle');
+  const wrap   = document.getElementById('neg-wrap');
+  toggle.classList.toggle('open');
+  wrap.classList.toggle('open');
+}
+
+// ── Size picker ────────────────────────────────────────────────────
+function setSize(btn) {
+  document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  selW = parseInt(btn.dataset.w);
+  selH = parseInt(btn.dataset.h);
+}
+
+// ── Chat ────────────────────────────────────────────────────────────
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+async function sendMessage() {
+  const input = document.getElementById('input');
+  const text  = input.value.trim();
+  if (!text) return;
+
+  appendMsg('user', text);
+  chatHistory.push({ role: 'user', content: text });
+  input.value = '';
+
+  const thinking = appendMsg('thinking', '🤔 กำลังคิดรายละเอียดตัวละคร…');
+  document.getElementById('send-btn').disabled = true;
+
+  try {
+    const r    = await fetch(`${API}/chat`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ history: chatHistory }) });
+    const data = await r.json();
+    thinking.remove();
+
+    if (!data.ok) { appendMsg('ai', '❌ ' + (data.error || 'เกิดข้อผิดพลาด'), true); return; }
+
+    currentData = data;
+    chatHistory.push({ role:'assistant', content: JSON.stringify({ character:data.character, elements:data.elements, speech:data.speech, prompt_en:data.prompt_en }) });
+
+    appendAiResult(data);
+    showEditPanel(data);
+  } catch (e) {
+    thinking.remove();
+    appendMsg('ai', '❌ ' + e.message, true);
+  } finally {
+    document.getElementById('send-btn').disabled = false;
+  }
+}
+
+function appendMsg(role, text, isError = false) {
+  const wrap = document.getElementById('messages');
+  const div  = document.createElement('div');
+  div.className = 'msg ' + role;
+  if (isError) div.style.color = 'var(--red)';
+  div.textContent = text;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+  return div;
+}
+
+function appendAiResult(data) {
+  const wrap = document.getElementById('messages');
+  const div  = document.createElement('div');
+  div.className = 'msg ai';
+  div.innerHTML = `
+    <div class="label">🥭 วิเคราะห์แล้ว — ปรับ prompt ฝั่งขวาได้เลย</div>
+    <div class="section"><div class="section-title">👤 ตัวละคร</div><div class="section-body">${esc(data.character)}</div></div>
+    <div class="section"><div class="section-title">🌄 องค์ประกอบ</div><div class="section-body">${esc(data.elements)}</div></div>
+    <div class="speech-box">💬 "${esc(data.speech)}"</div>
+  `;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+// ── Edit panel ─────────────────────────────────────────────────────
+function showEditPanel(data) {
+  document.getElementById('placeholder-wrap').style.display = 'none';
+  document.getElementById('edit-panel').style.display = 'flex';
+
+  // ใส่ค่าจาก AI — ไม่ override ถ้าผู้ใช้แก้ไปแล้ว (ต่างจาก data เดิม)
+  document.getElementById('f-prompt').value = data.prompt_en || '';
+  document.getElementById('f-speech').value = data.speech    || '';
+  if (!document.getElementById('f-neg').value) {
+    document.getElementById('f-neg').value = DEFAULT_NEG;
+  }
+}
+
+// ── Generate ────────────────────────────────────────────────────────
+async function generateImage() {
+  if (!currentData) return;
+
+  const prompt_en = document.getElementById('f-prompt').value.trim();
+  const speech    = document.getElementById('f-speech').value.trim();
+  const neg       = document.getElementById('f-neg').value.trim() || DEFAULT_NEG;
+
+  if (!prompt_en) { toast('⚠️ ใส่ Prompt ก่อน'); return; }
+
+  const btn  = document.getElementById('gen-btn');
+  const prog = document.getElementById('gen-progress');
+  btn.disabled = true;
+  prog.style.display = 'block';
+  prog.textContent   = '⏳ กำลังส่งงานไป ComfyUI…';
+
+  try {
+    const concept = chatHistory.find(m => m.role === 'user')?.content || '';
+    const r = await fetch(`${API}/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...currentData,
+        prompt_en,
+        speech,
+        neg_prompt: neg,
+        width:  selW,
+        height: selH,
+        concept,
+        template: currentTemplate,
+      }),
+    });
+    const data = await r.json();
+    if (!data.ok) { prog.textContent = '❌ ' + data.error; return; }
+
+    currentId = data.id;
+    prog.textContent = '✅ สร้างเสร็จแล้ว!';
+    showCurrentImage(data.id);
+    loadGallery();
+    setTimeout(() => { prog.style.display = 'none'; }, 3000);
+  } catch (e) {
+    prog.textContent = '❌ ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function showCurrentImage(id, saved={}) {
+  const wrap = document.getElementById('current-wrap');
+  const saveRow = document.getElementById('balloon-save-row');
+  wrap.style.display = 'block';
+  if (saveRow) saveRow.style.display = 'flex';
+
+  const speech   = document.getElementById('f-speech')?.value || '';
+  const template = currentTemplate || 'speech';
+  const imgUrl   = `${API.replace('/api','')}/image/${id}/image.png?t=${Date.now()}`;
+
+  if (typeof initBalloonEditor === 'function') {
+    initBalloonEditor(wrap, imgUrl, speech, template, saved);
+  } else {
+    wrap.innerHTML = `<img src="${imgUrl}" onclick="openLightbox(this.src)" alt="generated">`;
+  }
+}
+
+let currentTemplate = 'speech';
+
+function pickTemplate(t, btn) {
+  currentTemplate = t;
+  document.querySelectorAll('[id^=tmpl-]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (typeof setBalloonTemplate === 'function') setBalloonTemplate(t);
+}
+
+async function attachProd(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const r = await fetch(`${API}/upload-product`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:file.name,data:e.target.result})});
+    const d = await r.json(); if (!d.ok) { toast('❌ '+d.error); return; }
+    productFilename = d.filename;
+    const u = `${API.replace('/api','')}/uploads/${d.filename}`;
+    if (typeof setProductImage==='function') setProductImage(u);
+    document.getElementById('ptimg').src = u;
+    document.getElementById('pthumb').style.display = 'flex';
+    toast('📎 แนบรูปสินค้าแล้ว');
+  };
+  reader.readAsDataURL(file);
+}
+function clearProd() {
+  productFilename = null;
+  if (typeof clearProductImage==='function') clearProductImage();
+  document.getElementById('pthumb').style.display = 'none';
+  document.getElementById('pf').value = '';
+}
+
+// ── Ref image ────────────────────────────────────────────────────────────────
+async function loadRefStatus() {
+  try {
+    const r = await fetch(`${API}/ref-image`);
+    const d = await r.json();
+    document.getElementById('ref-empty').style.display   = d.exists ? 'none' : 'flex';
+    document.getElementById('ref-preview').style.display = d.exists ? 'flex' : 'none';
+    if (d.exists) document.getElementById('ref-img').src = d.url;
+  } catch {}
+}
+async function uploadRef(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try {
+      const r = await fetch(`${API}/upload-ref`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ data: e.target.result }) });
+      const d = await r.json();
+      if (!d.ok) { toast('❌ ' + d.error); return; }
+      toast('✅ บันทึกรูปต้นแบบแล้ว');
+      loadRefStatus();
+    } catch(err) { toast('❌ ' + err.message); }
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+async function removeRef() {
+  await fetch(`${API}/ref-image`, { method: 'DELETE' });
+  toast('🗑 ลบรูปต้นแบบแล้ว — จะใช้ txt2img');
+  loadRefStatus();
+}
+async function genRevSpeech() {
+  const pname = document.getElementById('f-pname')?.value?.trim();
+  if (!pname) { toast('⚠️ ใส่ชื่อสินค้าก่อน'); return; }
+  const btn = document.getElementById('ai-rv-btn'); btn.disabled=true; btn.textContent='⏳';
+  try {
+    const r = await fetch(`${API}/review-speech`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({productName:pname,character:currentData?.character||'',concept:chatHistory[0]?.content||''})});
+    const d = await r.json(); if (!d.ok) { toast('❌ '+d.error); return; }
+    document.getElementById('f-speech').value = d.speech;
+    if (typeof setBalloonText==='function') setBalloonText(d.speech);
+    toast('✨ AI แนะนำคำรีวิวแล้ว');
+  } catch(e) { toast('❌ '+e.message); }
+  finally { btn.disabled=false; btn.textContent='✨ AI แนะนำ'; }
+}
+
+async function rerenderBalloon() {
+  if (!currentId) return;
+  const params = typeof getBalloonParams === 'function' ? getBalloonParams() : null;
+  if (!params) { toast('⚠️ เปิด editor ก่อน'); return; }
+  const status = document.getElementById('balloon-save-status');
+  if (status) status.textContent = '⏳ กำลัง render…';
+  try {
+    const r = await fetch(`${API}/rerender-balloon`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: currentId, speech: params.text, ...params, productFilename }),
+    });
+    const data = await r.json();
+    if (!data.ok) { if (status) status.textContent = '❌ ' + data.error; return; }
+    if (status) { status.textContent = '✅ บันทึกแล้ว'; setTimeout(() => { status.textContent = ''; }, 3000); }
+    loadGallery();
+  } catch (e) {
+    if (status) status.textContent = '❌ ' + e.message;
+  }
+}
+
+async function previewCanvas() {
+  if (!currentId) { toast('⚠️ ยังไม่มีรูป'); return; }
+  // rerender ที่ server ก่อน (full resolution) แล้วค่อย preview
+  await rerenderBalloon();
+  openLightbox(`${API.replace('/api','')}/image/${currentId}/final.jpg?t=${Date.now()}`);
+}
+async function downloadCanvas() {
+  if (!currentId) { toast('⚠️ ยังไม่มีรูป'); return; }
+  // rerender ที่ server ก่อน (full resolution) แล้ว download
+  await rerenderBalloon();
+  const a = document.createElement('a');
+  a.href = `${API.replace('/api','')}/image/${currentId}/final.jpg?t=${Date.now()}`;
+  a.download = `mammuang-${currentId}.jpg`;
+  a.click();
+}
+
+function copyPrompt() {
+  const val = document.getElementById('f-prompt')?.value || (currentData?.prompt_en || '');
+  navigator.clipboard.writeText(val).then(() => toast('📋 คัดลอก prompt แล้ว'));
+}
+
+// ── Gallery ────────────────────────────────────────────────────────
+async function loadGallery() {
+  const r     = await fetch(`${API}/list`);
+  const items = await r.json();
+  galleryItems = items;
+  const gal   = document.getElementById('gallery');
+  const title = document.getElementById('gal-title');
+  if (!items.length) { gal.innerHTML = ''; title.style.display = 'none'; return; }
+
+  title.style.display = 'block';
+  gal.innerHTML = items.map(item => {
+    const src  = `${API.replace('/api','')}/image/${item.id}/final.jpg`;
+    const fb   = `${API.replace('/api','')}/image/${item.id}/image.png`;
+    const t    = new Date(item.created).toLocaleString('th-TH',{hour:'2-digit',minute:'2-digit'});
+    const icon = TMPL_EMOJI[item.template] || '💬';
+    return `<div class="gitem" onclick="loadGalleryItem('${item.id}')">
+      <img src="${src}" onerror="this.src='${fb}'" alt="">
+      <div class="gmeta">${icon} ${t} · ${esc((item.concept||'').substring(0,24))}</div>
+    </div>`;
+  }).join('');
+}
+
+function loadGalleryItem(id) {
+  currentId = id;
+  const meta = galleryItems.find(i => i.id === id);
+  if (meta) {
+    currentData = { ok: true, character: meta.character || '', elements: meta.elements || '',
+                    speech: meta.speech || '', prompt_en: meta.prompt_en || '', concept: meta.concept || '' };
+    const t = meta.template || 'speech';
+    currentTemplate = t;
+    document.querySelectorAll('[id^=tmpl-]').forEach(b => b.classList.remove('active'));
+    const btn = document.getElementById('tmpl-' + t);
+    if (btn) btn.classList.add('active');
+    if (meta.speech    != null) document.getElementById('f-speech').value = meta.speech;
+    if (meta.prompt_en != null) document.getElementById('f-prompt').value = meta.prompt_en;
+    if (meta.neg_prompt != null) document.getElementById('f-neg').value = meta.neg_prompt;
+    if (meta.width && meta.height) {
+      selW = meta.width; selH = meta.height;
+      document.querySelectorAll('.size-picker .size-btn[data-w]').forEach(b => {
+        b.classList.toggle('active', parseInt(b.dataset.w) === meta.width && parseInt(b.dataset.h) === meta.height);
+      });
+    }
+  }
+  showCurrentImage(id, meta?.balloonRect || {});
+  if (!document.getElementById('edit-panel').style.display || document.getElementById('edit-panel').style.display === 'none') {
+    document.getElementById('placeholder-wrap').style.display = 'none';
+    document.getElementById('edit-panel').style.display = 'flex';
+    document.getElementById('f-neg').value = DEFAULT_NEG;
+  }
+}
+
+// ── Lightbox ───────────────────────────────────────────────────────
+function openLightbox(src) { document.getElementById('lb-img').src = src; document.getElementById('lightbox').classList.add('open'); }
+function closeLightbox()   { document.getElementById('lightbox').classList.remove('open'); }
+
+// ── Util ───────────────────────────────────────────────────────────
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function toast(msg, dur = 2500) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), dur);
+}
+
+// ── Init ───────────────────────────────────────────────────────────
+loadGallery();
+loadRefStatus();
+document.getElementById('input').focus();
+</script>
+<script src="/dashboard/mammuang/balloon-editor.js"></script>
+<script src="/dashboard/mammuang/product-overlay.js"></script>
+</body>
+</html>
