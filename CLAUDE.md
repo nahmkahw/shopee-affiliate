@@ -12,6 +12,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > งานเล็ก (bug fix, แก้ config) ไม่ต้องทำ Draft PR ก่อนได้ แต่ยังต้องอัปเดต CLAUDE.md ถ้ามีผลต่อ architecture หรือ behavior
 
+### Claude ต้องถามก่อนเขียนโค้ดเสมอ (Blocking Requirement)
+
+**ก่อนเริ่มเขียนโค้ดสำหรับ feature ใหม่ Claude ต้องทำขั้นตอนนี้ก่อน — ห้ามข้าม:**
+
+```
+1. แจ้งว่างานนี้เป็น "feature ใหม่" หรือ "แก้ไขนัยสำคัญ" หรือ "bug fix เล็ก"
+2. ถ้าเป็น feature ใหม่ → ขอ confirm จาก user ว่าจะสร้าง branch + Draft PR ก่อน
+3. รอ user ตอบ "ใช่" แล้วค่อยสร้าง branch → เปิด PR → เขียนโค้ด
+```
+
+**สัญญาณที่บ่งบอกว่าเป็น feature ใหม่ (ต้อง PR):**
+- สร้างไฟล์ใหม่ > 1 ไฟล์
+- เพิ่ม agent ใหม่ หรือ route ใหม่
+- เปลี่ยน behavior ที่ user-facing (Telegram, dashboard, posting)
+- แตะ `agent-hub/index.js`, `agent-hub/agents.js`, หรือ `lib/`
+
+**ห้าม classify เป็น "bug fix" ถ้า:**
+- งานสร้าง module ใหม่ทั้งหมด
+- งานเพิ่ม capability ที่ไม่เคยมี
+
 ---
 
 ## Code Rules
