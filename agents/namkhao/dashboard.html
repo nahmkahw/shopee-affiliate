@@ -98,7 +98,7 @@
   <span style="font-size:28px">🌾</span>
   <div>
     <h1>น้ำข้าว — Schedule Manager</h1>
-    <div class="sub">จัดการ Reuters Pipeline และ Shopee Affiliate ผ่าน In-Process Scheduler</div>
+    <div class="sub">จัดการ AI News, Sport News และ Shopee Affiliate ผ่าน In-Process Scheduler</div>
   </div>
   <div style="margin-left:auto">
     <button class="btn btn-refresh" onclick="loadStatus()">🔄 รีเฟรช</button>
@@ -108,38 +108,74 @@
 <div id="loading" style="text-align:center;padding:40px;color:var(--text-dim)">⏳ กำลังโหลด...</div>
 <div class="schedule-grid" id="schedule-grid" style="display:none">
 
-  <!-- Reuters Card -->
+  <!-- AI News Card -->
   <div class="sched-card">
     <div class="sched-header">
       <div class="sched-title">
         <span class="emoji">🍋</span>
         <div>
-          <div>Reuters AI News Pipeline</div>
+          <div>AI News Pipeline</div>
         </div>
       </div>
-      <span id="reuters-badge" class="badge">—</span>
+      <span id="ai-news-badge" class="badge">—</span>
     </div>
     <div class="sched-body">
       <div class="info-row">
         <div class="info-box">
           <div class="info-label">⏱ รันล่าสุด</div>
-          <div class="info-value" id="reuters-last-run">—</div>
+          <div class="info-value" id="ai-news-last-run">—</div>
         </div>
         <div class="info-box">
           <div class="info-label">⏰ รันถัดไป</div>
-          <div class="info-value" id="reuters-next-run">—</div>
+          <div class="info-value" id="ai-news-next-run">—</div>
         </div>
       </div>
 
       <div class="times-section">
         <div class="times-label">🕐 เวลารัน (ทุกวัน)</div>
-        <div class="time-chips" id="reuters-times">—</div>
+        <div class="time-chips" id="ai-news-times">—</div>
       </div>
 
       <div class="actions-row">
-        <button class="btn btn-run" onclick="runNow('reuters')">▶ รันตอนนี้</button>
-        <button class="btn btn-edit" onclick="openEditModal('reuters')">✏️ แก้ไขเวลา</button>
-        <button class="btn" id="reuters-toggle-btn" onclick="toggleTask('reuters')">—</button>
+        <button class="btn btn-run" onclick="runNow('ai-news')">▶ รันตอนนี้</button>
+        <button class="btn btn-edit" onclick="openEditModal('ai-news')">✏️ แก้ไขเวลา</button>
+        <button class="btn" id="ai-news-toggle-btn" onclick="toggleTask('ai-news')">—</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sport (Makrut) Card -->
+  <div class="sched-card">
+    <div class="sched-header">
+      <div class="sched-title">
+        <span class="emoji">⚽</span>
+        <div>
+          <div>Sport News Pipeline (FIFA)</div>
+        </div>
+      </div>
+      <span id="sport-badge" class="badge">—</span>
+    </div>
+    <div class="sched-body">
+      <div class="info-row">
+        <div class="info-box">
+          <div class="info-label">⏱ รันล่าสุด</div>
+          <div class="info-value" id="sport-last-run">—</div>
+        </div>
+        <div class="info-box">
+          <div class="info-label">⏰ รันถัดไป</div>
+          <div class="info-value" id="sport-next-run">—</div>
+        </div>
+      </div>
+
+      <div class="times-section">
+        <div class="times-label">🕐 เวลารัน (ทุกวัน)</div>
+        <div class="time-chips" id="sport-times">—</div>
+      </div>
+
+      <div class="actions-row">
+        <button class="btn btn-run" onclick="runNow('sport')">▶ รันตอนนี้</button>
+        <button class="btn btn-edit" onclick="openEditModal('sport')">✏️ แก้ไขเวลา</button>
+        <button class="btn" id="sport-toggle-btn" onclick="toggleTask('sport')">—</button>
       </div>
     </div>
   </div>
@@ -212,11 +248,12 @@
 
 <script>
   let statusData = {};
-  let editTarget = null;  // 'reuters' | 'shopee'
+  let editTarget = null;  // 'ai-news' | 'sport' | 'shopee'
 
   const TASK_NAMES = {
-    reuters: 'AI-News-Pipeline',
-    shopee:  'ShopeeAffiliate-DailyFBPost',
+    'ai-news': 'ai-news',
+    sport:     'sport-news',
+    shopee:    'ShopeeAffiliate-DailyFBPost',
   };
 
   // ─── Load & Render ──────────────────────────────────────────────────────────
@@ -236,7 +273,8 @@
   }
 
   function renderStatus(data) {
-    renderTask('reuters', data.reuters);
+    renderTask('ai-news', data['ai-news']);
+    renderTask('sport',   data.sport);
     renderTask('shopee',  data.shopee);
   }
 
@@ -301,7 +339,7 @@
 
   async function runNow(key) {
     const taskName = TASK_NAMES[key];
-    const label    = key === 'reuters' ? 'Reuters Pipeline' : 'Shopee Daily Post';
+    const label    = key === 'ai-news' ? 'AI News Pipeline' : key === 'sport' ? 'Sport News Pipeline' : 'Shopee Daily Post';
     showToast(`▶ กำลังสั่งรัน ${label}...`);
     try {
       const res  = await fetch('/dashboard/namkhao/api/schedule-run', {
@@ -349,13 +387,13 @@
   function openEditModal(key) {
     editTarget = key;
     const d = statusData[key];
-    const isReuters = key === 'reuters';
-    document.getElementById('edit-modal-title').textContent =
-      '✏️ แก้ไขเวลา — ' + (isReuters ? '🍋 Reuters Pipeline' : '🌸 Shopee Daily Post');
+    const isMultiTime = key !== 'shopee';
+    const titles = { 'ai-news': '🍋 AI News Pipeline', sport: '⚽ Sport News Pipeline', shopee: '🌸 Shopee Daily Post' };
+    document.getElementById('edit-modal-title').textContent = '✏️ แก้ไขเวลา — ' + (titles[key] || key);
     document.getElementById('edit-modal-desc').textContent =
-      isReuters ? 'กรอกเวลาหลายรอบคั่นด้วยจุลภาค (สูงสุด 6 รอบ/วัน)' : 'กรอกเวลารันประจำวัน';
-    document.getElementById('edit-label').textContent = isReuters ? 'เวลา (HH:MM, HH:MM, ...)' : 'เวลา (HH:MM)';
-    document.getElementById('edit-hint').textContent = isReuters
+      isMultiTime ? 'กรอกเวลาหลายรอบคั่นด้วยจุลภาค (สูงสุด 6 รอบ/วัน)' : 'กรอกเวลารันประจำวัน';
+    document.getElementById('edit-label').textContent = isMultiTime ? 'เวลา (HH:MM, HH:MM, ...)' : 'เวลา (HH:MM)';
+    document.getElementById('edit-hint').textContent = isMultiTime
       ? 'ตัวอย่าง: 00:00,06:00,12:00,18:00'
       : 'ตัวอย่าง: 11:05';
     const current = d && d.times ? d.times.join(',') : '';

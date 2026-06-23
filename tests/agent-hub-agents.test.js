@@ -38,10 +38,11 @@ beforeEach(() => {
 // ─── AGENTS constant ────────────────────────────────────────────────────────
 
 describe('AGENTS', () => {
-  test('has four agents with required keys', () => {
+  test('has required agents with required keys', () => {
     const { AGENTS } = agentsModule;
-    expect(Object.keys(AGENTS)).toEqual(['mali', 'manao', 'namkhao', 'anime']);
-    for (const key of Object.keys(AGENTS)) {
+    const keys = Object.keys(AGENTS);
+    expect(keys).toEqual(expect.arrayContaining(['mali', 'manao', 'namkhao', 'anime', 'makrut', 'mammuang']));
+    for (const key of keys) {
       expect(AGENTS[key]).toHaveProperty('label');
       expect(AGENTS[key]).toHaveProperty('actions');
     }

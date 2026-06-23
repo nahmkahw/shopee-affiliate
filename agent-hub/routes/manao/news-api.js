@@ -169,9 +169,17 @@ function handleGenerateForce(req, res, AI_NEWS_DIR) {
     try {
       const { execFileSync } = require('child_process');
       console.log(`[Hub] 🔄 Generate force: ${slug}`);
+      // ถ้า AI_NEWS_DIR ไม่มี generate.js (เช่น makrut) → ใช้ของ manao + PIPELINE_ROOT env
+      const MANAO_DIR   = path.resolve(__dirname, '..', '..', '..', 'agents', 'manao', 'pipeline');
+      const genScript   = fs.existsSync(path.join(AI_NEWS_DIR, 'generate.js'))
+        ? path.join(AI_NEWS_DIR, 'generate.js')
+        : path.join(MANAO_DIR, 'generate.js');
+      const genEnv      = genScript.startsWith(MANAO_DIR) && AI_NEWS_DIR !== MANAO_DIR
+        ? { ...process.env, PIPELINE_ROOT: AI_NEWS_DIR }
+        : process.env;
       const out = execFileSync(process.execPath,
-        [path.join(AI_NEWS_DIR, 'generate.js'), slug, '--force', '--no-telegram'],
-        { cwd: AI_NEWS_DIR, encoding: 'utf8', timeout: 10 * 60 * 1000 }
+        [genScript, slug, '--force', '--no-telegram'],
+        { cwd: path.dirname(genScript), env: genEnv, encoding: 'utf8', timeout: 10 * 60 * 1000 }
       );
       const imgPath = path.join(AI_NEWS_DIR, 'news', slug, 'image.jpg');
       const hasImg  = fs.existsSync(imgPath);

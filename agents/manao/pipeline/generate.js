@@ -28,7 +28,7 @@ const { OLLAMA_HOST, OLLAMA_MODEL, checkOllamaReady } = require('./lib/ollama');
 const { generateContent } = require('./lib/content');
 const { getPendingItems }  = require('./lib/queue-items');
 
-const NEWS_DIR = path.join(__dirname, 'news');
+const NEWS_DIR = path.join(process.env.PIPELINE_ROOT || __dirname, 'news');
 
 const args       = process.argv.slice(2);
 const slugArg    = args.find(a => !a.startsWith('--'));

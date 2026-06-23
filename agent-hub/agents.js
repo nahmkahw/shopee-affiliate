@@ -21,11 +21,11 @@ const AGENTS = {
     ],
   },
   manao: {
-    label: 'มะนาว', role: 'Reuters AI News', color: '#4CAF50', colorLight: '#F1F8E9', emoji: '🍋',
+    label: 'มะนาว', role: 'AI News', color: '#4CAF50', colorLight: '#F1F8E9', emoji: '🍋',
     hasDashboard: true,
     actions: [
       { id: 'full',     label: '▶ Full Pipeline',    icon: '🚀' },
-      { id: 'scrape',   label: '📡 ดึงข่าว Reuters',  icon: '📡' },
+      { id: 'scrape',   label: '📡 ดึงข่าว AI News',  icon: '📡' },
       { id: 'generate', label: '✍️ Generate Content', icon: '✍️' },
       { id: 'post',     label: '📤 Post FB+IG',       icon: '📤' },
       { id: 'status',   label: '📊 ดูสถานะ',          icon: '📊' },
@@ -46,21 +46,43 @@ const AGENTS = {
     hasDashboard: true,
     actions: [],
   },
+  makrut: {
+    label: 'มะกรูด', role: 'FIFA World Cup 2026', color: '#22C55E', colorLight: '#F0FDF4', emoji: '⚽',
+    hasDashboard: true,
+    actions: [
+      { id: 'status',   label: 'สถานะ',         icon: '📊' },
+      { id: 'scrape',   label: 'ดึงข่าว',       icon: '🌐' },
+      { id: 'generate', label: 'สร้าง Content', icon: '✍️' },
+      { id: 'post',     label: 'โพสต์ FB',       icon: '📤' },
+      { id: 'full',     label: 'Full Pipeline',  icon: '🚀' },
+    ],
+  },
+  mammuang: {
+    label: 'มะม่วง', role: 'Character Creator', color: '#f59e0b', colorLight: '#fffbeb', emoji: '🥭',
+    hasDashboard: true,
+    actions: [],
+  },
 };
 
 const pipelineProcs = {
   scrape: null, filter: null, editor: null, formatter: null, pipeline: null,
 };
-
 let _pipelineStatus = null;
 
-function spawnStep(scriptPath, stepArgs, cwd) {
+const makrutPipelineProcs = {
+  scrape: null, filter: null, editor: null, formatter: null, pipeline: null,
+};
+let _makrutPipelineStatus = null;
+
+// state = { procs, get status(), set status() } — isolates manao vs makrut
+function spawnStep(scriptPath, stepArgs, cwd, state = {}) {
   return new Promise((resolve, reject) => {
-    const proc = spawn(process.execPath, [scriptPath, ...stepArgs], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const env  = state.pipelineRoot ? { ...process.env, PIPELINE_ROOT: state.pipelineRoot } : process.env;
+    const proc = spawn(process.execPath, [scriptPath, ...stepArgs], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
     const t0 = Date.now();
-    const logFile = path.join(cwd, 'pipeline.log');
+    const logFile = path.join(state.pipelineRoot || cwd, 'pipeline.log');
     const append = chunk => {
-      if (_pipelineStatus) _pipelineStatus.log += chunk;
+      if (state.status) state.status.log += chunk;
       try { fs.appendFileSync(logFile, chunk, 'utf8'); } catch {}
     };
     proc.stdout.on('data', d => append(d.toString()));
@@ -74,23 +96,24 @@ function spawnStep(scriptPath, stepArgs, cwd) {
   });
 }
 
-async function runPipelineSequential(args, AI_NEWS_DIR) {
-  if (pipelineProcs.pipeline !== null) return;
-  const STEP_DEFS = [
-    { id: 'scrape',    script: 'scrape.js',                              skipFlag: '--no-scrape', runFlag: null,     name: 'Agent 1 Scrape',    icon: '📡', extraArgs: [] },
-    { id: 'filter',    script: path.join('agents', 'filter-agent.js'),   skipFlag: '--no-filter', runFlag: null,     name: 'Agent 2 Filter',    icon: '🔍', extraArgs: [] },
-    { id: 'editor',    script: path.join('agents', 'editor-agent.js'),   skipFlag: '--no-edit',   runFlag: null,     name: 'Agent 3 Editor',    icon: '✍️', extraArgs: [] },
-    { id: 'formatter', script: path.join('agents', 'formatter-agent.js'),skipFlag: '--no-format', runFlag: null,     name: 'Agent 4 Formatter', icon: '📐', extraArgs: [] },
-    { id: 'post',      script: 'post.js',                                skipFlag: null,          runFlag: '--post', name: 'Publisher Post',    icon: '🚀', extraArgs: ['--pending', '--platform', 'fb,ig'] },
-  ];
+const STEP_DEFS = [
+  { id: 'scrape',    script: 'scrape.js',                              skipFlag: '--no-scrape', runFlag: null,     name: 'Agent 1 Scrape',    icon: '📡', extraArgs: [] },
+  { id: 'filter',    script: path.join('agents', 'filter-agent.js'),   skipFlag: '--no-filter', runFlag: null,     name: 'Agent 2 Filter',    icon: '🔍', extraArgs: [] },
+  { id: 'editor',    script: path.join('agents', 'editor-agent.js'),   skipFlag: '--no-edit',   runFlag: null,     name: 'Agent 3 Editor',    icon: '✍️', extraArgs: [] },
+  { id: 'formatter', script: path.join('agents', 'formatter-agent.js'),skipFlag: '--no-format', runFlag: null,     name: 'Agent 4 Formatter', icon: '📐', extraArgs: [] },
+  { id: 'post',      script: 'post.js',                                skipFlag: null,          runFlag: '--post', name: 'Publisher Post',    icon: '🚀', extraArgs: ['--pending', '--platform', 'fb,ig'] },
+];
+
+async function runPipelineSequential(args, dir, state = { procs: pipelineProcs, get status() { return _pipelineStatus; }, set status(v) { _pipelineStatus = v; } }) {
+  if (state.procs.pipeline !== null) return;
   const steps = STEP_DEFS.map(s => ({
     id: s.id, name: s.name, icon: s.icon,
     status: (s.skipFlag && args.includes(s.skipFlag)) || (s.runFlag && !args.includes(s.runFlag)) ? 'skipped' : 'pending',
     elapsed: null, error: null,
   }));
-  _pipelineStatus = { running: true, startedAt: new Date().toISOString(), steps, log: '', finishedAt: null };
-  pipelineProcs.pipeline = -1;
-  const logFile = path.join(AI_NEWS_DIR, 'pipeline.log');
+  state.status = { running: true, startedAt: new Date().toISOString(), steps, log: '', finishedAt: null };
+  state.procs.pipeline = -1;
+  const logFile = path.join(dir, 'pipeline.log');
   const ts = () => new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
   try { fs.appendFileSync(logFile, `\n[${ts()}] === เริ่ม Pipeline (agent-hub sequential) ===\n`, 'utf8'); } catch {}
   for (let i = 0; i < STEP_DEFS.length; i++) {
@@ -98,12 +121,14 @@ async function runPipelineSequential(args, AI_NEWS_DIR) {
     const def  = STEP_DEFS[i];
     if (step.status === 'skipped') continue;
     step.status = 'running';
-    pipelineProcs[step.id] = -1;
-    const scriptPath = path.join(AI_NEWS_DIR, def.script);
-    const stepArgs   = [...def.extraArgs];
+    state.procs[step.id] = -1;
+    const scriptInDir  = path.join(dir, def.script);
+    const scriptPath   = fs.existsSync(scriptInDir) ? scriptInDir : path.join(state.fallbackDir || dir, def.script);
+    const stepCwd      = path.dirname(scriptPath);
+    const stepArgs     = [...def.extraArgs];
     if (def.id === 'post' && args.includes('--schedule')) stepArgs.push('--schedule');
     try {
-      step.elapsed = await spawnStep(scriptPath, stepArgs, AI_NEWS_DIR);
+      step.elapsed = await spawnStep(scriptPath, stepArgs, stepCwd, state);
       step.status  = 'done';
     } catch (e) {
       step.status  = 'error';
@@ -113,19 +138,35 @@ async function runPipelineSequential(args, AI_NEWS_DIR) {
         if (steps[j].status === 'pending') steps[j].status = 'skipped';
       }
     } finally {
-      pipelineProcs[step.id] = null;
+      state.procs[step.id] = null;
     }
     if (step.status === 'error') break;
   }
-  _pipelineStatus.running    = false;
-  _pipelineStatus.finishedAt = new Date().toISOString();
-  pipelineProcs.pipeline     = null;
+  state.status.running    = false;
+  state.status.finishedAt = new Date().toISOString();
+  state.procs.pipeline    = null;
   try { fs.appendFileSync(logFile, `[${ts()}] === Pipeline เสร็จแล้ว ===\n`, 'utf8'); } catch {}
 }
 
+function isPidAlive(pid) {
+  if (!pid) return false;
+  try { process.kill(Number(pid), 0); return true; } catch { return false; }
+}
+
 function readStatus(STATUS_FILE) {
-  try { return JSON.parse(fs.readFileSync(STATUS_FILE, 'utf8')); }
+  let s;
+  try { s = JSON.parse(fs.readFileSync(STATUS_FILE, 'utf8')); }
   catch { return { mali: { status: 'idle' }, manao: { status: 'idle' }, namkhao: { status: 'idle' } }; }
+  // auto-heal: reset 'running' ถ้า pid ตายแล้ว (ป้องกัน status ค้างหลัง server restart)
+  let changed = false;
+  for (const [name, st] of Object.entries(s)) {
+    if (st && st.status === 'running' && !isPidAlive(st.pid)) {
+      s[name] = { ...st, status: 'idle', pid: null };
+      changed = true;
+    }
+  }
+  if (changed) try { fs.writeFileSync(STATUS_FILE, JSON.stringify(s, null, 2), 'utf8'); } catch {}
+  return s;
 }
 
 function writeStatus(STATUS_FILE, s) {
@@ -158,10 +199,12 @@ function startAgent(ROOT, STATUS_FILE, name, action) {
   writeStatus(STATUS_FILE, s);
   child.on('close', code => {
     delete runningProcs[name];
-    const st = readStatus(STATUS_FILE);
-    if (st[name] && st[name].pid === child.pid) {
-      st[name].status = code === 0 ? 'idle' : 'error';
-      st[name].pid    = null;
+    // read raw (no auto-heal) to check pid before it gets reset
+    let pidMatch = false;
+    try { const raw = JSON.parse(fs.readFileSync(STATUS_FILE, 'utf8')); pidMatch = raw[name] && raw[name].pid === child.pid; } catch {}
+    if (pidMatch) {
+      const st = readStatus(STATUS_FILE);
+      st[name] = { ...st[name], status: code === 0 ? 'idle' : 'error', pid: null };
       writeStatus(STATUS_FILE, st);
     }
   });
@@ -185,6 +228,9 @@ module.exports = {
   pipelineProcs,
   get pipelineStatus() { return _pipelineStatus; },
   set pipelineStatus(v) { _pipelineStatus = v; },
+  makrutPipelineProcs,
+  get makrutPipelineStatus() { return _makrutPipelineStatus; },
+  set makrutPipelineStatus(v) { _makrutPipelineStatus = v; },
   spawnStep,
   runPipelineSequential,
   startAgent,

@@ -38,9 +38,11 @@ const force    = args.includes('--force');
 const resend   = args.includes('--resend');
 const dateIdx  = args.findIndex(a => a === '--date');
 const dateArg  = dateIdx !== -1 ? args[dateIdx + 1] : null;
-const slugArg  = args.find(a => !a.startsWith('--') && !/^\d{4}-\d{2}-\d{2}$/.test(a));
 const platIdx  = args.findIndex(a => a === '--platform');
 const platArg  = platIdx !== -1 ? args[platIdx + 1] : null;
+// หา slug โดย skip ค่าที่ตามหลัง --flag (เช่น 'fb' หลัง --platform)
+const flagValIdxs = new Set([dateIdx + 1, platIdx + 1].filter(i => i > 0));
+const slugArg  = args.find((a, i) => !a.startsWith('--') && !/^\d{4}-\d{2}-\d{2}$/.test(a) && !flagValIdxs.has(i));
 const PLATFORMS = (platArg
   ? platArg.split(',').map(s => s.trim().toLowerCase())
   : ['fb', 'ig', 'x', 'tiktok'])
