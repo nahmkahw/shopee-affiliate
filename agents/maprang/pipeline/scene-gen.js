@@ -180,4 +180,37 @@ async function describeCharacterImage(imagePath) {
   return null;
 }
 
-module.exports = { generateScenes, generateCharacterDescription, buildCharacterNegative, describeCharacterImage };
+/**
+ * Scene breakdown แบบรู้จักหลายตัวละคร — แต่ละ scene ระบุ characters[]
+ * @param {string} storyPromptTh
+ * @param {object} characters  — { id: { name, description } } จาก char-registry
+ * @returns {Promise<Array<{scene_number, visual_prompt_en, subtitle_th, characters}>>}
+ */
+async function generateScenesWithCharacters(storyPromptTh, characters) {
+  const charIds = Object.keys(characters);
+  if (!charIds.length) return generateScenes(storyPromptTh);
+
+  const charList = charIds.map(id => `${id}(${characters[id].name || id})`).join(', ');
+  const system = `คุณเป็น AI สร้างสคริปต์วิดีโอ Anime Story
+ตัวละครที่มีในเรื่อง: ${charList}
+แตก story ออกเป็น 5 scenes ตอบเป็น JSON array เท่านั้น ไม่มีข้อความอื่น
+
+format:
+[{"scene_number":1,"visual_prompt_en":"anime style, [scene 20-40 words], cinematic lighting","subtitle_th":"[ไม่เกิน 15 คำ]","characters":["id1"]}]
+
+กฎ: visual_prompt_en เป็นภาษาอังกฤษ, characters คือ array ของ id ตัวละครที่ปรากฏ, family-friendly`;
+
+  console.log(`🤖 Typhoon2 scene breakdown (${charIds.length} chars)...`);
+  const raw    = await ollamaChat(`สร้าง 5 scenes:\n\n${storyPromptTh}`, system);
+  const match  = raw.match(/\[[\s\S]*\]/);
+  if (!match) throw new Error('ไม่พบ JSON array');
+  const scenes = JSON.parse(match[0]);
+  return scenes.slice(0, 5).map((s, i) => ({
+    scene_number:     s.scene_number || i + 1,
+    visual_prompt_en: s.visual_prompt_en || `anime style, scene ${i + 1}`,
+    subtitle_th:      s.subtitle_th || '',
+    characters:       Array.isArray(s.characters) ? s.characters.filter(id => characters[id]) : [charIds[0]],
+  }));
+}
+
+module.exports = { generateScenes, generateScenesWithCharacters, generateCharacterDescription, buildCharacterNegative, describeCharacterImage };
