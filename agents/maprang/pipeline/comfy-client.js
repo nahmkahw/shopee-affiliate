@@ -81,7 +81,7 @@ async function checkWan21Model(cfg, modelName) {
 
 function buildWan21Workflow(positivePrompt, modelName, seed) {
   // ComfyUI โหลด model จาก models/diffusion_models/ → ต้องใส่ subfolder prefix
-  const unetName = modelName || 'Wan2.1/wan2.1_t2v_1.3B_bf16.safetensors';
+  const unetName = modelName || 'Wan2.1\\wan2.1_t2v_1.3B_bf16.safetensors';
   return {
     '1': { class_type: 'UNETLoader',
            inputs: { unet_name: unetName, weight_dtype: 'fp8_e4m3fn' } },
@@ -101,9 +101,9 @@ function buildWan21Workflow(positivePrompt, modelName, seed) {
                      steps: 20, cfg: 6.0, sampler_name: 'euler',
                      scheduler: 'simple', denoise: 1.0 } },
     '8': { class_type: 'VAELoader',
-           inputs: { vae_name: 'wan_2.1_vae.safetensors' } },
-    '9': { class_type: 'VAEDecodeVideo',
-           inputs: { vae: ['8', 0], samples: ['7', 0] } },
+           inputs: { vae_name: 'wan_2.1_vae.safetensors' } }, // ✅ confirmed filename
+    '9': { class_type: 'VAEDecodeLoopKJ',
+           inputs: { samples: ['7', 0], vae: ['8', 0], overlap_latent_frames: 2 } },
    '10': { class_type: 'VHS_VideoCombine',
            inputs: { images: ['9', 0], frame_rate: DEFAULT_FPS, loop_count: 0,
                      filename_prefix: 'maprang', format: 'video/h264-mp4',

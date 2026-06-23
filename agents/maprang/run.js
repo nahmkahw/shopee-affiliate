@@ -25,7 +25,7 @@ const COMFY_CFG = {
   host:      process.env.COMFY_HOST      || '10.3.17.118',
   port:      parseInt(process.env.COMFY_PORT || '8188', 10),
   timeoutMs: parseInt(process.env.COMFY_TIMEOUT_MS || '600000', 10),
-  modelName: process.env.WAN21_MODEL || 'Wan2.1/wan2.1_t2v_1.3B_bf16.safetensors',
+  modelName: process.env.WAN21_MODEL || 'Wan2.1\\wan2.1_t2v_1.3B_bf16.safetensors',
 };
 
 const TG_TOKEN   = process.env.MAPRANG_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
