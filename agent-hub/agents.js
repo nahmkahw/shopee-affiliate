@@ -75,7 +75,7 @@ const makrutPipelineProcs = {
 let _makrutPipelineStatus = null;
 
 // state = { procs, get status(), set status() } — isolates manao vs makrut
-function spawnStep(scriptPath, stepArgs, cwd, state) {
+function spawnStep(scriptPath, stepArgs, cwd, state = {}) {
   return new Promise((resolve, reject) => {
     const env  = state.pipelineRoot ? { ...process.env, PIPELINE_ROOT: state.pipelineRoot } : process.env;
     const proc = spawn(process.execPath, [scriptPath, ...stepArgs], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -104,7 +104,7 @@ const STEP_DEFS = [
   { id: 'post',      script: 'post.js',                                skipFlag: null,          runFlag: '--post', name: 'Publisher Post',    icon: '🚀', extraArgs: ['--pending', '--platform', 'fb,ig'] },
 ];
 
-async function runPipelineSequential(args, dir, state) {
+async function runPipelineSequential(args, dir, state = { procs: pipelineProcs, get status() { return _pipelineStatus; }, set status(v) { _pipelineStatus = v; } }) {
   if (state.procs.pipeline !== null) return;
   const steps = STEP_DEFS.map(s => ({
     id: s.id, name: s.name, icon: s.icon,
@@ -199,10 +199,12 @@ function startAgent(ROOT, STATUS_FILE, name, action) {
   writeStatus(STATUS_FILE, s);
   child.on('close', code => {
     delete runningProcs[name];
-    const st = readStatus(STATUS_FILE);
-    if (st[name] && st[name].pid === child.pid) {
-      st[name].status = code === 0 ? 'idle' : 'error';
-      st[name].pid    = null;
+    // read raw (no auto-heal) to check pid before it gets reset
+    let pidMatch = false;
+    try { const raw = JSON.parse(fs.readFileSync(STATUS_FILE, 'utf8')); pidMatch = raw[name] && raw[name].pid === child.pid; } catch {}
+    if (pidMatch) {
+      const st = readStatus(STATUS_FILE);
+      st[name] = { ...st[name], status: code === 0 ? 'idle' : 'error', pid: null };
       writeStatus(STATUS_FILE, st);
     }
   });
