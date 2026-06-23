@@ -5,6 +5,7 @@
  */
 
 const http = require('http');
+const fs   = require('fs');
 
 const OLLAMA_HOST  = process.env.OLLAMA_HOST  || 'http://10.3.17.118:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'scb10x/llama3.1-typhoon2-8b-instruct:latest';
@@ -140,4 +141,43 @@ function buildCharacterNegative(charDesc) {
   ].filter(Boolean).join(', ');
 }
 
-module.exports = { generateScenes, generateCharacterDescription, buildCharacterNegative };
+const VISION_MODEL = process.env.OLLAMA_VISION_MODEL || 'llava';
+
+/**
+ * ลอง describe รูปตัวละครด้วย LLaVA vision — คืน Booru-tag string หรือ null ถ้าไม่มี model
+ * @param {string} imagePath  path ของ char_ref.png
+ * @returns {Promise<string|null>}
+ */
+async function describeCharacterImage(imagePath) {
+  try {
+    const imgB64 = fs.readFileSync(imagePath).toString('base64');
+    const body   = JSON.stringify({
+      model: VISION_MODEL,
+      messages: [{ role: 'user', content:
+        'Describe this anime character using Booru image-board tags only. ' +
+        'One line, comma-separated. Include: gender, age, hair color and length, eye color, outfit color and type, skin tone, notable features.',
+        images: [imgB64],
+      }],
+      stream: false,
+    });
+    const url    = new URL('/api/chat', OLLAMA_HOST);
+    const result = await new Promise(resolve => {
+      const req = http.request({
+        hostname: url.hostname, port: url.port || 11434, path: url.pathname,
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+      }, res => {
+        let buf = '';
+        res.on('data', d => buf += d);
+        res.on('end', () => { try { resolve(JSON.parse(buf).message?.content || ''); } catch { resolve(''); } });
+      });
+      req.setTimeout(60000, () => { req.destroy(); resolve(''); });
+      req.on('error', () => resolve(''));
+      req.write(body); req.end();
+    });
+    const desc = result.trim().split('\n')[0].trim();
+    if (desc.length > 10) { console.log(`🔍 Vision desc: ${desc}`); return desc; }
+  } catch { /* vision model ไม่มี */ }
+  return null;
+}
+
+module.exports = { generateScenes, generateCharacterDescription, buildCharacterNegative, describeCharacterImage };

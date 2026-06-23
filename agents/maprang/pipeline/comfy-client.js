@@ -107,6 +107,53 @@ function buildWan21Workflow(positivePrompt, modelName, seed, charNeg = '') {
   };
 }
 
+function buildCharImageWorkflow(charDesc, seed) {
+  const pos = `masterpiece, best quality, anime style, anime key visual, ${charDesc}, full body, solo, white background, clean lineart, detailed face, studio anime`;
+  const neg = 'photorealistic, 3d, lowres, bad anatomy, extra fingers, worst quality, blurry, watermark, nsfw, multiple characters, crowd';
+  return {
+    '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'AnythingXL_xl.safetensors' } },
+    '2': { class_type: 'CLIPTextEncode', inputs: { clip: ['1', 1], text: pos } },
+    '3': { class_type: 'CLIPTextEncode', inputs: { clip: ['1', 1], text: neg } },
+    '4': { class_type: 'EmptyLatentImage', inputs: { width: 512, height: 768, batch_size: 1 } },
+    '5': { class_type: 'KSampler', inputs: {
+             model: ['1', 0], positive: ['2', 0], negative: ['3', 0], latent_image: ['4', 0],
+             seed: seed || Math.floor(Math.random() * 1e10),
+             steps: 25, cfg: 7.0, sampler_name: 'dpmpp_2m_sde', scheduler: 'karras', denoise: 1.0 } },
+    '6': { class_type: 'VAEDecode', inputs: { samples: ['5', 0], vae: ['1', 2] } },
+    '7': { class_type: 'SaveImage', inputs: { images: ['6', 0], filename_prefix: 'char_ref' } },
+  };
+}
+
+/**
+ * สร้างรูปตัวละคร reference (AnythingXL T2I) — ใช้ anchor ทุก scene
+ * @returns {Promise<string>} outputPath
+ */
+async function generateCharacterImage(cfg, charDesc, outputPath, seed) {
+  const clientId = crypto.randomUUID();
+  const workflow = buildCharImageWorkflow(charDesc, seed);
+  console.log('  🎨 ComfyUI T2I: สร้าง character reference image...');
+  const { prompt_id } = await _request(cfg, 'POST', '/prompt', { client_id: clientId, prompt: workflow });
+  if (!prompt_id) throw new Error('ComfyUI ไม่ตอบ prompt_id (char image)');
+
+  const start = Date.now();
+  while (Date.now() - start < 180000) {
+    await new Promise(r => setTimeout(r, 3000));
+    const history = await _request(cfg, 'GET', `/history/${prompt_id}`);
+    const job     = history[prompt_id];
+    if (!job) continue;
+    if (job.status?.status_str === 'error') throw new Error('ComfyUI char image error');
+    const imgOut  = job.outputs?.['7']?.images?.[0];
+    if (!imgOut) continue;
+
+    const url = `/view?filename=${encodeURIComponent(imgOut.filename)}&subfolder=${encodeURIComponent(imgOut.subfolder || '')}&type=${encodeURIComponent(imgOut.type || 'output')}`;
+    const buf = await _getBinary(cfg, url, 60000);
+    fs.writeFileSync(outputPath, buf);
+    console.log(`  ✅ ref image: ${outputPath} (${(buf.length / 1024).toFixed(0)} KB)`);
+    return outputPath;
+  }
+  throw new Error('ComfyUI timeout (char image)');
+}
+
 /**
  * Generate a single video clip via ComfyUI Wan2.1
  * @param {object} cfg          { host, port, timeoutMs, modelName }
@@ -146,4 +193,4 @@ async function generateClip(cfg, prompt, outputPath, seed, charNeg = '') {
   throw new Error(`ComfyUI timeout หลัง ${timeout / 60000} นาที`);
 }
 
-module.exports = { checkHealth, checkWan21Model, generateClip };
+module.exports = { checkHealth, checkWan21Model, generateClip, generateCharacterImage };

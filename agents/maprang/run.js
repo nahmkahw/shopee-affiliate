@@ -10,8 +10,8 @@ const fs    = require('fs');
 const path  = require('path');
 const https = require('https');
 
-const { generateScenes, generateCharacterDescription, buildCharacterNegative } = require('./pipeline/scene-gen');
-const { checkHealth, checkWan21Model, generateClip } = require('./pipeline/comfy-client');
+const { generateScenes, generateCharacterDescription, buildCharacterNegative, describeCharacterImage } = require('./pipeline/scene-gen');
+const { checkHealth, checkWan21Model, generateClip, generateCharacterImage } = require('./pipeline/comfy-client');
 const { buildStoryVideo }                        = require('./pipeline/video-build');
 
 const GALLERY   = path.join(__dirname, 'gallery');
@@ -72,6 +72,34 @@ async function tgSendVideo(storyPath, caption) {
   }
 }
 
+async function tgSendPhoto(photoPath, caption) {
+  if (!TG_OK) return;
+  const boundary = '----MPB' + Math.random().toString(36).substring(2);
+  const photoBuf = fs.readFileSync(photoPath);
+  const head = Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n${TG_CHAT_ID}\r\n` +
+    `--${boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n${caption.substring(0, 1024)}\r\n` +
+    `--${boundary}\r\nContent-Disposition: form-data; name="parse_mode"\r\n\r\nHTML\r\n` +
+    `--${boundary}\r\nContent-Disposition: form-data; name="photo"; filename="char_ref.png"\r\nContent-Type: image/png\r\n\r\n`
+  );
+  const body = Buffer.concat([head, photoBuf, Buffer.from(`\r\n--${boundary}--\r\n`)]);
+  const r = await new Promise(resolve => {
+    const req = https.request({
+      hostname: 'api.telegram.org', path: `/bot${TG_TOKEN}/sendPhoto`,
+      method: 'POST', headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': body.length },
+    }, res => {
+      const chunks = [];
+      res.on('data', d => chunks.push(d));
+      res.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch { resolve({}); } });
+    });
+    req.setTimeout(30000, () => { req.destroy(); resolve({}); });
+    req.on('error', () => resolve({}));
+    req.write(body); req.end();
+  });
+  if (r.ok) console.log('📸 ส่ง Telegram photo สำเร็จ');
+  else console.warn(`⚠️  Telegram sendPhoto: ${r.description || JSON.stringify(r)}`);
+}
+
 // ─── Actions ─────────────────────────────────────────────────────────────────
 
 async function actionCheck() {
@@ -97,27 +125,54 @@ async function actionGenerate(prompt, idOverride, charDescOverride) {
   console.log(`\n🎌 มะปราง — เริ่มสร้าง\n📖 ${prompt}\n`);
 
   // 1. Scene breakdown + character description
-  const scenes    = await generateScenes(prompt);
-  const charDesc  = charDescOverride || await generateCharacterDescription(prompt);
-  const charNeg   = buildCharacterNegative(charDesc);
+  const scenes   = await generateScenes(prompt);
+  const charDesc = charDescOverride || await generateCharacterDescription(prompt);
+  const charNeg  = buildCharacterNegative(charDesc);
   meta.character_description = charDesc;
   meta.character_negative    = charNeg;
+  saveMeta(meta);
+  console.log(`🎨 Character: ${charDesc}`);
+
+  // 2. สร้าง reference image ตัวละคร (AnythingXL T2I) → describe ด้วย vision model
+  const refImagePath = path.join(dir, 'char_ref.png');
+  let anchorDesc = charDesc;
+  try {
+    await generateCharacterImage(COMFY_CFG, charDesc, refImagePath, sharedSeed);
+    meta.ref_image = 'char_ref.png';
+    saveMeta(meta);
+    const visionDesc = await describeCharacterImage(refImagePath);
+    if (visionDesc) { anchorDesc = visionDesc; meta.anchor_description = anchorDesc; saveMeta(meta); }
+  } catch (e) {
+    console.warn(`⚠️  ข้าม ref image (${e.message}) — ใช้ Booru tags แทน`);
+  }
+
   meta.scenes = scenes.map(s => ({
     ...s,
     status: 'pending',
-    visual_prompt_en: s.visual_prompt_en.replace(/^anime style,\s*/i, `anime style, ${charDesc}, `),
+    visual_prompt_en: s.visual_prompt_en.replace(/^anime style,\s*/i, `anime style, ${anchorDesc}, `),
   }));
   saveMeta(meta);
-  console.log(`🎨 Character: ${charDesc}`);
-  await tgSendText(
-    `🎌 <b>มะปราง — เริ่มสร้างวิดีโอ</b>\n\n📖 ${prompt.substring(0, 150)}\n\n` +
-    `🧑 Character: ${charDesc}\n\n` +
-    `🎬 ${scenes.length} scenes:\n` +
-    scenes.map(s => `  ${s.scene_number}. ${s.subtitle_th}`).join('\n') +
-    `\n\n⏳ กำลัง generate...`
-  );
 
-  // 2. Generate clips
+  // ส่ง ref image ให้ user ดูตัวละครก่อน generate
+  if (fs.existsSync(refImagePath)) {
+    await tgSendPhoto(refImagePath,
+      `🎨 <b>ตัวละครหลัก (Reference)</b>\n\n` +
+      `📖 ${prompt.substring(0, 100)}\n\n` +
+      `🎬 ${scenes.length} scenes:\n` +
+      scenes.map(s => `  ${s.scene_number}. ${s.subtitle_th}`).join('\n') +
+      `\n\n⏳ กำลัง generate video...`
+    );
+  } else {
+    await tgSendText(
+      `🎌 <b>มะปราง — เริ่มสร้างวิดีโอ</b>\n\n📖 ${prompt.substring(0, 150)}\n\n` +
+      `🧑 Character: ${charDesc}\n\n` +
+      `🎬 ${scenes.length} scenes:\n` +
+      scenes.map(s => `  ${s.scene_number}. ${s.subtitle_th}`).join('\n') +
+      `\n\n⏳ กำลัง generate...`
+    );
+  }
+
+  // 3. Generate clips
   const clipsDir = path.join(dir, 'clips');
   fs.mkdirSync(clipsDir, { recursive: true });
   const clipData = [];
@@ -145,7 +200,7 @@ async function actionGenerate(prompt, idOverride, charDescOverride) {
     );
   }
 
-  // 3. Subtitle + concat
+  // 4. Subtitle + concat
   console.log('\n🎞️  สร้าง story.mp4...');
   meta.status = 'building';
   saveMeta(meta);
@@ -154,7 +209,7 @@ async function actionGenerate(prompt, idOverride, charDescOverride) {
   meta.status     = 'pending_approval';
   saveMeta(meta);
 
-  // 4. ส่ง Telegram video พร้อม caption สรุป
+  // 5. ส่ง Telegram video พร้อม caption สรุป
   const caption =
     `🎌 <b>มะปราง — Anime Story พร้อมแล้ว!</b>\n\n` +
     `📖 ${meta.prompt.substring(0, 200)}\n\n` +
