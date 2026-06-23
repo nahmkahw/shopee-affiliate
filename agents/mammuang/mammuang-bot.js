@@ -7,8 +7,8 @@
  *   /anime <text>        →  IPAdapter anime + balloon → โพสต์ FB + IG
  *   /help                →  แสดงคำสั่งทั้งหมด
  *
- * ใช้ token เดียวกับ anime-bot — ห้ามรัน anime-bot.js พร้อมกัน
- * ต้องตั้งใน .env: ANIME_TELEGRAM_BOT_TOKEN, ANIME_TELEGRAM_CHAT_ID
+ * ต้องตั้งใน .env: MAMMUANG_TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+ * (fallback: ANIME_TELEGRAM_BOT_TOKEN, ANIME_TELEGRAM_CHAT_ID)
  * รัน: node agents/mammuang/mammuang-bot.js
  */
 
@@ -26,15 +26,15 @@ const { generateAnime }        = require('../anime/anime-gen');
 const { renderBalloonOnImage } = require('../anime/balloon-canvas');
 const { postFacebookImage, postInstagramImage } = require('../anime/post-anime');
 
-const TOKEN    = process.env.ANIME_TELEGRAM_BOT_TOKEN;
-const CHAT_ID  = process.env.ANIME_TELEGRAM_CHAT_ID;
+const TOKEN    = process.env.MAMMUANG_TELEGRAM_BOT_TOKEN || process.env.ANIME_TELEGRAM_BOT_TOKEN;
+const CHAT_ID  = process.env.TELEGRAM_CHAT_ID || process.env.ANIME_TELEGRAM_CHAT_ID;
 const ANIME_TPL = path.join(__dirname, '..', 'anime', 'active-template.json');
 const MAM_GAL   = path.join(__dirname, 'gallery');
 const ANIME_GAL = path.join(__dirname, '..', 'anime', 'gallery');
 const LOCK      = path.join(__dirname, '.mammuang-bot.lock');
 
 if (!TOKEN || !CHAT_ID) {
-  console.error('❌ ขาด ANIME_TELEGRAM_BOT_TOKEN หรือ ANIME_TELEGRAM_CHAT_ID ใน .env');
+  console.error('❌ ขาด MAMMUANG_TELEGRAM_BOT_TOKEN หรือ TELEGRAM_CHAT_ID ใน .env');
   process.exit(1);
 }
 
