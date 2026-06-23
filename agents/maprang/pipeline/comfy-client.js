@@ -86,7 +86,7 @@ function buildWan21Workflow(positivePrompt, modelName, seed) {
     '1': { class_type: 'UNETLoader',
            inputs: { unet_name: unetName, weight_dtype: 'fp8_e4m3fn' } },
     '2': { class_type: 'CLIPLoader',
-           inputs: { clip_name: 'umt5-xxl-enc-bf16.safetensors', type: 'wan' } },
+           inputs: { clip_name: 'umt5_xxl_fp16.safetensors', type: 'wan' } },
     '3': { class_type: 'CLIPTextEncode',
            inputs: { clip: ['2', 0], text: positivePrompt } },
     '4': { class_type: 'CLIPTextEncode',
