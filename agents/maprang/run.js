@@ -71,6 +71,13 @@ async function tgSendVideo(storyPath, caption) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+function appendLog(meta, msg) {
+  if (!meta.logs) meta.logs = [];
+  const elapsed = meta.created_at
+    ? Math.round((Date.now() - new Date(meta.created_at).getTime()) / 1000) : 0;
+  meta.logs.push({ t: new Date().toISOString(), msg, elapsed });
+}
+
 function readMeta(id) {
   const p = path.join(GALLERY, id, 'meta.json');
   if (!fs.existsSync(p)) return null;
@@ -120,13 +127,17 @@ async function actionGenerateScene(id, sceneNum) {
   scene.status     = 'generating';
   scene.started_at = new Date().toISOString();
   meta.status      = 'producing';
+  appendLog(meta, `🎬 Scene ${sceneNum}/${meta.scenes.length}: ${scene.subtitle_th}`);
   writeMeta(id, meta);
 
   console.log(`\n[Scene ${sceneNum}] ${scene.subtitle_th}`);
+  const t0 = Date.now();
   await generateClip(COMFY_CFG, scene.visual_prompt_en, clipPath, meta.seed, scene._charNeg || '');
+  const durS = Math.round((Date.now() - t0) / 1000);
 
   scene.status  = 'done';
   scene.done_at = new Date().toISOString();
+  appendLog(meta, `✅ Scene ${sceneNum} เสร็จ (${durS}s)`);
   writeMeta(id, meta);
   console.log(`✅ Scene ${sceneNum} เสร็จ`);
 
@@ -161,9 +172,11 @@ async function actionBuild(id) {
   const dir = path.join(GALLERY, id);
 
   meta.status = 'building';
+  appendLog(meta, '🎞️ Post-production: TTS voiceover + subtitle + merge...');
   writeMeta(id, meta);
 
   const storyPath = await runPostProduction(meta, dir);
+  appendLog(meta, '✅ story.mp4 พร้อมแล้ว 🎉');
   meta.status     = 'pending_approval';
   meta.story_path = storyPath;
   writeMeta(id, meta);

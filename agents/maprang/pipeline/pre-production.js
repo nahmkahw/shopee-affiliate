@@ -25,6 +25,13 @@ const GALLERY = path.join(__dirname, '..', 'gallery');
  * @param {Function} params.saveMeta
  * @returns {Promise<object>}  updated meta
  */
+function appendLog(meta, msg, saveMeta) {
+  if (!meta.logs) meta.logs = [];
+  const elapsed = Math.round((Date.now() - new Date(meta.created_at).getTime()) / 1000);
+  meta.logs.push({ t: new Date().toISOString(), msg, elapsed });
+  if (saveMeta) saveMeta(meta);
+}
+
 async function runPreProduction({ prompt, id, charDescOverride, charIdsArg, comfyCfg, saveMeta }) {
   const dir = path.join(GALLERY, id);
   fs.mkdirSync(dir, { recursive: true });
@@ -32,7 +39,7 @@ async function runPreProduction({ prompt, id, charDescOverride, charIdsArg, comf
   const sharedSeed = Math.floor(Math.random() * 1e10);
   const meta = {
     id, prompt, created_at: new Date().toISOString(),
-    status: 'pre_production', seed: sharedSeed, scenes: [],
+    status: 'pre_production', seed: sharedSeed, scenes: [], logs: [],
     bgm_mood: 'adventure',
   };
   saveMeta(meta);
@@ -47,13 +54,18 @@ async function runPreProduction({ prompt, id, charDescOverride, charIdsArg, comf
   const isMulti  = useCharIds.length > 0;
 
   // 2. Scene breakdown
+  const charLabel = isMulti ? `${useCharIds.length} ตัวละคร` : 'ตัวละครเดี่ยว';
+  appendLog(meta, `🤖 Typhoon2: วิเคราะห์เนื้อเรื่อง (${charLabel})`, saveMeta);
+  const t0 = Date.now();
   const rawScenes = isMulti
     ? await generateScenesWithCharacters(prompt, useChars)
     : await generateScenes(prompt);
+  appendLog(meta, `✅ ได้ ${rawScenes.length} scenes (${Math.round((Date.now()-t0)/1000)}s)`, saveMeta);
 
   // 3. Character description (single-char path)
   let singleCharDesc = '', singleCharNeg = '';
   if (!isMulti) {
+    appendLog(meta, '🧬 สร้าง character description...', saveMeta);
     singleCharDesc = charDescOverride || await generateCharacterDescription(prompt);
     singleCharNeg  = buildCharacterNegative(singleCharDesc);
     meta.character_description = singleCharDesc;
@@ -88,12 +100,16 @@ async function runPreProduction({ prompt, id, charDescOverride, charIdsArg, comf
   if (!isMulti) {
     const refPath = path.join(dir, 'char_ref.png');
     try {
+      appendLog(meta, '🎨 ComfyUI: สร้างภาพตัวละคร (char_ref.png)...', saveMeta);
+      const t1 = Date.now();
       await generateCharacterImage(comfyCfg, singleCharDesc, refPath, sharedSeed);
+      appendLog(meta, `✅ char_ref.png พร้อม (${Math.round((Date.now()-t1)/1000)}s)`, saveMeta);
       meta.ref_image = 'char_ref.png';
+      appendLog(meta, '🔍 LLaVA: วิเคราะห์ภาพตัวละคร...', saveMeta);
       const vd = await describeCharacterImage(refPath);
       if (vd) {
         meta.anchor_description = vd;
-        // อัปเดต visual_prompt ทุก scene ด้วย anchor
+        appendLog(meta, '✅ anchor description พร้อม — inject ทุก scene', saveMeta);
         meta.scenes = meta.scenes.map(s => ({
           ...s,
           visual_prompt_en: s.visual_prompt_en.replace(
@@ -102,10 +118,14 @@ async function runPreProduction({ prompt, id, charDescOverride, charIdsArg, comf
           ),
         }));
       }
-    } catch (e) { console.warn(`⚠️  ข้าม ref image: ${e.message}`); }
+    } catch (e) {
+      appendLog(meta, `⚠️ ข้าม char_ref: ${e.message}`, saveMeta);
+      console.warn(`⚠️  ข้าม ref image: ${e.message}`);
+    }
     saveMeta(meta);
   }
 
+  appendLog(meta, '🏁 Pre-production เสร็จ — รอ Approve ใน Dashboard', saveMeta);
   console.log(`\n✅ Pre-production เสร็จ — รอ user approve ใน Dashboard`);
   return meta;
 }

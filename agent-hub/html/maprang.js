@@ -9,6 +9,19 @@ const path = require('path');
 
 const BGM_MOODS = ['adventure', 'calm', 'epic', 'emotional', 'action'];
 
+function fmtElapsed(s) {
+  return s >= 60 ? `${Math.floor(s / 60)}m${s % 60}s` : `${s}s`;
+}
+
+function timelineHtml(logs) {
+  if (!logs || !logs.length) return '<span style="color:#475569;font-size:11px">รอเริ่ม...</span>';
+  return logs.map(l =>
+    `<div style="display:flex;gap:8px;padding:2px 0;border-bottom:1px solid #0f172a">` +
+    `<span style="color:#475569;min-width:38px;flex-shrink:0;font-size:10px">+${fmtElapsed(l.elapsed||0)}</span>` +
+    `<span style="font-size:11px">${l.msg}</span></div>`
+  ).join('');
+}
+
 const CSS = `
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',sans-serif;background:#0a0a0a;color:#e2e8f0;padding:24px;min-height:100vh}
@@ -63,6 +76,16 @@ function stagePill(current) {
 }
 
 function renderPreCard(job) {
+  // ยังไม่มี scenes → loading state
+  if (!job.scenes || job.scenes.length === 0) {
+    return `<div class="card">
+<div style="color:#fbbf24;font-weight:700;font-size:15px;margin-bottom:8px">📋 Pre-production กำลังทำงาน...</div>
+<div class="prog-wrap"><div class="prog-fill fill-prod" style="width:100%;background:linear-gradient(90deg,#78350f,#d97706);animation:pulse 1.5s infinite"></div></div>
+<div id="timeline" style="background:#0f172a;border-radius:6px;padding:10px;margin-top:10px;min-height:52px;font-family:monospace">${timelineHtml(job.logs)}</div>
+<div style="color:#475569;font-size:12px;margin-top:8px">${job.prompt || ''}</div>
+</div>`;
+  }
+
   const moodOpts = BGM_MOODS.map(m =>
     `<option value="${m}"${job.bgm_mood === m ? ' selected' : ''}>${m}</option>`
   ).join('');
@@ -130,6 +153,7 @@ ${videoEl}</div>`;
   <span style="color:#64748b;font-size:12px">${done}/${total} scenes</span>
 </div>
 <div class="prog-wrap"><div class="prog-fill fill-prod" style="width:${pct}%" id="prod-fill"></div></div>
+<div id="timeline" style="background:#0f172a;border-radius:6px;padding:10px;margin-bottom:10px;font-family:monospace">${timelineHtml(job.logs)}</div>
 <div id="scene-cards">${sceneCards}</div>
 <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
   <button class="btn btn-green" onclick="triggerBuild('${job.id}')">🎞️ Build Story</button>
@@ -215,7 +239,10 @@ async function updatePrompt(id,n,v){await fetch('/api/maprang/'+id+'/scenes/'+n+
 async function regenScene(id,n){if(!confirm('Regenerate scene '+n+'?'))return;const j=await fetch('/api/maprang/'+id+'/scenes/'+n+'/regen',{method:'POST'}).then(r=>r.json());j.ok?location.reload():alert('❌ '+j.error);}
 async function skipScene(id,n){const j=await fetch('/api/maprang/'+id+'/scenes/'+n+'/skip',{method:'POST'}).then(r=>r.json());j.ok?location.reload():alert('❌ '+j.error);}
 async function triggerBuild(id){if(!confirm('เริ่ม Post-production?'))return;const msg=document.getElementById('build-msg');msg.textContent='⏳';const j=await fetch('/api/maprang/'+id+'/build',{method:'POST'}).then(r=>r.json());if(j.ok){msg.textContent='✅ Building...';setTimeout(()=>location.reload(),3000);}else msg.textContent='❌ '+j.error;}
-if(ACTIVE_STATUS==='producing'){setInterval(async()=>{try{const j=await fetch('/api/maprang/status/'+ACTIVE_ID).then(r=>r.json());if(!j.ok)return;const fill=document.getElementById('prod-fill');const done=j.scenes.filter(s=>s.status==='done').length;const total=j.scenes.filter(s=>!s.skipped).length;if(fill)fill.style.width=(total?Math.round(done/total*100):0)+'%';if(['building','pending_approval'].includes(j.status))setTimeout(()=>location.reload(),1500);}catch{}},5000);}
+function fmtE(s){return s>=60?Math.floor(s/60)+'m'+(s%60)+'s':s+'s';}
+function renderTL(logs){if(!logs||!logs.length)return'<span style="color:#475569;font-size:11px">รอเริ่ม...</span>';return logs.map(l=>'<div style="display:flex;gap:8px;padding:2px 0;border-bottom:1px solid #0f172a"><span style="color:#475569;min-width:38px;flex-shrink:0;font-size:10px">+'+fmtE(l.elapsed||0)+'</span><span style="font-size:11px">'+l.msg+'</span></div>').join('');}
+if(ACTIVE_STATUS==='pre_production'){setInterval(async()=>{try{const j=await fetch('/api/maprang/status/'+ACTIVE_ID).then(r=>r.json());if(!j.ok)return;const tl=document.getElementById('timeline');if(tl)tl.innerHTML=renderTL(j.logs);if((j.scenes&&j.scenes.length>0)||j.status!=='pre_production')setTimeout(()=>location.reload(),800);}catch{}},5000);}
+if(ACTIVE_STATUS==='producing'){setInterval(async()=>{try{const j=await fetch('/api/maprang/status/'+ACTIVE_ID).then(r=>r.json());if(!j.ok)return;const fill=document.getElementById('prod-fill');const done=j.scenes.filter(s=>s.status==='done').length;const total=j.scenes.filter(s=>!s.skipped).length;if(fill)fill.style.width=(total?Math.round(done/total*100):0)+'%';const tl=document.getElementById('timeline');if(tl)tl.innerHTML=renderTL(j.logs);if(['building','pending_approval'].includes(j.status))setTimeout(()=>location.reload(),1500);}catch{}},5000);}
 async function loadChars(){const j=await fetch('/api/maprang/characters').then(r=>r.json());const el=document.getElementById('char-list');const chars=j.characters||{};if(!Object.keys(chars).length){el.innerHTML='<span style="color:#475569;font-size:12px">ยังไม่มีตัวละคร</span>';return;}el.innerHTML=Object.values(chars).map(c=>'<div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:8px;font-size:12px;min-width:120px">'+(c.ref_image?'<img src="/dashboard/maprang/charimg/'+c.id+'" style="width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:4px;margin-bottom:4px">':'')+'<div style="font-weight:600">'+(c.name||c.id)+'</div><div style="display:flex;gap:4px;margin-top:4px"><button class="btn btn-ghost btn-sm" onclick="editChar(\''+c.id+'\')">แก้ไข</button><button class="btn btn-red btn-sm" onclick="delChar(\''+c.id+'\')">ลบ</button></div></div>').join('');}
 function editChar(id){fetch('/api/maprang/characters').then(r=>r.json()).then(j=>{const c=j.characters[id];if(!c)return;document.getElementById('cn-id').value=c.id;document.getElementById('cn-name').value=c.name||'';document.getElementById('cn-desc').value=c.description||'';});}
 async function saveChar(){const id=document.getElementById('cn-id').value.trim();const name=document.getElementById('cn-name').value.trim();const description=document.getElementById('cn-desc').value.trim();const msg=document.getElementById('char-msg');if(!id||!description){msg.textContent='⚠️ id และ description required';return;}const j=await fetch('/api/maprang/characters',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,name,description})}).then(r=>r.json());msg.textContent=j.ok?'✅ บันทึกแล้ว':'❌ '+j.error;if(j.ok){['cn-id','cn-name','cn-desc'].forEach(i=>document.getElementById(i).value='');loadChars();}}
