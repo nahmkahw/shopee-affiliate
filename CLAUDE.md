@@ -47,6 +47,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Ripple effects — เวลาแก้ไฟล์เหล่านี้ ต้องอัปเดตที่อื่นด้วย:**
 - `agent-hub/agents.js` — export ใหม่ต้องเพิ่มใน `agent-hub/index.js` ด้วย
+- **สร้าง Agent ใหม่** → ต้องทำครบ 3 ขั้นตอนเสมอ:
+  1. เพิ่ม entry ใน `agent-hub/agents.js` (AGENTS object) — card จะปรากฏใน Hub อัตโนมัติ
+  2. สร้าง `agent-hub/routes/{name}.js` + register ใน `agent-hub/index.js`
+  3. สร้าง `agents/{name}/run.js` เป็น entry point รับ `--action` flag
 - `agent-status.json` schema — กระทบ `agents/*/run.js` ทุกตัวที่ `readStatus`/`writeStatus`
 - `.env` keys ใหม่ — ต้องเพิ่มใน `CLAUDE.md` section Environment และ `agents/manao/pipeline/.env`
 - `agent-hub/routes/manao/` หรือ `namkhao/` — sub-handler ใหม่ต้อง import และ dispatch ใน `manao.js` / `namkhao.js` ด้วย
