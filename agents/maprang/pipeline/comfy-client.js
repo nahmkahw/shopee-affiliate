@@ -70,7 +70,7 @@ async function checkWan21Model(cfg, modelName) {
       console.warn('⚠️  ไม่พบ Wan2.1 model ใน ComfyUI');
       console.warn('   วิธีติดตั้ง:');
       console.warn('   1. เปิด ComfyUI Manager → Install Models');
-      console.warn('   2. หรือรัน: huggingface-cli download Wan-AI/Wan2.1-T2V-1.3B --local-dir ComfyUI/models/unet/');
+      console.warn('   2. หรือรัน: huggingface-cli download Wan-AI/Wan2.1-T2V-1.3B --local-dir ComfyUI/models/diffusion_models/Wan2.1/');
       console.warn('   3. T5 encoder: huggingface-cli download google/umt5-xxl --local-dir ComfyUI/models/clip/');
     }
     return { found, models: models.filter(m => m.toLowerCase().includes('wan')) };
@@ -80,7 +80,8 @@ async function checkWan21Model(cfg, modelName) {
 }
 
 function buildWan21Workflow(positivePrompt, modelName, seed) {
-  const unetName = modelName || 'wan2.1_t2v_1.3B_bf16.safetensors';
+  // ComfyUI โหลด model จาก models/diffusion_models/ → ต้องใส่ subfolder prefix
+  const unetName = modelName || 'Wan2.1/wan2.1_t2v_1.3B_bf16.safetensors';
   return {
     '1': { class_type: 'UNETLoader',
            inputs: { unet_name: unetName, weight_dtype: 'fp8_e4m3fn' } },
