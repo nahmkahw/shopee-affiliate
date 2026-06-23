@@ -1,15 +1,15 @@
+'use strict';
 /**
- * balloon-canvas.js — วาดลูกโป่งคำพูดฝั่ง server (@napi-rs/canvas)
- * โครงสร้าง geom/wrap/draw ตรงกับฝั่งเบราว์เซอร์ (dashboard.html) ให้ผลเหมือนกัน
- *
- * renderBalloonOnImage(baseImagePath, text, tailFrac, outPath) → outPath (jpg)
+ * balloon-canvas.js — server-side balloon renderer (@napi-rs/canvas)
+ * renderBalloonOnImage(baseImagePath, text, tailFrac, outPath, opts?)
+ *   opts.template = 'speech'|'thought'|'shout'|'whisper'  (default: 'speech')
+ *   opts.rect     = {bx,by,bw,bh} normalized 0-1          (default: fixed bottom-right)
  */
 
 const fs   = require('fs');
 const path = require('path');
 const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
 
-// ลงทะเบียนฟอนต์ไทย (ครั้งเดียว)
 let fontReady = false;
 function ensureFont() {
   if (fontReady) return;
@@ -18,12 +18,11 @@ function ensureFont() {
   fontReady = true;
 }
 
-// geom เดียวกับเบราว์เซอร์: ขวาล่าง, ฟอนต์ 0.038W, หางชี้ตาม tailFrac
 function geom(W, H, tailFrac) {
   const pad = 0.026 * W;
-  const bw = 0.56 * W, bh = 0.30 * H;
-  const bx = W - bw - 0.04 * W;
-  const by = H - bh - 0.05 * H;
+  const bw = 0.60 * W, bh = 0.26 * H;
+  const bx = 0.05 * W;
+  const by = 0.04 * H;
   const fontSize = 0.038 * W;
   return {
     bx, by, bw, bh, pad,
@@ -58,45 +57,144 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function drawBalloon(ctx, W, H, text, tailFrac) {
-  const g = geom(W, H, tailFrac);
-  ctx.font = `700 ${g.fontSize}px Sarabun, Tahoma, sans-serif`;
-  ctx.textBaseline = 'top';
-  ctx.lineJoin = 'round';
-
-  // หาง (ฐานบนขอบบน-ซ้าย ปลายชี้ตาม tailFrac)
-  ctx.beginPath();
-  ctx.moveTo(g.bx + 0.10 * g.bw, g.by + 1);
-  ctx.lineTo(g.bx + 0.30 * g.bw, g.by + 1);
-  ctx.lineTo(g.tail.cx, g.tail.cy);
-  ctx.closePath();
-  ctx.fillStyle = '#fff'; ctx.fill();
-  ctx.lineWidth = g.border; ctx.strokeStyle = '#111'; ctx.stroke();
-
-  // กล่องมน
-  roundRect(ctx, g.bx, g.by, g.bw, g.bh, g.r);
-  ctx.fillStyle = '#fff'; ctx.fill();
-  ctx.lineWidth = g.border; ctx.strokeStyle = '#111'; ctx.stroke();
-
-  // ข้อความ (กึ่งกลางแนวตั้ง)
-  const lines = wrapLines(ctx, text, g.txt.w);
-  const maxLines = Math.floor(g.txt.h / g.lineH);
+function drawText(ctx, text, bx, by, bw, bh, pad, fontSize, lineH) {
+  const txt = { x: bx + pad, y: by + pad, w: bw - 2 * pad, h: bh - 2 * pad };
+  const lines = wrapLines(ctx, text, txt.w);
+  const maxLines = Math.floor(txt.h / lineH);
   const shown = lines.slice(0, maxLines);
-  let y = g.txt.y + Math.max(0, (g.txt.h - shown.length * g.lineH) / 2);
+  let y = txt.y + Math.max(0, (txt.h - shown.length * lineH) / 2);
   ctx.fillStyle = '#111'; ctx.textAlign = 'center';
-  for (const ln of shown) { ctx.fillText(ln, g.bx + g.bw / 2, y); y += g.lineH; }
+  for (const ln of shown) { ctx.fillText(ln, bx + bw / 2, y); y += lineH; }
 }
 
-async function renderBalloonOnImage(baseImagePath, text, tailFrac, outPath) {
+function drawSpeech(ctx, bx, by, bw, bh, tail, pad, r, border, fontSize, lineH, text) {
+  ctx.beginPath();
+  ctx.moveTo(bx + 0.10 * bw, by + 1);
+  ctx.lineTo(bx + 0.30 * bw, by + 1);
+  ctx.lineTo(tail.cx, tail.cy);
+  ctx.closePath();
+  ctx.fillStyle = '#fff'; ctx.fill();
+  ctx.lineWidth = border; ctx.strokeStyle = '#111'; ctx.stroke();
+
+  roundRect(ctx, bx, by, bw, bh, r);
+  ctx.fillStyle = '#fff'; ctx.fill();
+  ctx.lineWidth = border; ctx.strokeStyle = '#111'; ctx.stroke();
+
+  ctx.font = `700 ${fontSize}px Sarabun, Tahoma, sans-serif`;
+  ctx.textBaseline = 'top'; ctx.lineJoin = 'round';
+  drawText(ctx, text, bx, by, bw, bh, pad, fontSize, lineH);
+}
+
+function drawThought(ctx, bx, by, bw, bh, tail, pad, border, fontSize, lineH, text) {
+  const cx = bx + bw / 2, cy = by + bh / 2;
+  const rx = bw / 2, ry = bh / 2;
+  const bumps = 9, bumpR = Math.min(rx, ry) * 0.28;
+
+  ctx.fillStyle = '#fff'; ctx.strokeStyle = '#111'; ctx.lineWidth = border;
+  for (let i = 0; i < bumps; i++) {
+    const a = (i / bumps) * Math.PI * 2 - Math.PI / 2;
+    ctx.beginPath();
+    ctx.arc(cx + rx * 0.78 * Math.cos(a), cy + ry * 0.78 * Math.sin(a), bumpR, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx * 0.72, ry * 0.72, 0, 0, Math.PI * 2);
+  ctx.fill(); ctx.stroke();
+
+  const dots = [0.7, 0.5, 0.3];
+  for (const s of dots) {
+    ctx.beginPath();
+    ctx.arc(cx + (tail.cx - cx) * (1 - s), cy + (tail.cy - cy) * (1 - s), bumpR * s * 0.7, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+  }
+
+  ctx.font = `700 ${fontSize}px Sarabun, Tahoma, sans-serif`;
+  ctx.textBaseline = 'top'; ctx.lineJoin = 'round';
+  drawText(ctx, text, bx + bw * 0.14, by + bh * 0.14, bw * 0.72, bh * 0.72, pad * 0.5, fontSize, lineH);
+}
+
+function drawShout(ctx, bx, by, bw, bh, tail, pad, border, fontSize, lineH, text) {
+  const cx = bx + bw / 2, cy = by + bh / 2;
+  const inner = Math.min(bw, bh) * 0.38, outer = Math.min(bw, bh) * 0.55;
+  const pts = 16;
+
+  ctx.beginPath();
+  for (let i = 0; i < pts * 2; i++) {
+    const a = (i / (pts * 2)) * Math.PI * 2 - Math.PI / 2;
+    const rx2 = (i % 2 === 0 ? outer : inner) * (bw / Math.min(bw, bh));
+    const ry2 = (i % 2 === 0 ? outer : inner) * (bh / Math.min(bw, bh));
+    i === 0 ? ctx.moveTo(cx + rx2 * Math.cos(a), cy + ry2 * Math.sin(a))
+            : ctx.lineTo(cx + rx2 * Math.cos(a), cy + ry2 * Math.sin(a));
+  }
+  ctx.closePath();
+  ctx.fillStyle = '#fff'; ctx.fill();
+  ctx.lineWidth = border; ctx.strokeStyle = '#111'; ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(bx + 0.15 * bw, by + 1);
+  ctx.lineTo(bx + 0.35 * bw, by + 1);
+  ctx.lineTo(tail.cx, tail.cy);
+  ctx.closePath();
+  ctx.fillStyle = '#fff'; ctx.fill(); ctx.stroke();
+
+  ctx.font = `900 ${fontSize * 1.05}px Sarabun, Tahoma, sans-serif`;
+  ctx.textBaseline = 'top'; ctx.lineJoin = 'round';
+  drawText(ctx, text, bx + bw * 0.1, by + bh * 0.1, bw * 0.8, bh * 0.8, pad * 0.5, fontSize, lineH);
+}
+
+function drawWhisper(ctx, bx, by, bw, bh, tail, pad, r, border, fontSize, lineH, text) {
+  const tailW = 0.06 * bw;
+  ctx.save();
+  ctx.setLineDash([border * 2, border * 2]);
+  ctx.beginPath();
+  ctx.moveTo(bx + 0.12 * bw, by + 1);
+  ctx.lineTo(bx + 0.12 * bw + tailW, by + 1);
+  ctx.lineTo(tail.cx, tail.cy);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.fill();
+  ctx.lineWidth = border; ctx.strokeStyle = '#666'; ctx.stroke();
+
+  roundRect(ctx, bx, by, bw, bh, r * 1.5);
+  ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.fill();
+  ctx.lineWidth = border; ctx.strokeStyle = '#666'; ctx.stroke();
+  ctx.restore();
+
+  ctx.font = `400 ${fontSize * 0.9}px Sarabun, Tahoma, sans-serif`;
+  ctx.textBaseline = 'top'; ctx.lineJoin = 'round';
+  drawText(ctx, text, bx, by, bw, bh, pad, fontSize * 0.9, lineH * 0.9);
+}
+
+function drawBalloon(ctx, W, H, text, tailFrac, opts = {}) {
+  const template = opts.template || 'speech';
+  let bx, by, bw, bh;
+  if (opts.rect) {
+    bx = opts.rect.bx * W; by = opts.rect.by * H;
+    bw = opts.rect.bw * W; bh = opts.rect.bh * H;
+  } else {
+    const g = geom(W, H, tailFrac);
+    bx = g.bx; by = g.by; bw = g.bw; bh = g.bh;
+  }
+  const tail = { cx: (tailFrac?.x ?? 0.46) * W, cy: (tailFrac?.y ?? 0.46) * H };
+  const pad = 0.026 * W, r = 0.035 * W, border = Math.max(2, 0.006 * W);
+  const fontSize = 0.038 * W * Math.min(1.2, bw / (0.56 * W));
+  const lineH = fontSize * 1.25;
+  ctx.lineJoin = 'round';
+
+  if (template === 'thought') drawThought(ctx, bx, by, bw, bh, tail, pad, border, fontSize, lineH, text);
+  else if (template === 'shout') drawShout(ctx, bx, by, bw, bh, tail, pad, border, fontSize, lineH, text);
+  else if (template === 'whisper') drawWhisper(ctx, bx, by, bw, bh, tail, pad, r, border, fontSize, lineH, text);
+  else drawSpeech(ctx, bx, by, bw, bh, tail, pad, r, border, fontSize, lineH, text);
+}
+
+async function renderBalloonOnImage(baseImagePath, text, tailFrac, outPath, opts = {}) {
   ensureFont();
   const img = await loadImage(baseImagePath);
   const W = img.width, H = img.height;
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
   ctx.drawImage(img, 0, 0, W, H);
-  if (text && text.trim()) drawBalloon(ctx, W, H, text, tailFrac);
+  if (text && text.trim()) drawBalloon(ctx, W, H, text, tailFrac, opts);
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  // @napi-rs/canvas: quality เป็น 0–100 (ไม่ใช่ 0–1 เหมือน browser) — 0.95 จะปัดเป็น ~1 = พังหนัก!
   fs.writeFileSync(outPath, canvas.toBuffer('image/jpeg', 95));
   return outPath;
 }

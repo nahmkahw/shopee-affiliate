@@ -13,7 +13,7 @@ const { spawn } = require('child_process');
 
 const { tgRequest, sendMsg, sendMenu } = require('../../lib/namkhao-bot-tg');
 const { loadQueue, handleNewsCallback }  = require('../../lib/namkhao-bot-news');
-const { buildStatusMessage, checkConnections } = require('../../lib/namkhao-bot-status');
+const { buildStatusMessage, checkBotConnections } = require('../../lib/namkhao-bot-status');
 const { schedulerLoop } = require('../../lib/namkhao-bot-scheduler');
 
 const ROOT          = path.resolve(__dirname, '..', '..');
@@ -142,7 +142,7 @@ async function handleCheckAgent(chatId) {
   await send(chatId, buildStatusMessage(ROOT, STATUS_FILE));
 
   const pipeEnv    = readPipelineEnv();
-  const connResults = await checkConnections(TOKEN, pipeEnv);
+  const connResults = await checkBotConnections(TOKEN, pipeEnv);
   const allOk      = connResults.every(r => r.ok);
   const now        = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
 

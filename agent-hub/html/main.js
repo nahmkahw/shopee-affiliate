@@ -41,7 +41,7 @@ function buildMainPage(status, AGENTS, ROOT) {
 
     return `
     <div onclick="window.location='/agent/${name}'"
-         class="agent-card"
+         class="agent-card" data-agent="${name}"
          style="cursor:pointer;border-radius:24px;overflow:hidden;position:relative;
                 aspect-ratio:3/4;
                 border:2px solid ${cfg.color};
@@ -88,7 +88,22 @@ function buildMainPage(status, AGENTS, ROOT) {
                   font-size:11px;font-weight:700;color:white;
                   display:flex;align-items:center;gap:4px">
         ⚙️ ${st.currentAction || ''}
-      </div>` : ''}
+      </div>` : `
+      <!-- Avatar change button — top left (idle only) -->
+      <div onclick="event.stopPropagation();openHubAvatarModal('${name}','${escHtml(cfg.label)}','${cfg.emoji}','${cfg.color}')"
+           title="เปลี่ยนรูปโปรไฟล์"
+           style="position:absolute;top:14px;left:14px;
+                  width:32px;height:32px;border-radius:50%;
+                  background:rgba(0,0,0,0.55);
+                  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+                  border:1px solid rgba(255,255,255,0.18);
+                  display:flex;align-items:center;justify-content:center;
+                  font-size:15px;cursor:pointer;
+                  transition:background 0.2s;opacity:0.85"
+           onmouseover="this.style.background='${cfg.color}CC';this.style.opacity='1'"
+           onmouseout="this.style.background='rgba(0,0,0,0.55)';this.style.opacity='0.85'">
+        🎨
+      </div>`}
 
       <!-- Name + info overlay — bottom center -->
       <div style="position:absolute;bottom:0;left:0;right:0;
@@ -254,7 +269,300 @@ function buildMainPage(status, AGENTS, ROOT) {
   </div>
 </div>
 
-<script>setTimeout(() => location.reload(), 30000);</script>
+<!-- ══ Hub Avatar Modal ══ -->
+<div id="hub-avatar-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;overflow-y:auto;padding:20px">
+  <div style="max-width:680px;margin:0 auto;background:#1E293B;border-radius:20px;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,0.5)">
+
+    <!-- Header -->
+    <div id="hub-av-header" style="padding:20px 24px;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div id="hub-av-title" style="font-size:18px;font-weight:800;color:white">🎨 Generate รูปโปรไฟล์ AI</div>
+        <div id="hub-av-sub" style="font-size:12px;color:rgba(255,255,255,0.75);margin-top:2px"></div>
+      </div>
+      <button onclick="closeHubAvatarModal()" style="background:rgba(255,255,255,0.15);border:none;color:white;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center">✕</button>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:24px;display:flex;flex-direction:column;gap:20px">
+
+      <!-- Step 1: Options -->
+      <div id="hub-gen-options" style="display:flex;flex-direction:column;gap:16px">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:#94A3B8;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">เพศตัวละคร</div>
+          <div style="display:flex;gap:10px">
+            <button id="hub-btn-f" onclick="hubSetGender('f')"
+              style="flex:1;padding:12px;border-radius:12px;border:2px solid #6366F1;background:#6366F122;color:white;cursor:pointer;font-size:16px;font-family:inherit;font-weight:700;transition:all .2s">
+              ♀ หญิง
+            </button>
+            <button id="hub-btn-m" onclick="hubSetGender('m')"
+              style="flex:1;padding:12px;border-radius:12px;border:2px solid #475569;background:transparent;color:#94A3B8;cursor:pointer;font-size:16px;font-family:inherit;font-weight:700;transition:all .2s">
+              ♂ ชาย
+            </button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:#94A3B8;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">การแต่งตัว</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+            ${['นักเรียน','ออฟฟิศ','มิโค','บัตเลอร์/เมด','แนวต่อสู้'].map((o,i) => {
+              const icons = ['🎒','💼','⛩️','🎩','⚔️'];
+              return `<button id="hub-outfit-${i}" data-outfit="${o}" onclick="hubSetOutfit('${o}',${i})"
+                style="padding:10px 8px;border-radius:10px;border:2px solid #475569;background:transparent;
+                       color:#94A3B8;cursor:pointer;font-size:13px;font-family:inherit;font-weight:600;
+                       transition:all .2s;display:flex;flex-direction:column;align-items:center;gap:4px">
+                <span style="font-size:20px">${icons[i]}</span>${o}
+              </button>`;
+            }).join('')}
+          </div>
+        </div>
+        <button id="hub-gen-btn" onclick="hubStartGenerate()"
+          style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#6366F1,#6366F1CC);
+                 color:white;font-size:16px;font-family:inherit;font-weight:700;cursor:pointer;transition:all .2s;
+                 display:flex;align-items:center;justify-content:center;gap:8px"
+          onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+          ✨ Generate 2 รูป
+        </button>
+      </div>
+
+      <!-- Step 2: Loading -->
+      <div id="hub-gen-loading" style="display:none;text-align:center;padding:20px 0">
+        <div style="font-size:40px;margin-bottom:12px;animation:hub-spin 2s linear infinite;display:inline-block">⚙️</div>
+        <div style="font-size:15px;color:#E2E8F0;font-weight:600" id="hub-load-text">กำลัง Generate รูป...</div>
+        <div style="margin-top:12px;background:#0F172A;border-radius:999px;height:6px;overflow:hidden">
+          <div id="hub-load-bar" style="height:6px;background:#6366F1;border-radius:999px;width:0%;transition:width .5s"></div>
+        </div>
+        <div style="font-size:12px;color:#64748B;margin-top:6px" id="hub-load-sub">ส่ง job ไป ComfyUI...</div>
+      </div>
+
+      <!-- Step 3: Results -->
+      <div id="hub-gen-results" style="display:none;flex-direction:column;gap:16px">
+        <div style="font-size:13px;font-weight:600;color:#94A3B8">คลิกเลือกรูปที่ต้องการ:</div>
+        <div id="hub-img-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px"></div>
+        <div style="display:flex;gap:10px;margin-top:4px">
+          <button id="hub-save-btn" onclick="hubSaveSelectedAvatar()" disabled
+            style="flex:2;padding:12px;border-radius:12px;border:none;background:#64748B;color:#94A3B8;
+                   font-size:15px;font-family:inherit;font-weight:700;cursor:not-allowed;transition:all .2s">
+            ✅ ใช้รูปที่เลือก
+          </button>
+          <button onclick="hubResetToGen()"
+            style="flex:1;padding:12px;border-radius:12px;border:1px solid #475569;background:transparent;
+                   color:#94A3B8;font-size:14px;font-family:inherit;cursor:pointer">
+            🔄 Generate ใหม่
+          </button>
+        </div>
+        <button onclick="hubResetSvgAvatar()"
+          style="width:100%;padding:8px;border-radius:8px;border:1px solid #334155;
+                 background:transparent;color:#64748B;font-size:12px;font-family:inherit;cursor:pointer">
+          🗑 รีเซ็ตกลับเป็นรูป SVG เดิม
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes hub-spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+</style>
+
+<script>
+let _hubReloadTimer = setTimeout(() => location.reload(), 30000);
+
+// ══ Hub Avatar Modal ══════════════════════════════════════════════
+let hubAgentName = '', hubColor = '#6366F1', hubGender = 'f', hubOutfit = 'นักเรียน';
+let hubSelectedImg = null, hubPollTimers = [];
+
+function openHubAvatarModal(name, label, emoji, color) {
+  clearTimeout(_hubReloadTimer); // หยุด auto-reload ระหว่าง generate
+  hubAgentName = name; hubColor = color;
+  document.getElementById('hub-av-title').textContent = '🎨 Generate รูปโปรไฟล์ AI';
+  document.getElementById('hub-av-sub').textContent   = emoji + ' ' + label + ' — AnythingXL Anime/Manga';
+  document.getElementById('hub-av-header').style.background = 'linear-gradient(135deg,' + color + 'CC,' + color + '88)';
+  document.getElementById('hub-gen-btn').style.background = 'linear-gradient(135deg,' + color + ',' + color + 'CC)';
+  document.getElementById('hub-load-bar').style.background = color;
+  hubResetToGen();
+  document.getElementById('hub-avatar-modal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+}
+function closeHubAvatarModal() {
+  document.getElementById('hub-avatar-modal').style.display = 'none';
+  document.body.style.overflow = '';
+  hubPollTimers.forEach(clearInterval); hubPollTimers = [];
+  _hubReloadTimer = setTimeout(() => location.reload(), 30000); // resume
+}
+document.getElementById('hub-avatar-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeHubAvatarModal();
+});
+
+function hubSetGender(g) {
+  hubGender = g;
+  ['f','m'].forEach(v => {
+    const el = document.getElementById('hub-btn-' + v);
+    if (!el) return;
+    const active = v === g;
+    el.style.borderColor = active ? hubColor : '#475569';
+    el.style.background  = active ? hubColor + '33' : 'transparent';
+    el.style.color       = active ? 'white' : '#94A3B8';
+  });
+}
+function hubSetOutfit(outfit, idx) {
+  hubOutfit = outfit;
+  for (let i = 0; i < 5; i++) {
+    const b = document.getElementById('hub-outfit-' + i);
+    if (!b) continue;
+    const active = i === idx;
+    b.style.borderColor = active ? hubColor : '#475569';
+    b.style.background  = active ? hubColor + '22' : 'transparent';
+    b.style.color       = active ? 'white' : '#94A3B8';
+  }
+}
+function hubResetToGen() {
+  hubPollTimers.forEach(clearInterval); hubPollTimers = [];
+  hubSelectedImg = null;
+  document.getElementById('hub-gen-options').style.display  = 'flex';
+  document.getElementById('hub-gen-loading').style.display  = 'none';
+  document.getElementById('hub-gen-results').style.display  = 'none';
+  document.getElementById('hub-load-bar').style.width = '0%';
+  hubSetGender(hubGender);
+  hubSetOutfit(hubOutfit, ['นักเรียน','ออฟฟิศ','มิโค','บัตเลอร์/เมด','แนวต่อสู้'].indexOf(hubOutfit));
+}
+
+async function hubStartGenerate() {
+  document.getElementById('hub-gen-options').style.display  = 'none';
+  document.getElementById('hub-gen-loading').style.display  = 'block';
+  document.getElementById('hub-gen-results').style.display  = 'none';
+  document.getElementById('hub-load-text').textContent = 'กำลัง Generate รูป...';
+  document.getElementById('hub-load-sub').textContent  = 'ส่ง job ไป ComfyUI (AnythingXL)...';
+  document.getElementById('hub-load-bar').style.width  = '8%';
+
+  let promptIds;
+  try {
+    const r = await fetch('/api/generate-avatar', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ gender: hubGender, outfit: hubOutfit }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'ComfyUI error');
+    promptIds = j.promptIds;
+  } catch(e) {
+    document.getElementById('hub-load-text').textContent = '❌ ' + e.message;
+    document.getElementById('hub-load-sub').textContent  = 'ตรวจสอบ ComfyUI ที่ 10.3.17.118:8188';
+    return;
+  }
+
+  document.getElementById('hub-load-sub').textContent = 'รอ ComfyUI render... (ประมาณ 30-90 วิ)';
+  document.getElementById('hub-load-bar').style.width = '20%';
+
+  document.getElementById('hub-gen-results').style.display = 'flex';
+  document.getElementById('hub-img-grid').innerHTML = [0,1].map(i => \`
+    <div id="hub-img-slot-\${i}"
+         style="aspect-ratio:1;border-radius:12px;background:#0F172A;border:2px solid #334155;
+                display:flex;align-items:center;justify-content:center;cursor:pointer;
+                overflow:hidden;transition:all .2s;position:relative">
+      <div style="text-align:center;color:#475569">
+        <div style="font-size:28px;animation:hub-spin 2s linear infinite;display:inline-block">⚙️</div>
+        <div style="font-size:12px;margin-top:6px">รูปที่ \${i+1}</div>
+      </div>
+    </div>\`).join('');
+
+  let doneCount = 0;
+  const startTime = Date.now();
+
+  promptIds.forEach((pid, idx) => {
+    const timer = setInterval(async () => {
+      try {
+        const j = await (await fetch('/api/avatar-job/' + pid)).json();
+        if (j.status === 'done') {
+          doneCount++;
+          const slot = document.getElementById('hub-img-slot-' + idx);
+          if (slot) {
+            slot.setAttribute('data-filename',  j.filename  || '');
+            slot.setAttribute('data-subfolder', j.subfolder || '');
+            slot.setAttribute('data-type',      j.type      || 'output');
+            slot.onclick = () => hubSelectImageSlot(idx);
+            slot.innerHTML = \`<img src="\${j.viewUrl}?t=\${Date.now()}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">\`;
+          }
+          const pct = 20 + Math.round(doneCount / 2 * 75);
+          document.getElementById('hub-load-bar').style.width = pct + '%';
+          document.getElementById('hub-load-sub').textContent = doneCount + '/2 รูปเสร็จแล้ว';
+          if (doneCount === 2) document.getElementById('hub-gen-loading').style.display = 'none';
+          clearInterval(timer);
+        } else if (j.status === 'error') {
+          const slot = document.getElementById('hub-img-slot-' + idx);
+          if (slot) slot.innerHTML = '<div style="color:#EF4444;font-size:12px;text-align:center">❌ Error</div>';
+          clearInterval(timer);
+        }
+        document.getElementById('hub-load-text').textContent = 'กำลัง Generate... (' + Math.round((Date.now()-startTime)/1000) + ' วิ)';
+      } catch {}
+    }, 2500);
+    hubPollTimers.push(timer);
+  });
+}
+
+function hubSelectImageSlot(idx) {
+  const slot = document.getElementById('hub-img-slot-' + idx);
+  if (!slot || !slot.querySelector('img')) return;
+  hubSelectedImg = {
+    filename:  slot.getAttribute('data-filename')  || '',
+    subfolder: slot.getAttribute('data-subfolder') || '',
+    type:      slot.getAttribute('data-type')      || 'output',
+  };
+  for (let i = 0; i < 2; i++) {
+    const s = document.getElementById('hub-img-slot-' + i);
+    if (s) { s.style.borderColor = '#334155'; s.style.boxShadow = 'none'; }
+  }
+  slot.style.borderColor = hubColor;
+  slot.style.boxShadow   = '0 0 0 4px ' + hubColor + '55';
+  const saveBtn = document.getElementById('hub-save-btn');
+  if (saveBtn) {
+    saveBtn.disabled = false;
+    saveBtn.style.background = 'linear-gradient(135deg,' + hubColor + ',' + hubColor + 'CC)';
+    saveBtn.style.color  = 'white';
+    saveBtn.style.cursor = 'pointer';
+  }
+}
+
+async function hubSaveSelectedAvatar() {
+  if (!hubSelectedImg) return;
+  const btn = document.getElementById('hub-save-btn');
+  if (btn) { btn.textContent = '💾 กำลังบันทึก...'; btn.disabled = true; }
+  try {
+    const r = await fetch('/api/save-avatar', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ agentName: hubAgentName, ...hubSelectedImg }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'error');
+    hubShowToast('✅ บันทึกรูปโปรไฟล์เรียบร้อย!');
+    document.querySelectorAll('img.card-avatar').forEach(img => {
+      if (img.closest('[data-agent="' + hubAgentName + '"]')) img.src = '/avatar/' + hubAgentName + '?t=' + Date.now();
+    });
+    setTimeout(() => { closeHubAvatarModal(); location.reload(); }, 1000);
+  } catch(e) {
+    hubShowToast('❌ ' + e.message, true);
+    if (btn) { btn.textContent = '✅ ใช้รูปที่เลือก'; btn.disabled = false; }
+  }
+}
+
+async function hubResetSvgAvatar() {
+  if (!confirm('รีเซ็ตกลับเป็นรูป SVG เดิมใช่ไหม?')) return;
+  await fetch('/api/reset-avatar', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ agentName: hubAgentName }),
+  });
+  hubShowToast('รีเซ็ตกลับ SVG เรียบร้อย');
+  closeHubAvatarModal();
+  location.reload();
+}
+
+function hubShowToast(msg, err=false) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;bottom:24px;right:24px;background:'+(err?'#EF4444':'#1a1d27')
+    +';color:white;padding:12px 20px;border-radius:10px;font-size:14px;z-index:99999;border:1px solid rgba(255,255,255,0.15)';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2800);
+}
+</script>
 </body>
 </html>`;
 }
@@ -392,7 +700,7 @@ function buildAgentPage(name, status, AGENTS, ROOT, readLog) {
                  color:white;font-size:16px;font-family:inherit;font-weight:700;
                  cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:8px"
           onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
-          ✨ Generate 4 รูป
+          ✨ Generate 2 รูป
         </button>
       </div>
 
@@ -517,7 +825,7 @@ const agentName   = '${name}';
 const agentColor  = '${cfg.color}';
 const hasDash     = ${cfg.hasDashboard};
 let lastLogCount  = ${logs.length};
-let currentTab    = 'control';
+let currentTab    = hasDash ? 'dashboard' : 'control';
 
 function switchTab(tab) {
   currentTab = tab;
@@ -635,6 +943,10 @@ function showToast(msg, err=false) {
 window.addEventListener('load', () => {
   const box = document.getElementById('log-container');
   if (box) box.scrollTop = box.scrollHeight;
+  // auto-open avatar modal ถ้า URL มี #avatar
+  if (location.hash === '#avatar') openAvatarModal();
+  // default tab: dashboard ถ้า hasDashboard, ไม่งั้น control
+  switchTab(currentTab);
 });
 setInterval(refreshLog, 2000);
 setInterval(refreshStatus, 3000);
@@ -726,7 +1038,7 @@ async function startGenerate() {
 
   // Show grid with placeholders immediately
   document.getElementById('gen-results').style.display = 'flex';
-  document.getElementById('img-grid').innerHTML = [0,1,2,3].map(i => \`
+  document.getElementById('img-grid').innerHTML = [0,1].map(i => \`
     <div id="img-slot-\${i}"
          style="aspect-ratio:1;border-radius:12px;background:#0F172A;border:2px solid #334155;
                 display:flex;align-items:center;justify-content:center;cursor:pointer;
@@ -755,10 +1067,10 @@ async function startGenerate() {
             slot.onclick = () => selectImageSlot(idx);
             slot.innerHTML = \`<img src="\${j.viewUrl}?t=\${Date.now()}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">\`;
           }
-          const pct = 20 + Math.round(doneCount / 4 * 75);
+          const pct = 20 + Math.round(doneCount / 2 * 75);
           document.getElementById('load-bar').style.width = pct + '%';
-          document.getElementById('load-sub').textContent = doneCount + '/4 รูปเสร็จแล้ว';
-          if (doneCount === 4) document.getElementById('gen-loading').style.display = 'none';
+          document.getElementById('load-sub').textContent = doneCount + '/2 รูปเสร็จแล้ว';
+          if (doneCount === 2) document.getElementById('gen-loading').style.display = 'none';
           clearInterval(timer);
         } else if (j.status === 'error') {
           const slot = document.getElementById('img-slot-'+idx);
@@ -786,7 +1098,7 @@ function selectImageSlot(idx) {
   };
 
   // highlight selected
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 2; i++) {
     const s = document.getElementById('img-slot-'+i);
     if (s) { s.style.borderColor = '#334155'; s.style.boxShadow = 'none'; }
   }

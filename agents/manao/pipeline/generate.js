@@ -17,6 +17,12 @@ require('dotenv').config();
 const fs   = require('fs');
 const path = require('path');
 
+const { loadConfig }        = require('./config');
+const { generateNewsImage } = require('../../../lib/comfy-news');
+const { sleep }             = require('../../../lib/utils');
+const _cfg = loadConfig();
+const COMFY_CFG = _cfg.comfyui || {};
+
 const { TG_ENABLED, sendTelegramApproval } = require('./lib/telegram');
 const { OLLAMA_HOST, OLLAMA_MODEL, checkOllamaReady } = require('./lib/ollama');
 const { generateContent } = require('./lib/content');
@@ -31,8 +37,6 @@ const dateArg    = dateIdx !== -1 ? args[dateIdx + 1] : null;
 const force      = args.includes('--force');
 const resend     = args.includes('--resend');
 const noTelegram = args.includes('--no-telegram');
-
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 (async function main() {
   if (resend) {
@@ -109,13 +113,15 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
     fs.writeFileSync(path.join(contentDir, 'facebook.md'),  content.facebook,  'utf8');
     fs.writeFileSync(path.join(contentDir, 'instagram.md'), content.instagram, 'utf8');
 
-    process.stdout.write('  🎨 กำลัง Generate รูปผ่าน ComfyUI...');
-    try {
-      const { generateNewsImage } = require('./comfy-gen');
-      await generateNewsImage(slug, data.title || slug);
-      process.stdout.write(' ✓\n');
-    } catch (e) {
-      process.stdout.write(` ⚠️ ข้าม (${e.message.substring(0, 80)})\n`);
+    if (COMFY_CFG.enabled) {
+      process.stdout.write('  🎨 กำลัง Generate รูปผ่าน ComfyUI...');
+      try {
+        const imagePath = path.join(NEWS_DIR, slug, 'image.jpg');
+        await generateNewsImage(COMFY_CFG, imagePath, data.title || slug);
+        process.stdout.write(' ✓\n');
+      } catch (e) {
+        process.stdout.write(` ⚠️ ข้าม (${e.message.substring(0, 80)})\n`);
+      }
     }
 
     const sent = noTelegram ? false : await sendTelegramApproval(slug, data, content.facebook, NEWS_DIR);

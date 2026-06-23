@@ -1,3 +1,15 @@
+'use strict';
+/**
+ * agents/manao/pipeline/lib/telegram.js
+ *
+ * Pipeline-local Telegram sender สำหรับ generate.js เท่านั้น
+ * ต่างจาก lib/tg-approval.js ตรงที่:
+ *  - export TG_ENABLED (generate.js ใช้ตัดสินใจ set status)
+ *  - sendTelegramApproval() return bool (true = ส่งสำเร็จ)
+ *  - ใช้ tg-queue local module (makeShortId + saveQueue)
+ *  - preview ใช้ fbContent ไม่ใช่ master
+ */
+
 const https = require('https');
 const fs    = require('fs');
 const path  = require('path');

@@ -2,397 +2,174 @@
 
 jest.mock('fs');
 jest.mock('child_process');
-jest.mock('msedge-tts');
-jest.mock('qrcode');
+jest.mock('../lib/tiktok-parser');
+jest.mock('../lib/tiktok-tts');
+jest.mock('../lib/tiktok-ffmpeg');
+jest.mock('msedge-tts', () => ({}), { virtual: true });
 
-const fs = require('fs');
-const cp = require('child_process');
+const fs               = require('fs');
+const { execFileSync } = require('child_process');
+const { parseTikTokScript }                           = require('../lib/tiktok-parser');
+const { generateVoiceover, getMediaDuration }         = require('../lib/tiktok-tts');
+const { findProductImages, selectImages, generateQRCode,
+        createSceneClip, concatClips }                = require('../lib/tiktok-ffmpeg');
+const { run } = require('../make-tiktok-video');
 
-const {
-  parseTikTokScript,
-  stripEmoji,
-  wrapText,
-  escapeDrawtext,
-} = require('../lib/tiktok-parser');
+const ITEM_ID = 'test_item_123';
 
-const { getMediaDuration } = require('../lib/tiktok-tts');
+const DATA_JSON = {
+  title: 'สินค้าทดสอบ',
+  price: '199',
+  discount: '10%',
+  affiliate_short_link: 'https://s.shopee.co.th/test',
+  status: 'draft',
+};
 
-const {
-  findThaiFont,
-  isPromoImage,
-  concatClips,
-  createSceneClip,
-  findProductImages,
-  selectImages,
-} = require('../lib/tiktok-ffmpeg');
+const SCENES = [
+  { time: '0:00-0:10', voiceover: 'สวัสดีค่ะ', visual: 'product', onScreen: 'ลดราคา' },
+  { time: '0:10-0:20', voiceover: 'สินค้าดีมาก', visual: 'close-up', onScreen: 'ซื้อเลย' },
+];
+
+const IMAGES = [
+  { name: '1.jpg', path: '/p/images/1.jpg', width: 800, height: 800 },
+  { name: '2.jpg', path: '/p/images/2.jpg', width: 800, height: 800 },
+];
+
+function setupMocks() {
+  fs.existsSync.mockImplementation(p => {
+    if (p.includes('data.json')) return true;
+    if (p.includes('tiktok.md')) return true;
+    if (p.includes('video.mp4')) return false;
+    return false;
+  });
+  fs.readFileSync.mockImplementation(p => {
+    if (p.includes('data.json')) return JSON.stringify(DATA_JSON);
+    return '## Script\n| Time | Voiceover |\n|------|-----------|';
+  });
+  fs.readdirSync.mockReturnValue([]);
+  fs.mkdirSync.mockReturnValue(undefined);
+  fs.writeFileSync.mockReturnValue(undefined);
+  fs.statSync.mockReturnValue({ size: 2048000 });
+  fs.unlinkSync.mockReturnValue(undefined);
+  fs.rmdirSync.mockReturnValue(undefined);
+
+  execFileSync.mockReturnValue(Buffer.from('ffmpeg version 6'));
+
+  parseTikTokScript.mockReturnValue(SCENES);
+  generateVoiceover.mockResolvedValue(undefined);
+  getMediaDuration.mockReturnValue(5.0);
+  findProductImages.mockReturnValue(IMAGES);
+  selectImages.mockReturnValue({ topImages: IMAGES, bgImage: IMAGES[0], thumbImage: IMAGES[1] });
+  generateQRCode.mockResolvedValue(undefined);
+  createSceneClip.mockReturnValue(undefined);
+  concatClips.mockReturnValue(undefined);
+}
 
 beforeEach(() => {
   jest.clearAllMocks();
+  setupMocks();
+  jest.spyOn(process, 'exit').mockImplementation(code => { throw new Error(`exit:${code}`); });
 });
 
-// ── parseTikTokScript ─────────────────────────────────────────────────────────
-
-describe('parseTikTokScript', () => {
-  const MD = `
-| TIME | VOICEOVER | VISUAL | ON-SCREEN |
-|------|-----------|--------|-----------|
-| 0:00–0:05 | สวัสดี | product | **Title** |
-| 0:05–0:10 | ราคาดี | close-up | ราคา 299 |
-`;
-
-  test('parses two scenes from table', () => {
-    const scenes = parseTikTokScript(MD);
-    expect(scenes).toHaveLength(2);
-  });
-
-  test('scene has correct fields', () => {
-    const scenes = parseTikTokScript(MD);
-    expect(scenes[0].time).toBe('0:00–0:05');
-    expect(scenes[0].voiceover).toBe('สวัสดี');
-    expect(scenes[0].visual).toBe('product');
-  });
-
-  test('scriptDuration is endSec - startSec', () => {
-    const scenes = parseTikTokScript(MD);
-    expect(scenes[0].scriptDuration).toBe(5);
-  });
-
-  test('minimum scriptDuration is 2', () => {
-    const md = `| 0:00–0:01 | v | i | s |`;
-    const scenes = parseTikTokScript(md);
-    expect(scenes[0].scriptDuration).toBe(2);
-  });
-
-  test('strips ** from onScreen', () => {
-    const scenes = parseTikTokScript(MD);
-    expect(scenes[0].onScreen).not.toContain('**');
-    expect(scenes[0].onScreen).toBe('Title');
-  });
-
-  test('skips separator rows', () => {
-    const md = `|------|-----------|--------|-----------|`;
-    expect(parseTikTokScript(md)).toHaveLength(0);
-  });
-
-  test('skips header row containing TIME keyword', () => {
-    const md = `| TIME | VOICEOVER | VISUAL | ON-SCREEN |`;
-    expect(parseTikTokScript(md)).toHaveLength(0);
-  });
-
-  test('returns empty array for empty string', () => {
-    expect(parseTikTokScript('')).toHaveLength(0);
-  });
-
-  test('supports en-dash time separator', () => {
-    const md = `| 0:00–0:08 | hello | img | text |`;
-    const scenes = parseTikTokScript(md);
-    expect(scenes).toHaveLength(1);
-    expect(scenes[0].scriptDuration).toBe(8);
-  });
-
-  test('supports tilde time separator', () => {
-    const md = `| 0:00~0:06 | hello | img | text |`;
-    const scenes = parseTikTokScript(md);
-    expect(scenes).toHaveLength(1);
-  });
-
-  test('strips double-quotes from onScreen', () => {
-    const md = `| 0:00–0:05 | v | i | "quoted" |`;
-    const scenes = parseTikTokScript(md);
-    expect(scenes[0].onScreen).not.toContain('"');
-  });
+afterEach(() => {
+  process.exit.mockRestore();
 });
 
-// ── stripEmoji ────────────────────────────────────────────────────────────────
+// ─── Guards ───────────────────────────────────────────────────────────────────
 
-describe('stripEmoji', () => {
-  test('removes fire emoji', () => {
-    expect(stripEmoji('🔥hot')).toBe('hot');
-  });
-
-  test('removes checkmark symbol', () => {
-    expect(stripEmoji('✅ ok')).toBe('ok');
-  });
-
-  test('preserves Thai text', () => {
-    expect(stripEmoji('สินค้าดี')).toBe('สินค้าดี');
-  });
-
-  test('preserves ASCII', () => {
-    expect(stripEmoji('hello world')).toBe('hello world');
-  });
-
-  test('collapses multiple spaces', () => {
-    expect(stripEmoji('a  b')).toBe('a b');
-  });
-
-  test('trims leading/trailing whitespace', () => {
-    expect(stripEmoji('  text  ')).toBe('text');
-  });
-
-  test('handles empty string', () => {
-    expect(stripEmoji('')).toBe('');
-  });
+test('exits 1 when data.json not found', async () => {
+  fs.existsSync.mockImplementation(p => !p.includes('data.json'));
+  await expect(run(ITEM_ID, false)).rejects.toThrow('exit:1');
 });
 
-// ── wrapText ──────────────────────────────────────────────────────────────────
-
-describe('wrapText', () => {
-  test('returns unchanged text if within maxCharsPerLine', () => {
-    expect(wrapText('short', 18)).toBe('short');
-  });
-
-  test('splits on " / " if within threshold', () => {
-    const result = wrapText('ภาค ก ปี 69 / ลด 70%', 18);
-    expect(result).toContain('\x01');
-    expect(result).toContain('ภาค ก ปี 69');
-  });
-
-  test('splits near middle space when no slash', () => {
-    const text = 'สินค้าราคาดี มากๆ เลย';
-    const result = wrapText(text, 10);
-    expect(result).toContain('\x01');
-  });
-
-  test('returns unchanged when no space to split', () => {
-    const text = 'abcdefghijklmnopqrstuvwxyz';
-    expect(wrapText(text, 10)).toBe(text);
-  });
+test('exits 1 when tiktok.md not found', async () => {
+  fs.existsSync.mockImplementation(p => p.includes('data.json'));
+  await expect(run(ITEM_ID, false)).rejects.toThrow('exit:1');
 });
 
-// ── escapeDrawtext ────────────────────────────────────────────────────────────
-
-describe('escapeDrawtext', () => {
-  test('escapes backslash first', () => {
-    expect(escapeDrawtext('a\\b')).toBe('a\\\\b');
-  });
-
-  test('escapes single quote', () => {
-    expect(escapeDrawtext("it's")).toContain("\\'");
-  });
-
-  test('escapes colon', () => {
-    expect(escapeDrawtext('time:00')).toContain('\\:');
-  });
-
-  test('escapes square brackets', () => {
-    expect(escapeDrawtext('[OK]')).toContain('\\[');
-    expect(escapeDrawtext('[OK]')).toContain('\\]');
-  });
-
-  test('escapes comma', () => {
-    expect(escapeDrawtext('a,b')).toContain('\\,');
-  });
-
-  test('escapes percent', () => {
-    expect(escapeDrawtext('50%')).toContain('\\%');
-  });
-
-  test('preserves _NL placeholder (\\x01)', () => {
-    expect(escapeDrawtext('a\x01b')).toBe('a\x01b');
-  });
+test('exits 0 when video.mp4 exists without --force', async () => {
+  fs.existsSync.mockImplementation(p =>
+    p.includes('data.json') || p.includes('tiktok.md') || p.includes('video.mp4')
+  );
+  await expect(run(ITEM_ID, false)).rejects.toThrow('exit:0');
 });
 
-// ── getMediaDuration ──────────────────────────────────────────────────────────
-
-describe('getMediaDuration', () => {
-  test('returns parsed duration from ffprobe JSON', () => {
-    cp.execFileSync.mockReturnValue(JSON.stringify({ format: { duration: '3.5' } }));
-    expect(getMediaDuration('/tmp/audio.mp3')).toBe(3.5);
-  });
-
-  test('returns minimum 1.0 when duration is 0', () => {
-    cp.execFileSync.mockReturnValue(JSON.stringify({ format: { duration: '0' } }));
-    expect(getMediaDuration('/tmp/audio.mp3')).toBe(1.0);
-  });
-
-  test('returns 2.0 when ffprobe throws', () => {
-    cp.execFileSync.mockImplementation(() => { throw new Error('not found'); });
-    expect(getMediaDuration('/tmp/audio.mp3')).toBe(2.0);
-  });
+test('proceeds when video.mp4 exists with --force', async () => {
+  fs.existsSync.mockImplementation(p =>
+    p.includes('data.json') || p.includes('tiktok.md') || p.includes('video.mp4')
+  );
+  await run(ITEM_ID, true);
+  expect(concatClips).toHaveBeenCalled();
 });
 
-// ── findThaiFont ──────────────────────────────────────────────────────────────
-
-describe('findThaiFont', () => {
-  test('returns first font that exists', () => {
-    fs.existsSync.mockImplementation(p => String(p).includes('THSarabunNew'));
-    expect(findThaiFont()).toContain('THSarabunNew');
-  });
-
-  test('returns Arial fallback when no font found', () => {
-    fs.existsSync.mockReturnValue(false);
-    expect(findThaiFont()).toContain('Arial');
-  });
+test('exits 1 when FFmpeg not found', async () => {
+  execFileSync.mockImplementation(() => { throw new Error('not found'); });
+  await expect(run(ITEM_ID, false)).rejects.toThrow('exit:1');
 });
 
-// ── isPromoImage ──────────────────────────────────────────────────────────────
-
-describe('isPromoImage', () => {
-  test('detects ส่งฟรี keyword', () => {
-    expect(isPromoImage('สินค้า ส่งฟรี ทั่วประเทศ')).toBe(true);
-  });
-
-  test('detects payday keyword in lowercase ocr output', () => {
-    expect(isPromoImage('payday sale')).toBe(true);
-  });
-
-  test('detects keyword with spaces (Tesseract artifacts)', () => {
-    expect(isPromoImage('ส ่ ง ฟ รี')).toBe(true);
-  });
-
-  test('returns false for normal product image text', () => {
-    expect(isPromoImage('สินค้าคุณภาพดี')).toBe(false);
-  });
-
-  test('returns false for empty string', () => {
-    expect(isPromoImage('')).toBe(false);
-  });
+test('exits 1 when no scenes parsed from tiktok.md', async () => {
+  parseTikTokScript.mockReturnValue([]);
+  await expect(run(ITEM_ID, false)).rejects.toThrow('exit:1');
 });
 
-// ── findProductImages ─────────────────────────────────────────────────────────
-
-describe('findProductImages', () => {
-  test('returns empty array when images dir does not exist', () => {
-    fs.existsSync.mockReturnValue(false);
-    expect(findProductImages('/products', '12345')).toEqual([]);
-  });
-
-  test('filters out non-image files', () => {
-    fs.existsSync.mockReturnValue(true);
-    fs.readdirSync.mockReturnValue(['1.jpg', 'readme.txt', '2.png']);
-    cp.execFileSync.mockReturnValue(JSON.stringify({
-      streams: [{ codec_type: 'video', width: 500, height: 500 }],
-    }));
-    const imgs = findProductImages('/products', '12345');
-    expect(imgs.every(i => /\.(jpg|png)$/i.test(i.name))).toBe(true);
-  });
-
-  test('sorts images numerically', () => {
-    fs.existsSync.mockReturnValue(true);
-    fs.readdirSync.mockReturnValue(['10.jpg', '2.jpg', '1.jpg']);
-    cp.execFileSync.mockReturnValue(JSON.stringify({
-      streams: [{ codec_type: 'video', width: 500, height: 500 }],
-    }));
-    const imgs = findProductImages('/products', '12345');
-    expect(imgs[0].name).toBe('1.jpg');
-    expect(imgs[1].name).toBe('2.jpg');
-    expect(imgs[2].name).toBe('10.jpg');
-  });
+test('exits 1 when no product images found', async () => {
+  findProductImages.mockReturnValue([]);
+  await expect(run(ITEM_ID, false)).rejects.toThrow('exit:1');
 });
 
-// ── selectImages ──────────────────────────────────────────────────────────────
+// ─── Happy path ───────────────────────────────────────────────────────────────
 
-describe('selectImages', () => {
-  const makeImages = (names) => names.map(name => ({
-    name,
-    path: `/img/${name}`,
-    width: 500,
-    height: 500,
-  }));
+test('full success: parses scenes, generates VO per scene, concats clips', async () => {
+  await run(ITEM_ID, false);
 
-  beforeEach(() => {
-    cp.spawnSync.mockReturnValue({ stdout: Buffer.from([128]), status: 0 });
-  });
-
-  test('thumbImage is always index 0', () => {
-    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
-    const imgs = makeImages(['1.jpg', '2.jpg', '3.jpg']);
-    const { thumbImage } = selectImages(imgs);
-    expect(thumbImage.name).toBe('1.jpg');
-    logSpy.mockRestore();
-  });
-
-  test('topImages excludes thumbImage and bgImage', () => {
-    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
-    const imgs = makeImages(['1.jpg', '2.jpg', '3.jpg', '4.jpg']);
-    const { topImages, thumbImage, bgImage } = selectImages(imgs);
-    const topNames = topImages.map(i => i.name);
-    expect(topNames).not.toContain(thumbImage.name);
-    expect(topNames).not.toContain(bgImage.name);
-    logSpy.mockRestore();
-  });
-
-  test('returns all images as topImages fallback when only 1 image', () => {
-    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
-    const imgs = makeImages(['1.jpg']);
-    const { topImages } = selectImages(imgs);
-    expect(topImages.length).toBeGreaterThan(0);
-    logSpy.mockRestore();
-  });
+  expect(parseTikTokScript).toHaveBeenCalledTimes(1);
+  expect(generateVoiceover).toHaveBeenCalledTimes(SCENES.length);
+  expect(createSceneClip).toHaveBeenCalledTimes(SCENES.length);
+  expect(concatClips).toHaveBeenCalledTimes(1);
 });
 
-// ── concatClips ───────────────────────────────────────────────────────────────
-
-describe('concatClips', () => {
-  test('writes concat list file and calls execFileSync', () => {
-    fs.writeFileSync.mockImplementation(() => {});
-    fs.unlinkSync.mockImplementation(() => {});
-    cp.execFileSync.mockReturnValue('');
-
-    concatClips(['/tmp/clip_0.mp4', '/tmp/clip_1.mp4'], '/tmp/video.mp4');
-
-    expect(fs.writeFileSync).toHaveBeenCalledWith(
-      expect.stringContaining('_concat_list.txt'),
-      expect.stringContaining('clip_0.mp4'),
-      'utf8'
-    );
-    expect(cp.execFileSync).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.arrayContaining(['-f', 'concat']),
-      expect.any(Object)
-    );
-  });
-
-  test('cleans up list file even when ffmpeg throws', () => {
-    fs.writeFileSync.mockImplementation(() => {});
-    fs.unlinkSync.mockImplementation(() => {});
-    cp.execFileSync.mockImplementation(() => { throw new Error('ffmpeg error'); });
-
-    expect(() => concatClips(['/a.mp4'], '/out.mp4')).toThrow('ffmpeg error');
-    expect(fs.unlinkSync).toHaveBeenCalled();
-  });
+test('generates QR code when affiliate_short_link present', async () => {
+  await run(ITEM_ID, false);
+  expect(generateQRCode).toHaveBeenCalledWith(
+    DATA_JSON.affiliate_short_link,
+    expect.stringContaining('qrcode.png')
+  );
 });
 
-// ── createSceneClip ───────────────────────────────────────────────────────────
-
-describe('createSceneClip', () => {
-  test('calls execFileSync with expected FFmpeg args', () => {
-    fs.existsSync.mockReturnValue(false);
-    cp.execFileSync.mockReturnValue('');
-
-    createSceneClip(
-      '/top.jpg', '/bg.jpg', '/thumb.jpg', '/qr.png',
-      'https://s.shopee.co.th/xxx',
-      '/audio.mp3', 3.5, 'สินค้าดี', '/out.mp4'
-    );
-
-    expect(cp.execFileSync).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.arrayContaining(['-filter_complex', expect.any(String)]),
-      expect.any(Object)
-    );
+test('skips QR code when affiliate_short_link is empty', async () => {
+  fs.readFileSync.mockImplementation(p => {
+    if (p.includes('data.json')) return JSON.stringify({ ...DATA_JSON, affiliate_short_link: '' });
+    return '';
   });
+  await run(ITEM_ID, false);
+  expect(generateQRCode).not.toHaveBeenCalled();
+});
 
-  test('filter_complex includes vstack', () => {
-    fs.existsSync.mockReturnValue(false);
-    cp.execFileSync.mockReturnValue('');
+test('writes data.json with status=draft after success', async () => {
+  await run(ITEM_ID, false);
+  const call = fs.writeFileSync.mock.calls.find(c => c[0].includes('data.json'));
+  expect(call).toBeDefined();
+  expect(JSON.parse(call[1]).status).toBe('draft');
+});
 
-    createSceneClip('/top.jpg', '/bg.jpg', '/thumb.jpg', '/qr.png', '', '/audio.mp3', 2, '', '/out.mp4');
-
-    const args = cp.execFileSync.mock.calls[0][1];
-    const filterIdx = args.indexOf('-filter_complex');
-    expect(args[filterIdx + 1]).toContain('vstack');
+test('does not write data.json when status is already posted', async () => {
+  fs.readFileSync.mockImplementation(p => {
+    if (p.includes('data.json')) return JSON.stringify({ ...DATA_JSON, status: 'posted' });
+    return '';
   });
+  await run(ITEM_ID, false);
+  const call = fs.writeFileSync.mock.calls.find(c => c[0].includes('data.json'));
+  expect(call).toBeUndefined();
+});
 
-  test('filter_complex includes drawtext for non-empty voiceover', () => {
-    fs.existsSync.mockReturnValue(false);
-    cp.execFileSync.mockReturnValue('');
+test('rotates topImages across scenes by index', async () => {
+  await run(ITEM_ID, false);
+  const calls = createSceneClip.mock.calls;
+  expect(calls[0][0]).toBe(IMAGES[0].path);
+  expect(calls[1][0]).toBe(IMAGES[1].path);
+});
 
-    createSceneClip('/top.jpg', '/bg.jpg', '/thumb.jpg', '/qr.png', '', '/audio.mp3', 2, 'สวัสดี', '/out.mp4');
-
-    const args = cp.execFileSync.mock.calls[0][1];
-    const filterIdx = args.indexOf('-filter_complex');
-    expect(args[filterIdx + 1]).toContain('drawtext');
-  });
+test('cleans up tempDir after success', async () => {
+  await run(ITEM_ID, false);
+  expect(fs.rmdirSync).toHaveBeenCalled();
 });

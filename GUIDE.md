@@ -414,24 +414,23 @@ node approval-bot.js 54256553392
 
 ## 7. Dashboard
 
-หน้าเว็บดูสถานะสินค้าทั้งหมดและสถิติ
+หน้าเว็บดูสถานะ agents และ pipeline ทั้งหมด
 
 ### 7.1 รัน
 
 ```bash
-node dashboard.js
+node agent-hub/index.js
 ```
 
-เปิดเบราว์เซอร์ที่ **http://localhost:3001**
+เปิดเบราว์เซอร์ที่ **http://localhost:3002**
 
 ### 7.2 ฟีเจอร์
 
 | ส่วน | คำอธิบาย |
 |------|---------|
-| 📦 Cards สถิติ | สินค้าทั้งหมด / Content ครบ / รอ Content / บางส่วน |
-| 📊 Platform Stats | Progress bar FB / IG / X / TikTok |
-| 📅 Timeline | ความพร้อม content แต่ละวันที่โพสต์ |
-| 📋 ตารางสินค้า | รูป, ชื่อ, ราคา, ส่วนลด, คะแนน, สถานะ content |
+| `/dashboard/mali` | สถานะ Shopee Affiliate |
+| `/dashboard/manao` | AI News pipeline |
+| `/dashboard/namkhao` | Supervisor + schedule status |
 | 🔘 Filter | ทั้งหมด / วันนี้ / พร้อม / รอ Content |
 
 - **Auto-refresh** ทุก 60 วินาที
@@ -516,7 +515,6 @@ shopee-affiliate/
 ├── scrape-offers.js          ← Scraper ดึง affiliate links จาก portal
 ├── post.js                   ← โพสต์ FB / IG / X
 ├── approval-bot.js           ← Telegram Approval Bot
-├── dashboard.js              ← Web Dashboard (port 3001)
 └── post-daily-fb.bat         ← Script สำหรับ Task Scheduler
 ```
 
@@ -674,7 +672,7 @@ npm install
 |---------|--------|
 | รัน Approval Bot | `node approval-bot.js` |
 | ทดสอบ Bot กับสินค้าเดิม | `node approval-bot.js 54256553392` |
-| รัน Dashboard | `node dashboard.js` |
+| รัน Agent Hub | `node agent-hub/index.js` |
 | โพสต์โดยตรง (ไม่ผ่าน Approve) | `node post.js 2026-05-20 --platform fb` |
 
 ### Workflow ประจำวัน
