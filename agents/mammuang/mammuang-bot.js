@@ -26,7 +26,7 @@ const { generateAnime }        = require('../anime/anime-gen');
 const { renderBalloonOnImage } = require('../anime/balloon-canvas');
 const { postFacebookImage, postInstagramImage } = require('../anime/post-anime');
 
-const TOKEN    = process.env.MAMMUANG_TELEGRAM_BOT_TOKEN || process.env.ANIME_TELEGRAM_BOT_TOKEN;
+const TOKEN    = process.env.MAMMUANG_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID  = process.env.TELEGRAM_CHAT_ID || process.env.ANIME_TELEGRAM_CHAT_ID;
 const ANIME_TPL = path.join(__dirname, '..', 'anime', 'active-template.json');
 const MAM_GAL   = path.join(__dirname, 'gallery');

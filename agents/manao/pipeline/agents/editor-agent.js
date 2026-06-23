@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '..', '..', '.env') });
 const path = require('path');
 const { ollamaChat, checkOllama } = require('./ollama');
 const { runEditorAgent } = require('../../../../lib/editor-agent-core');

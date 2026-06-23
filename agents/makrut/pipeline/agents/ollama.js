@@ -2,7 +2,7 @@
  * ollama.js — shared Ollama client
  */
 
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '..', '..', '.env') });
 const http = require('http');
 
 function ollamaChat(prompt, opts = {}) {

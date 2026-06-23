@@ -6,7 +6,7 @@
  * รัน:   node agents/filter-agent.js [--date YYYY-MM-DD] [--force] [--dry-run]
  */
 
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '..', '..', '.env') });
 const fs   = require('fs');
 const path = require('path');
 

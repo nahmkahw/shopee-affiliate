@@ -38,7 +38,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Invariants — ห้ามละเมิด:**
 - ห้าม `require('../agent-hub.js')` หรือ `require('./agent-hub.js')` โดยตรง — entry point คือ `agent-hub/index.js` เท่านั้น
-- เวลาต่ออายุ `FB_ACCESS_TOKEN` ต้องอัปเดต **2 ไฟล์**: `.env` (root) + `agents/manao/pipeline/.env`
+- เวลาต่ออายุ `FB_ACCESS_TOKEN` อัปเดตที่ **root `.env` ไฟล์เดียว** — ทุก Agent โหลดจากที่เดียวกัน
 - ห้าม commit `.env` ไม่ว่ากรณีใด
 
 **Test gotchas:**
@@ -52,7 +52,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   2. สร้าง `agent-hub/routes/{name}.js` + register ใน `agent-hub/index.js`
   3. สร้าง `agents/{name}/run.js` เป็น entry point รับ `--action` flag
 - `agent-status.json` schema — กระทบ `agents/*/run.js` ทุกตัวที่ `readStatus`/`writeStatus`
-- `.env` keys ใหม่ — ต้องเพิ่มใน `CLAUDE.md` section Environment และ `agents/manao/pipeline/.env`
+- `.env` keys ใหม่ — ต้องเพิ่มใน root `.env` และอัปเดต section Environment ใน `CLAUDE.md`
 - `agent-hub/routes/manao/` หรือ `namkhao/` — sub-handler ใหม่ต้อง import และ dispatch ใน `manao.js` / `namkhao.js` ด้วย
 
 ---
@@ -287,10 +287,7 @@ OLLAMA_HOST=http://10.3.17.118:11434
 OLLAMA_MODEL=scb10x/llama3.1-typhoon2-8b-instruct:latest  # default — รองรับภาษาไทย
 ```
 
-> ⚠️ **`agents/manao/pipeline/.env` เป็นไฟล์แยก** — `post.js` และ `telegram-bot.js` ของ manao โหลด dotenv จาก `__dirname` ด้วย `override: true`
-> ทุกครั้งที่ต่ออายุ `FB_ACCESS_TOKEN` ต้องอัปเดต **ทั้ง 2 ไฟล์**:
-> - `shopee-affiliate/.env`
-> - `shopee-affiliate/agents/manao/pipeline/.env`
+> ทุก Agent โหลด config จาก root `shopee-affiliate/.env` ไฟล์เดียว — ต่ออายุ token แก้ที่นี่ที่เดียว
 
 ### ต่ออายุ FB Token (ทุก 60 วัน)
 
@@ -305,7 +302,7 @@ const SHORT = 'SHORT_LIVED_TOKEN';
 const url = 'https://graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token&client_id='+APP_ID+'&client_secret='+APP_SECRET+'&fb_exchange_token='+SHORT;
 https.get(url, r => { let b=''; r.on('data',d=>b+=d); r.on('end',()=>console.log(b)); });
 "
-# 3. อัปเดตทั้ง root .env และ agents/manao/pipeline/.env
+# 3. อัปเดต root .env
 ```
 
 ---
@@ -363,7 +360,7 @@ tracking.xlsx           ← sort ตาม post_date | status: scraped → draft
 |-------|-------|
 | `ECONNREFUSED 9222` | เปิด Chrome debug mode ก่อน (ดูหัวข้อ Chrome Debug) |
 | Shopee CAPTCHA | แก้ CAPTCHA ใน Chrome debug แล้วรัน `--force` ใหม่ |
-| FB `Session has expired` | Token หมดอายุ — ต่ออายุผ่าน Graph API Explorer → อัปเดต **ทั้ง** root `.env` + `agents/manao/pipeline/.env` |
+| FB `Session has expired` | Token หมดอายุ — ต่ออายุผ่าน Graph API Explorer → อัปเดต root `.env` |
 | FB `access token could not be decrypted` | Token ตัดค้าง/corrupt ใน `.env` — copy จากไฟล์ที่ถูกต้องใส่ใหม่ |
 | FB Reels `(#200) no permission` | Reels ต้องใช้ Page Token (ไม่ใช่ User Token) — `agent-hub/index.js` exchange ให้อัตโนมัติแล้ว |
 | Telegram ไม่ตอบสนอง | บอทมี Webhook อยู่ → สร้างบอทใหม่ |

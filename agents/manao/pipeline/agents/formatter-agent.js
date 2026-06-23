@@ -9,7 +9,7 @@
  * แล้วปรับเป็น content สไตล์น้ำข้าวตาม format ของแต่ละ platform
  */
 
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env'), override: true });
+require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '..', '..', '.env') });
 const fs   = require('fs');
 const path = require('path');
 const { ollamaChat, checkOllama } = require('./ollama');

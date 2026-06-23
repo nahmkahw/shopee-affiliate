@@ -16,7 +16,11 @@ const path  = require('path');
 
 const { loadQueue, saveQueue, makeShortId } = require('./tg-queue');
 
-const TG_TOKEN   = (process.env.MANAO_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '').replace(/"/g, '').trim();
+const _isMakrut  = (process.env.PIPELINE_ROOT || '').includes('makrut');
+const TG_TOKEN   = (_isMakrut
+  ? (process.env.MAKRUT_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN)
+  : (process.env.MANAO_TELEGRAM_BOT_TOKEN  || process.env.TELEGRAM_BOT_TOKEN)
+  || '').replace(/"/g, '').trim();
 const TG_CHAT_ID = (process.env.TELEGRAM_CHAT_ID || '').replace(/"/g, '').trim();
 const TG_ENABLED = !!(TG_TOKEN && TG_CHAT_ID);
 
