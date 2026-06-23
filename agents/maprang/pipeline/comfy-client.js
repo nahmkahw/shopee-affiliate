@@ -8,7 +8,7 @@ const http   = require('http');
 const fs     = require('fs');
 const crypto = require('crypto');
 
-const NEG_PROMPT = 'low quality, blurry, watermark, text overlay, nsfw, worst quality';
+const NEG_BASE = 'low quality, blurry, watermark, text overlay, nsfw, worst quality';
 
 // 49 frames @ 16fps ≈ 3 วินาที — ปรับตาม VRAM (RTX 3060 12GB)
 const DEFAULT_FRAMES = 49;
@@ -61,27 +61,23 @@ async function checkHealth(cfg) {
   } catch { return false; }
 }
 
-async function checkWan21Model(cfg, modelName) {
+async function checkWan21Model(cfg) {
   try {
-    const info = await _request(cfg, 'GET', '/object_info/UNETLoader');
-    const models = info?.input?.required?.unet_name?.[0] || [];
-    const found  = models.some(m => m.toLowerCase().includes('wan'));
-    if (!found) {
-      console.warn('⚠️  ไม่พบ Wan2.1 model ใน ComfyUI');
-      console.warn('   วิธีติดตั้ง:');
-      console.warn('   1. เปิด ComfyUI Manager → Install Models');
-      console.warn('   2. หรือรัน: huggingface-cli download Wan-AI/Wan2.1-T2V-1.3B --local-dir ComfyUI/models/diffusion_models/Wan2.1/');
-      console.warn('   3. T5 encoder: huggingface-cli download google/umt5-xxl --local-dir ComfyUI/models/clip/');
-    }
-    return { found, models: models.filter(m => m.toLowerCase().includes('wan')) };
+    // ใช้ /api/models/diffusion_models แทน /object_info/UNETLoader
+    // เพราะ object_info เป็น cache ณ ตอน ComfyUI start — ไม่ refresh หลังติดตั้ง model ใหม่
+    const models = await _request(cfg, 'GET', '/api/models/diffusion_models');
+    const list   = Array.isArray(models) ? models : [];
+    const found  = list.some(m => m.toLowerCase().includes('wan'));
+    return { found, models: list.filter(m => m.toLowerCase().includes('wan')) };
   } catch (e) {
     return { found: false, models: [], error: e.message };
   }
 }
 
-function buildWan21Workflow(positivePrompt, modelName, seed) {
+function buildWan21Workflow(positivePrompt, modelName, seed, charNeg = '') {
   // ComfyUI โหลด model จาก models/diffusion_models/ → ต้องใส่ subfolder prefix
-  const unetName = modelName || 'Wan2.1\\wan2.1_t2v_1.3B_bf16.safetensors';
+  const unetName  = modelName || 'Wan2.1\\wan2.1_t2v_1.3B_bf16.safetensors';
+  const negPrompt = charNeg ? `${NEG_BASE}, ${charNeg}` : NEG_BASE;
   return {
     '1': { class_type: 'UNETLoader',
            inputs: { unet_name: unetName, weight_dtype: 'fp8_e4m3fn' } },
@@ -90,7 +86,7 @@ function buildWan21Workflow(positivePrompt, modelName, seed) {
     '3': { class_type: 'CLIPTextEncode',
            inputs: { clip: ['2', 0], text: positivePrompt } },
     '4': { class_type: 'CLIPTextEncode',
-           inputs: { clip: ['2', 0], text: NEG_PROMPT } },
+           inputs: { clip: ['2', 0], text: negPrompt } },
     '5': { class_type: 'EmptyHunyuanLatentVideo',
            inputs: { width: 512, height: 512, length: DEFAULT_FRAMES, batch_size: 1 } },
     '6': { class_type: 'ModelSamplingSD3',
@@ -118,9 +114,9 @@ function buildWan21Workflow(positivePrompt, modelName, seed) {
  * @param {string} outputPath   Path to save the downloaded .mp4
  * @returns {Promise<string>}   outputPath
  */
-async function generateClip(cfg, prompt, outputPath) {
+async function generateClip(cfg, prompt, outputPath, seed, charNeg = '') {
   const clientId = crypto.randomUUID();
-  const workflow = buildWan21Workflow(prompt, cfg.modelName);
+  const workflow = buildWan21Workflow(prompt, cfg.modelName, seed, charNeg);
 
   console.log(`  🎬 ComfyUI: submit "${prompt.substring(0, 60)}..."`);
   const { prompt_id } = await _request(cfg, 'POST', '/prompt', { client_id: clientId, prompt: workflow });

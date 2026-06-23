@@ -29,13 +29,13 @@ format ที่ต้องการ:
 - ต้องมีครบ 5 scenes เสมอ
 - เนื้อหาต้องเป็น family-friendly`;
 
-function ollamaChat(prompt) {
+function ollamaChat(prompt, systemPrompt = SYSTEM_PROMPT) {
   return new Promise((resolve, reject) => {
     const url  = new URL('/api/chat', OLLAMA_HOST);
     const body = JSON.stringify({
       model:    OLLAMA_MODEL,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: systemPrompt },
         { role: 'user',   content: prompt },
       ],
       stream: false,
@@ -90,4 +90,54 @@ async function generateScenes(storyPromptTh) {
   return scenes;
 }
 
-module.exports = { generateScenes };
+// Booru-tag format: token-dense, model understands each tag individually
+// → ทำให้ตัวละครคงเส้นคงวาข้ามทุก scene เพราะ token ตรงกันทุกครั้ง
+const CHAR_SYSTEM = `You are an Anime character design AI.
+Given a Thai story prompt, describe the MAIN character's appearance using Booru image-board tags (English only).
+Reply with ONE LINE of comma-separated tags. No explanation, no preamble, no markdown.
+
+Tag order (include all that apply):
+1. gender+count: "1girl" or "1boy"
+2. age: "child", "teen", "adult", or "10 years old"
+3. hair: color + length + style — e.g. "long brown wavy hair", "short black hair with side bangs"
+4. eyes: color — e.g. "brown eyes", "blue eyes"
+5. outfit: main colors + key pieces — e.g. "cobalt blue dress, white collar, red ribbon"
+6. body/skin: "fair skin", "tan skin", "slim build"
+7. expression/feature: 1-2 notable traits — e.g. "bright curious eyes", "gentle smile"
+
+Example output:
+1girl, 10 years old, long brown wavy hair, side bangs, brown eyes, cobalt blue dress, white collar, small red ribbon, fair skin, slim build, bright curious eyes`;
+
+/**
+ * @param {string} storyPromptTh
+ * @returns {Promise<string>}  Booru-tag character description (English)
+ */
+async function generateCharacterDescription(storyPromptTh) {
+  console.log('🎨 Typhoon2 สร้าง character description (Booru tags)...');
+  const raw  = await ollamaChat(storyPromptTh, CHAR_SYSTEM);
+  const desc = raw.trim().split('\n')[0].replace(/^[-*•]\s*/, '').trim();
+  console.log(`✅ Character tags: ${desc}`);
+  return desc;
+}
+
+/**
+ * สร้าง character-specific negative prompt เพื่อล็อก appearance
+ * @param {string} charDesc — Booru-tag character description
+ * @returns {string}
+ */
+function buildCharacterNegative(charDesc) {
+  // ดึง hair color + outfit color จาก charDesc เพื่อป้องกันการ drift
+  const hairMatch    = charDesc.match(/(\w+)\s+hair/i);
+  const outfitMatch  = charDesc.match(/(\w+)\s+(dress|shirt|jacket|uniform|outfit|clothes)/i);
+  const extras = [
+    hairMatch   ? `different hair color, not ${hairMatch[1]} hair`    : '',
+    outfitMatch ? `different outfit color, not ${outfitMatch[1]} outfit` : '',
+  ].filter(Boolean).join(', ');
+  return [
+    'character inconsistency, different character design, changing appearance',
+    'multiple characters, different hair style, different face',
+    extras,
+  ].filter(Boolean).join(', ');
+}
+
+module.exports = { generateScenes, generateCharacterDescription, buildCharacterNegative };
