@@ -7,8 +7,10 @@
 const fs      = require('fs');
 const path    = require('path');
 const { spawn } = require('child_process');
-const charReg = require('../../agents/maprang/pipeline/char-registry');
+const charReg   = require('../../agents/maprang/pipeline/char-registry');
 const { renderDashboard } = require('../html/maprang');
+const sceneHandler = require('./maprang/scene');
+const buildHandler = require('./maprang/build');
 
 function reply(res, code, obj) {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -43,7 +45,7 @@ function register(req, res, url, rawUrl, method, deps) {
   if (url === '/dashboard/maprang') {
     const gallery  = getGallery(ROOT);
     const allChars = charReg.load();
-    const active   = gallery.find(m => m.status === 'generating' || m.status === 'building');
+    const active   = gallery.find(m => ['pre_production','producing','building'].includes(m.status));
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     return res.end(renderDashboard(ROOT, { gallery, allChars, active }));
   }
@@ -84,6 +86,15 @@ function register(req, res, url, rawUrl, method, deps) {
     return fs.createReadStream(rp).pipe(res);
   }
 
+  // Clip preview per scene
+  const clipMatch = url.match(/^\/dashboard\/maprang\/clip\/([\w]+)\/(\d+)$/);
+  if (clipMatch) {
+    const cp = path.join(ROOT, 'agents', 'maprang', 'gallery', clipMatch[1], 'clips', `clip_${clipMatch[2]}.mp4`);
+    if (!fs.existsSync(cp)) { res.writeHead(404); return res.end('ไม่พบ clip'); }
+    res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': fs.statSync(cp).size });
+    return fs.createReadStream(cp).pipe(res);
+  }
+
   const videoMatch = url.match(/^\/dashboard\/maprang\/video\/([\w]+)$/);
   if (videoMatch) {
     const vp = path.join(ROOT, 'agents', 'maprang', 'gallery', videoMatch[1], 'story.mp4');
@@ -110,7 +121,7 @@ function register(req, res, url, rawUrl, method, deps) {
       reply(res, 200, { ok: true, id });
       const runScript = path.join(ROOT, 'agents', 'maprang', 'run.js');
       try {
-        const spawnArgs = [runScript, '--action', 'generate', '--id', id, '--prompt', prompt];
+        const spawnArgs = [runScript, '--action', 'pre-production', '--id', id, '--prompt', prompt];
         if (body.char_description) spawnArgs.push('--char-desc', body.char_description);
         if (body.char_ids)         spawnArgs.push('--chars', body.char_ids);
         const proc = spawn(process.execPath, spawnArgs, {
@@ -121,6 +132,10 @@ function register(req, res, url, rawUrl, method, deps) {
       } catch (e) { console.error(`[maprang] spawn failed: ${e.message}`); }
     }).catch(e => { if (!res.headersSent) reply(res, 500, { ok: false, error: e.message }); });
   }
+
+  // ─── Movie workflow sub-routes ────────────────────────────────────────────
+  if (sceneHandler.handle(req, res, url, method, ROOT)) return;
+  if (buildHandler.handle(req, res, url, method, ROOT)) return;
 
   const statusMatch = url.match(/^\/api\/maprang\/status\/([\w]+)$/);
   if (statusMatch && method === 'GET') {
