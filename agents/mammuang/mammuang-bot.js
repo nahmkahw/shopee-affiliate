@@ -121,8 +121,9 @@ async function handleMammuang(concept) {
     await tgSendPhoto(finalPath,
       `🥭 รูปใหม่พร้อมแล้ว\n💬 "${speech.substring(0, 80)}"\n\nโพสต์ Facebook?`, {
       inline_keyboard: [[
-        { text: '✅ โพสต์ FB',  callback_data: `mam_ok__${id}` },
-        { text: '❌ ยกเลิก',    callback_data: `mam_no__${id}` },
+        { text: '✅ โพสต์ FB',    callback_data: `mam_ok__${id}` },
+        { text: '🔄 สร้างใหม่',  callback_data: `mam_regen__${id}` },
+        { text: '❌ ยกเลิก',      callback_data: `mam_no__${id}` },
       ]],
     });
   } catch (e) {
@@ -185,6 +186,37 @@ async function handleCallback(cb) {
 
   if (action === 'no') {
     if (msgId) await tg('editMessageCaption', { chat_id: CHAT_ID, message_id: msgId, caption: '❌ ยกเลิกแล้ว' });
+    return;
+  }
+  if (action === 'regen' && agent === 'mammuang') {
+    if (busy) { await send('⏳ กำลังสร้างรูปอยู่ รอสักครู่นะคะ'); return; }
+    if (!fs.existsSync(metaPath)) { await send('⚠️ ไม่พบข้อมูลเดิม'); return; }
+    let meta; try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { await send('⚠️ อ่าน meta ไม่ได้'); return; }
+    if (msgId) await tg('editMessageCaption', { chat_id: CHAT_ID, message_id: msgId, caption: '🔄 กำลังสร้างใหม่…' });
+    busy = true;
+    try {
+      const newId   = Date.now().toString();
+      const newDir  = path.join(MAM_GAL, newId);
+      fs.mkdirSync(newDir, { recursive: true });
+      const imgPath    = path.join(newDir, 'image.png');
+      const finalPath2 = path.join(newDir, 'final.jpg');
+      const refPath = path.join(__dirname, 'ref-character.png');
+      await generateMammuang({ prompt_en: meta.prompt_en || meta.concept, outPath: imgPath,
+        model: fs.existsSync(refPath) ? 'flux-kontext' : undefined,
+        onProgress: m => console.log(`  [mammuang regen ${newId}] ${m}`) });
+      await renderBalloonOnImage(imgPath, meta.speech || meta.concept, { x: 0.46, y: 0.46 }, finalPath2);
+      fs.writeFileSync(path.join(newDir, 'meta.json'), JSON.stringify({ ...meta, created: Number(newId) }, null, 2));
+      await tgSendPhoto(finalPath2,
+        `🔄 สร้างใหม่แล้ว\n💬 "${(meta.speech || meta.concept).substring(0, 80)}"\n\nโพสต์ Facebook?`, {
+        inline_keyboard: [[
+          { text: '✅ โพสต์ FB',    callback_data: `mam_ok__${newId}` },
+          { text: '🔄 สร้างใหม่',  callback_data: `mam_regen__${newId}` },
+          { text: '❌ ยกเลิก',      callback_data: `mam_no__${newId}` },
+        ]],
+      });
+    } catch (e) {
+      await send('❌ สร้างใหม่ไม่สำเร็จ: ' + e.message.substring(0, 150));
+    } finally { busy = false; }
     return;
   }
   if (action === 'ok') {
