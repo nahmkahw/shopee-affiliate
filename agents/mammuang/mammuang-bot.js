@@ -109,7 +109,9 @@ async function handleMammuang(concept) {
     const imgPath   = path.join(dir, 'image.png');
     const finalPath = path.join(dir, 'final.jpg');
 
+    const refPath = path.join(__dirname, 'ref-character.png');
     await generateMammuang({ prompt_en: prompt_en || concept, outPath: imgPath,
+      model: fs.existsSync(refPath) ? 'flux-kontext' : undefined,
       onProgress: m => console.log(`  [mammuang ${id}] ${m}`) });
     await renderBalloonOnImage(imgPath, speech, { x: 0.46, y: 0.46 }, finalPath);
     fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ concept, speech, prompt_en, created: Number(id) }, null, 2));
