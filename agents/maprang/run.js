@@ -130,16 +130,22 @@ async function actionGenerateScene(id, sceneNum) {
   appendLog(meta, `🎬 Scene ${sceneNum}/${meta.scenes.length}: ${scene.subtitle_th}`);
   writeMeta(id, meta);
 
-  // inject context จาก scene ก่อนหน้าเพื่อ visual continuity
+  // seed ต่าง scene ต่างกัน — ป้องกัน noise drift เมื่อ prompt เปลี่ยนแต่ seed เดิม
+  const sceneSeed = (meta.seed || 0) + scene.scene_number;
+
+  // inject context จาก scene ก่อนหน้า — วางหลัง "anime style," ให้ token priority สูง
   let visualPrompt = scene.visual_prompt_en;
   const prevScene = meta.scenes.find(s => s.scene_number === sceneNum - 1 && !s.skipped);
   if (prevScene?.visual_action) {
-    visualPrompt += `, continuing from: ${prevScene.visual_action}`;
+    visualPrompt = visualPrompt.replace(
+      /^anime style,/i,
+      `anime style, after ${prevScene.visual_action},`
+    );
   }
 
   console.log(`\n[Scene ${sceneNum}] ${scene.subtitle_th}`);
   const t0 = Date.now();
-  await generateClip(COMFY_CFG, visualPrompt, clipPath, meta.seed, scene._charNeg || '');
+  await generateClip(COMFY_CFG, visualPrompt, clipPath, sceneSeed, scene._charNeg || '');
   const durS = Math.round((Date.now() - t0) / 1000);
 
   scene.status  = 'done';
