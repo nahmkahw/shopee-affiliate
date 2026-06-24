@@ -6,12 +6,15 @@
 
 const fs   = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 const { generateScenes, generateScenesWithCharacters,
         generateCharacterDescription, buildCharacterNegative,
         describeCharacterImage } = require('./scene-gen');
-const { generateCharacterImage } = require('./comfy-client');
+const { generateClip } = require('./comfy-client');
 const charReg = require('./char-registry');
+
+const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
 
 const GALLERY = path.join(__dirname, '..', 'gallery');
 
@@ -98,16 +101,23 @@ async function runPreProduction({ prompt, id, charDescOverride, charIdsArg, comf
   });
   saveMeta(meta);
 
-  // 5. สร้าง char_ref.png (ถ้าเป็น single-char)
+  // 5. สร้าง char_ref.png ด้วย Wan2.1 T2V (same model family กับ scene clips)
+  // — ป้องกัน AnythingXL ↔ Wan2.1 latent space mismatch
   if (!isMulti) {
-    const refPath = path.join(dir, 'char_ref.png');
+    const refPath  = path.join(dir, 'char_ref.png');
+    const tmpClip  = path.join(dir, '.char_ref_clip.mp4');
     try {
-      appendLog(meta, '🎨 ComfyUI: สร้างภาพตัวละคร (char_ref.png)...', saveMeta);
+      appendLog(meta, '🎨 Wan2.1 T2V: สร้าง character reference (same model family)...', saveMeta);
       const t1 = Date.now();
-      await generateCharacterImage(comfyCfg, singleCharDesc, refPath, sharedSeed);
-      appendLog(meta, `✅ char_ref.png พร้อม (${Math.round((Date.now()-t1)/1000)}s)`, saveMeta);
+      const charClipPrompt = `anime style video, ${singleCharDesc}, standing still, neutral pose, full body, soft studio lighting, white background, character sheet, no motion`;
+      await generateClip(comfyCfg, charClipPrompt, tmpClip, sharedSeed);
+      // Extract first frame → char_ref.png (Wan2.1-rendered, consistent with scene clips)
+      execFileSync(FFMPEG, ['-y', '-i', tmpClip, '-ss', '0', '-vframes', '1', refPath],
+        { stdio: ['ignore', 'ignore', 'pipe'], timeout: 30000 });
+      try { fs.unlinkSync(tmpClip); } catch {}
+      appendLog(meta, `✅ char_ref.png พร้อม (${Math.round((Date.now()-t1)/1000)}s) — rendered by Wan2.1`, saveMeta);
       meta.ref_image = 'char_ref.png';
-      appendLog(meta, '🔍 LLaVA: วิเคราะห์ภาพตัวละคร...', saveMeta);
+      appendLog(meta, '🔍 LLaVA: วิเคราะห์ภาพตัวละคร (จาก Wan2.1 output)...', saveMeta);
       const vd = await describeCharacterImage(refPath);
       if (vd) {
         meta.anchor_description = vd;
@@ -121,8 +131,9 @@ async function runPreProduction({ prompt, id, charDescOverride, charIdsArg, comf
         }));
       }
     } catch (e) {
-      appendLog(meta, `⚠️ ข้าม char_ref: ${e.message}`, saveMeta);
+      appendLog(meta, `⚠️ ข้าม char_ref (${e.message}) — ใช้ natural desc โดยตรง`, saveMeta);
       console.warn(`⚠️  ข้าม ref image: ${e.message}`);
+      try { fs.unlinkSync(tmpClip); } catch {}
     }
     saveMeta(meta);
   }

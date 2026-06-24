@@ -97,33 +97,26 @@ async function generateScenes(storyPromptTh) {
   return scenes;
 }
 
-// Booru-tag format: token-dense, model understands each tag individually
-// → ทำให้ตัวละครคงเส้นคงวาข้ามทุก scene เพราะ token ตรงกันทุกครั้ง
+// Natural language format — UMT5 encoder (Wan2.1) understands full sentences better than Booru tags
+// "a girl with long pink hair..." > "1girl, long pink hair,..." for T2V models
 const CHAR_SYSTEM = `You are an Anime character design AI.
-Given a Thai story prompt, describe the MAIN character's appearance using Booru image-board tags (English only).
-Reply with ONE LINE of comma-separated tags. No explanation, no preamble, no markdown.
+Given a Thai story prompt, write ONE SENTENCE in English describing the MAIN character's appearance.
+Use natural language, not tags. Reply with only that one sentence. No preamble, no markdown.
 
-Tag order (include all that apply):
-1. gender+count: "1girl" or "1boy"
-2. age: "child", "teen", "adult", or "10 years old"
-3. hair: color + length + style — e.g. "long brown wavy hair", "short black hair with side bangs"
-4. eyes: color — e.g. "brown eyes", "blue eyes"
-5. outfit: main colors + key pieces — e.g. "cobalt blue dress, white collar, red ribbon"
-6. body/skin: "fair skin", "tan skin", "slim build"
-7. expression/feature: 1-2 notable traits — e.g. "bright curious eyes", "gentle smile"
+Format: "a [age] [gender] with [hair color and style], [eye color] eyes, wearing [outfit], [skin tone], [1-2 notable features]"
 
 Example output:
-1girl, 10 years old, long brown wavy hair, side bangs, brown eyes, cobalt blue dress, white collar, small red ribbon, fair skin, slim build, bright curious eyes`;
+a 10-year-old girl with long wavy brown hair and side bangs, bright brown eyes, wearing a cobalt blue dress with a white collar and a small red ribbon, fair skin, and a curious bright expression`;
 
 /**
  * @param {string} storyPromptTh
- * @returns {Promise<string>}  Booru-tag character description (English)
+ * @returns {Promise<string>}  Natural language character description (for UMT5/Wan2.1)
  */
 async function generateCharacterDescription(storyPromptTh) {
-  console.log('🎨 Typhoon2 สร้าง character description (Booru tags)...');
+  console.log('🎨 Typhoon2 สร้าง character description (natural language for Wan2.1)...');
   const raw  = await ollamaChat(storyPromptTh, CHAR_SYSTEM);
-  const desc = raw.trim().split('\n')[0].replace(/^[-*•]\s*/, '').trim();
-  console.log(`✅ Character tags: ${desc}`);
+  const desc = raw.trim().split('\n')[0].replace(/^[-*•"]\s*/, '').replace(/"$/, '').trim();
+  console.log(`✅ Character description: ${desc}`);
   return desc;
 }
 
