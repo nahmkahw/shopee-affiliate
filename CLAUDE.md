@@ -209,6 +209,14 @@ node agents\makrut\pipeline\makrut.js --resend
 
 > ⚠️ ห้ามรัน `start-all-agents.bat` ขณะบอทกำลัง Approve — จะ kill mid-execution
 
+### Agent มะม่วง — Flux Kontext mode (`agents/mammuang/mammuang-gen.js`)
+
+`generateMammuang({ model: 'flux-kontext' })` ใช้ Flux Kontext FP8 local inference สำหรับ character consistency:
+- Reference image อยู่ที่ `agents/mammuang/ref-character.jpg` (fixed, วางไว้ล่วงหน้า)
+- Workflow: `ReferenceLatent` + `FluxKontextMultiReferenceLatentMethod` lock character จาก ref image
+- Models ที่ต้อง install บน ComfyUI ก่อนใช้งาน: `flux1-kontext-dev-fp8.safetensors`, `t5xxl_fp8_e4m3fn.safetensors`, `clip_l.safetensors`, `ae.safetensors`
+- SDXL workflows เดิม (`buildWorkflow`, `buildWorkflowWithRef`) ยังคงทำงานได้ปกติ
+
 ### Agent มะกรูด (`agents/makrut/`)
 
 FIFA World Cup 2026 news pipeline — ทำงานเหมือน manao แต่ scrape จากแหล่งข่าว FIFA/กีฬา
