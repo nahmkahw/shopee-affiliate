@@ -84,13 +84,13 @@ function comfyUploadImage(imagePath) {
   });
 }
 
-const REF_CHARACTER_PATH = path.join(__dirname, 'ref-character.jpg');
+const REF_CHARACTER_PATH = path.join(__dirname, 'ref-character.png');
 
 // Flux Kontext local inference — lock character จาก ref-character.jpg
 // ต้องการ models: flux1-kontext-dev-fp8, t5xxl_fp8_e4m3fn, clip_l, ae (VAE)
 function buildWorkflowFluxKontext({ refImageName, positive, seed, width, height }) {
   return {
-    '1': { class_type: 'UNETLoader',      inputs: { unet_name: 'flux1-kontext-dev-fp8.safetensors', weight_dtype: 'fp8_e4m3fn' } },
+    '1': { class_type: 'UNETLoader',      inputs: { unet_name: 'flux1-dev-kontext_fp8_scaled.safetensors', weight_dtype: 'fp8_e4m3fn' } },
     '2': { class_type: 'DualCLIPLoader',  inputs: { clip_name1: 't5xxl_fp8_e4m3fn.safetensors', clip_name2: 'clip_l.safetensors', type: 'flux' } },
     '3': { class_type: 'CLIPTextEncodeFlux', inputs: { clip: ['2', 0], clip_l: positive, t5xxl: positive, guidance: 2.5 } },
     '4': { class_type: 'VAELoader',       inputs: { vae_name: 'ae.safetensors' } },
