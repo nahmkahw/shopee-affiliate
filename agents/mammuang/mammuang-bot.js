@@ -97,7 +97,9 @@ async function handleMammuang(concept) {
     await send(`🥭 กำลังขยาย concept… "${concept.substring(0, 40)}"`);
     let speech = concept, prompt_en = '';
     try {
-      const exp = await expandConcept([{ role: 'user', content: concept }]);
+      const refPath2 = path.join(__dirname, 'ref-character.png');
+      const fluxMode = fs.existsSync(refPath2);
+      const exp = await expandConcept([{ role: 'user', content: concept }], { fluxMode });
       speech    = exp.speech    || concept;
       prompt_en = exp.prompt_en || '';
     } catch (e) { console.warn('[mammuang] expandConcept failed:', e.message); }

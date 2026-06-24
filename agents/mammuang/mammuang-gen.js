@@ -170,7 +170,9 @@ async function generateMammuang(options = {}) {
     onProgress   = () => {},
   } = options;
 
-  const positive = prompt_en.startsWith('masterpiece') ? prompt_en
+  // flux-kontext: ใช้ natural language ตรงๆ ไม่ prepend SDXL tags
+  const positive = model === 'flux-kontext' ? prompt_en
+    : prompt_en.startsWith('masterpiece') ? prompt_en
     : POSITIVE_PREFIX + ', ' + prompt_en;
   const negative = (neg_prompt && neg_prompt.trim()) ? neg_prompt.trim() : DEFAULT_NEG;
 
