@@ -86,8 +86,8 @@ function comfyUploadImage(imagePath) {
 
 const REF_CHARACTER_PATH = path.join(__dirname, 'ref-character.png');
 
-// Flux Kontext local inference — lock character จาก ref-character.jpg
-// ต้องการ models: flux1-kontext-dev-fp8, t5xxl_fp8_e4m3fn, clip_l, ae (VAE)
+// Flux Kontext local inference — edit ref-character.png ตาม prompt (ไม่ generate จากศูนย์)
+// denoise 0.80 = เปลี่ยน scene/background แต่รักษาหน้าตาตัวละครไว้
 function buildWorkflowFluxKontext({ refImageName, positive, seed, width, height }) {
   return {
     '1': { class_type: 'UNETLoader',      inputs: { unet_name: 'flux1-dev-kontext_fp8_scaled.safetensors', weight_dtype: 'fp8_e4m3fn' } },
@@ -96,19 +96,18 @@ function buildWorkflowFluxKontext({ refImageName, positive, seed, width, height 
     '4': { class_type: 'VAELoader',       inputs: { vae_name: 'ae.safetensors' } },
     '5': { class_type: 'LoadImage',       inputs: { image: refImageName } },
     '6': { class_type: 'VAEEncode',       inputs: { pixels: ['5', 0], vae: ['4', 0] } },
-    // ReferenceLatent — attach ref image latent เข้า conditioning เพื่อ lock character
     '7': { class_type: 'ReferenceLatent', inputs: { conditioning: ['3', 0], latent: ['6', 0] } },
     '8': { class_type: 'FluxKontextMultiReferenceLatentMethod', inputs: { conditioning: ['7', 0], reference_latents_method: 'index' } },
     '9': { class_type: 'FluxGuidance',    inputs: { conditioning: ['8', 0], guidance: 2.5 } },
     '10': { class_type: 'ModelSamplingFlux', inputs: { model: ['1', 0], max_shift: 1.15, base_shift: 0.5, width, height } },
-    '11': { class_type: 'EmptySD3LatentImage', inputs: { width, height, batch_size: 1 } },
-    '12': { class_type: 'KSampler',       inputs: {
+    // ref latent เป็น input ของ KSampler + denoise 0.80 → edit ไม่ใช่ generate ใหม่
+    '11': { class_type: 'KSampler',       inputs: {
       model: ['10', 0], positive: ['9', 0], negative: ['9', 0],
-      latent_image: ['11', 0], seed, steps: 20, cfg: 1.0,
-      sampler_name: 'euler', scheduler: 'simple', denoise: 1.0,
+      latent_image: ['6', 0], seed, steps: 20, cfg: 1.0,
+      sampler_name: 'euler', scheduler: 'simple', denoise: 0.80,
     } },
-    '13': { class_type: 'VAEDecode',      inputs: { samples: ['12', 0], vae: ['4', 0] } },
-    '14': { class_type: 'SaveImage',      inputs: { images: ['13', 0], filename_prefix: 'mammuang_kontext' } },
+    '12': { class_type: 'VAEDecode',      inputs: { samples: ['11', 0], vae: ['4', 0] } },
+    '13': { class_type: 'SaveImage',      inputs: { images: ['12', 0], filename_prefix: 'mammuang_kontext' } },
   };
 }
 
@@ -186,7 +185,7 @@ async function generateMammuang(options = {}) {
     onProgress('upload ref-character เข้า ComfyUI...');
     const refImageName = await comfyUploadImage(REF_CHARACTER_PATH);
     workflow   = buildWorkflowFluxKontext({ refImageName, positive, seed, width, height });
-    saveNodeId = '14';
+    saveNodeId = '13';
   } else if (refImagePath && fs.existsSync(refImagePath)) {
     onProgress('upload รูปต้นแบบเข้า ComfyUI...');
     const refImageName = await comfyUploadImage(refImagePath);
