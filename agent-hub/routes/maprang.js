@@ -133,6 +133,26 @@ function register(req, res, url, rawUrl, method, deps) {
     }).catch(e => { if (!res.headersSent) reply(res, 500, { ok: false, error: e.message }); });
   }
 
+  // Scene progress (step, pct) + preview image
+  const sceneProgM = url.match(/^\/api\/maprang\/([\w]+)\/scene-progress\/(\d+)$/);
+  if (sceneProgM && method === 'GET') {
+    const p = path.join(ROOT, 'agents', 'maprang', 'gallery', sceneProgM[1], 'clips', `progress_${sceneProgM[2]}.json`);
+    if (!fs.existsSync(p)) return reply(res, 200, { ok: true });
+    try {
+      const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+      const prevP = path.join(ROOT, 'agents', 'maprang', 'gallery', sceneProgM[1], 'clips', `preview_${sceneProgM[2]}.jpg`);
+      return reply(res, 200, { ok: true, ...data, has_preview: fs.existsSync(prevP) });
+    } catch { return reply(res, 200, { ok: true }); }
+  }
+
+  const scenePrevM = url.match(/^\/api\/maprang\/([\w]+)\/scene-preview\/(\d+)$/);
+  if (scenePrevM && method === 'GET') {
+    const p = path.join(ROOT, 'agents', 'maprang', 'gallery', scenePrevM[1], 'clips', `preview_${scenePrevM[2]}.jpg`);
+    if (!fs.existsSync(p)) { res.writeHead(404); return res.end(''); }
+    res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-cache', 'Content-Length': fs.statSync(p).size });
+    return fs.createReadStream(p).pipe(res);
+  }
+
   // ─── Movie workflow sub-routes ────────────────────────────────────────────
   if (sceneHandler.handle(req, res, url, method, ROOT)) return;
   if (buildHandler.handle(req, res, url, method, ROOT)) return;

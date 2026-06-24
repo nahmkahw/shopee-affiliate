@@ -137,6 +137,15 @@ function renderProdCard(job) {
          <button class="btn btn-ghost btn-sm" onclick="skipScene('${job.id}',${s.scene_number})">⏭</button>`;
     const videoEl = (!s.skipped && s.status === 'done')
       ? `<video src="/dashboard/maprang/clip/${job.id}/${s.scene_number}" controls preload="none"></video>` : '';
+    const genProgress = (s.status === 'generating' && s.started_at) ? `
+<div style="margin-top:6px">
+  <div class="prog-wrap" style="margin:4px 0"><div class="prog-fill fill-prod" style="width:0%" id="sp-fill-${s.scene_number}"></div></div>
+  <div style="display:flex;gap:10px;font-size:11px;color:#94a3b8;margin-top:2px">
+    <span id="sp-step-${s.scene_number}">รอ step...</span>
+    <span id="sp-el-${s.scene_number}">0s</span>
+  </div>
+  <img id="sp-prev-${s.scene_number}" style="display:none;width:100%;max-height:80px;object-fit:cover;border-radius:4px;margin-top:4px">
+</div>` : '';
     return `<div class="scene-card">
 <div class="row" style="align-items:center">
   <span class="scene-num">${s.scene_number}</span>
@@ -144,8 +153,13 @@ function renderProdCard(job) {
   <span style="margin:0 8px">${badge}</span>
   <div style="display:flex;gap:4px">${actions}</div>
 </div>
-${videoEl}</div>`;
+${genProgress}${videoEl}</div>`;
   }).join('');
+
+  const autoStartPoll = scenes
+    .filter(s => s.status === 'generating' && s.started_at)
+    .map(s => `startScenePoll('${job.id}',${s.scene_number},'${s.started_at}');`)
+    .join('');
 
   return `<div class="card">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -158,7 +172,7 @@ ${videoEl}</div>`;
 <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
   <button class="btn btn-green" onclick="triggerBuild('${job.id}')">🎞️ Build Story</button>
   <div id="build-msg"></div>
-</div></div>`;
+</div></div>${autoStartPoll ? `<script>${autoStartPoll}</script>` : ''}`;
 }
 
 function renderDashboard(ROOT, { gallery, allChars, active }) {
@@ -241,6 +255,7 @@ async function regenScene(id,n){if(!confirm('Regenerate scene '+n+'?'))return;co
 async function skipScene(id,n){const j=await fetch('/api/maprang/'+id+'/scenes/'+n+'/skip',{method:'POST'}).then(r=>r.json());j.ok?location.reload():alert('❌ '+j.error);}
 async function triggerBuild(id){if(!confirm('เริ่ม Post-production?'))return;const msg=document.getElementById('build-msg');msg.textContent='⏳';const j=await fetch('/api/maprang/'+id+'/build',{method:'POST'}).then(r=>r.json());if(j.ok){msg.textContent='✅ Building...';setTimeout(()=>location.reload(),3000);}else msg.textContent='❌ '+j.error;}
 function fmtE(s){return s>=60?Math.floor(s/60)+'m'+(s%60)+'s':s+'s';}
+function startScenePoll(id,n,startAt){const t0=new Date(startAt).getTime();setInterval(async()=>{const el=document.getElementById('sp-el-'+n);if(el)el.textContent=fmtE(Math.round((Date.now()-t0)/1000));try{const p=await fetch('/api/maprang/'+id+'/scene-progress/'+n).then(r=>r.json());if(p&&p.step){const f=document.getElementById('sp-fill-'+n),s=document.getElementById('sp-step-'+n);if(f)f.style.width=(p.pct||0)+'%';if(s)s.textContent='step '+p.step+'/'+p.total;if(p.has_preview){const i=document.getElementById('sp-prev-'+n);if(i){i.src='/api/maprang/'+id+'/scene-preview/'+n+'?t='+Date.now();i.style.display='block';}}}}catch{}},5000);}
 function renderTL(logs){if(!logs||!logs.length)return'<span style="color:#475569;font-size:11px">รอเริ่ม...</span>';return logs.map(l=>'<div style="display:flex;gap:8px;padding:2px 0;border-bottom:1px solid #0f172a"><span style="color:#475569;min-width:38px;flex-shrink:0;font-size:10px">+'+fmtE(l.elapsed||0)+'</span><span style="font-size:11px">'+l.msg+'</span></div>').join('');}
 if(ACTIVE_STATUS==='pre_production'&&ACTIVE_SCENES===0){setInterval(async()=>{try{const j=await fetch('/api/maprang/status/'+ACTIVE_ID).then(r=>r.json());if(!j.ok)return;const tl=document.getElementById('timeline');if(tl)tl.innerHTML=renderTL(j.logs);if(j.scenes&&j.scenes.length>0)setTimeout(()=>location.reload(),800);else if(j.status!=='pre_production')setTimeout(()=>location.reload(),800);}catch{}},5000);}
 if(ACTIVE_STATUS==='producing'){setInterval(async()=>{try{const j=await fetch('/api/maprang/status/'+ACTIVE_ID).then(r=>r.json());if(!j.ok)return;const fill=document.getElementById('prod-fill');const done=j.scenes.filter(s=>s.status==='done').length;const total=j.scenes.filter(s=>!s.skipped).length;if(fill)fill.style.width=(total?Math.round(done/total*100):0)+'%';const tl=document.getElementById('timeline');if(tl)tl.innerHTML=renderTL(j.logs);if(['building','pending_approval'].includes(j.status))setTimeout(()=>location.reload(),1500);}catch{}},5000);}

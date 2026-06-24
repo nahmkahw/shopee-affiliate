@@ -4,9 +4,10 @@
  * API: checkHealth, checkWan21Model, generateClip
  */
 
-const http   = require('http');
-const fs     = require('fs');
-const crypto = require('crypto');
+const http      = require('http');
+const fs        = require('fs');
+const crypto    = require('crypto');
+const WebSocket = require('ws');
 
 const NEG_BASE = 'low quality, blurry, watermark, text overlay, nsfw, worst quality';
 
@@ -162,14 +163,39 @@ async function generateCharacterImage(cfg, charDesc, outputPath, seed) {
  * @returns {Promise<string>}   outputPath
  */
 async function generateClip(cfg, prompt, outputPath, seed, charNeg = '') {
-  const clientId = crypto.randomUUID();
-  const workflow = buildWan21Workflow(prompt, cfg.modelName, seed, charNeg);
+  const clientId     = crypto.randomUUID();
+  const workflow     = buildWan21Workflow(prompt, cfg.modelName, seed, charNeg);
+  const progressFile = outputPath.replace(/clip_(\d+)\.mp4$/, 'progress_$1.json');
+  const previewFile  = outputPath.replace(/clip_(\d+)\.mp4$/, 'preview_$1.jpg');
+
+  // WebSocket สำหรับ step progress + preview (best-effort — ไม่กระทบถ้า WS fail)
+  let ws;
+  try {
+    ws = new WebSocket(`ws://${cfg.host || '10.3.17.118'}:${cfg.port || 8188}/ws?clientId=${clientId}`);
+    ws.on('message', (data, isBinary) => {
+      try {
+        if (isBinary) {
+          // ComfyUI binary frame: 4 bytes type + 4 bytes format + JPEG bytes
+          if (data.length > 8) fs.writeFileSync(previewFile, data.slice(8));
+          return;
+        }
+        const msg = JSON.parse(data.toString());
+        if (msg.type === 'progress') {
+          const { value, max } = msg.data || {};
+          if (value != null && max) fs.writeFileSync(progressFile,
+            JSON.stringify({ step: value, total: max, pct: Math.round(value / max * 100), t: Date.now() })
+          );
+        }
+      } catch {}
+    });
+    ws.on('error', () => {});
+  } catch {}
 
   console.log(`  🎬 ComfyUI: submit "${prompt.substring(0, 60)}..."`);
   const { prompt_id } = await _request(cfg, 'POST', '/prompt', { client_id: clientId, prompt: workflow });
-  if (!prompt_id) throw new Error('ComfyUI ไม่ตอบ prompt_id');
+  if (!prompt_id) { ws?.close(); throw new Error('ComfyUI ไม่ตอบ prompt_id'); }
 
-  const timeout = cfg.timeoutMs || 600000; // 10 นาที / clip
+  const timeout = cfg.timeoutMs || 600000;
   const start   = Date.now();
 
   while (Date.now() - start < timeout) {
@@ -177,9 +203,8 @@ async function generateClip(cfg, prompt, outputPath, seed, charNeg = '') {
     const history = await _request(cfg, 'GET', `/history/${prompt_id}`);
     const job     = history[prompt_id];
     if (!job) { process.stdout.write('.'); continue; }
-    if (job.status?.status_str === 'error') throw new Error('ComfyUI job error');
+    if (job.status?.status_str === 'error') { ws?.close(); throw new Error('ComfyUI job error'); }
 
-    // VHS_VideoCombine output อยู่ใน node '10'
     const videoOut = job.outputs?.['10']?.videos?.[0] || job.outputs?.['10']?.gifs?.[0];
     if (!videoOut) continue;
 
@@ -187,9 +212,11 @@ async function generateClip(cfg, prompt, outputPath, seed, charNeg = '') {
     const url = `/view?filename=${encodeURIComponent(videoOut.filename)}&subfolder=${encodeURIComponent(videoOut.subfolder || '')}&type=${encodeURIComponent(videoOut.type || 'output')}`;
     const buf = await _getBinary(cfg, url);
     fs.writeFileSync(outputPath, buf);
+    ws?.close();
     console.log(`  ✅ บันทึก ${outputPath} (${(buf.length / 1024 / 1024).toFixed(1)} MB)`);
     return outputPath;
   }
+  ws?.close();
   throw new Error(`ComfyUI timeout หลัง ${timeout / 60000} นาที`);
 }
 
