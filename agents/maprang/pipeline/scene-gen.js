@@ -11,24 +11,28 @@ const OLLAMA_HOST  = process.env.OLLAMA_HOST  || 'http://10.3.17.118:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'scb10x/llama3.1-typhoon2-8b-instruct:latest';
 
 const SYSTEM_PROMPT = `คุณเป็น AI สร้างสคริปต์วิดีโอ Anime Story
-รับ story prompt ภาษาไทย แล้วแตกออกเป็น 5 scenes
+รับ story prompt ภาษาไทย แล้วแตกออกเป็น 5 scenes ที่มีความต่อเนื่องของเนื้อเรื่อง
 ตอบเป็น JSON array เท่านั้น ไม่มีข้อความอื่น ไม่มี markdown code block
 
 format ที่ต้องการ:
 [
   {
     "scene_number": 1,
-    "visual_prompt_en": "anime style, [English description of the scene, 20-40 words], cinematic lighting, detailed background",
-    "subtitle_th": "[คำบรรยายภาษาไทย ไม่เกิน 15 คำ]"
+    "visual_prompt_en": "anime style, [English description 20-40 words], cinematic lighting, detailed background",
+    "subtitle_th": "[คำบรรยายกระชับ ไม่เกิน 12 คำ]",
+    "narration_th": "[เสียงพากย์แบบผู้เล่านิทาน 2-3 ประโยค ภาษาไทย เชื่อมต่อจาก scene ก่อนหน้า]",
+    "visual_action": "[English summary of key visual action 5-10 words, used as context for next scene]"
   },
   ...
 ]
 
 กฎสำคัญ:
 - visual_prompt_en ต้องเป็นภาษาอังกฤษ เริ่มด้วย "anime style,"
-- subtitle_th ต้องเป็นภาษาไทย กระชับ ไม่เกิน 15 คำ
-- ต้องมีครบ 5 scenes เสมอ
-- เนื้อหาต้องเป็น family-friendly`;
+- subtitle_th กระชับ ไม่เกิน 12 คำ
+- narration_th สไตล์นิทาน ลื่นไหล ต่อเนื่องจาก scene ก่อน (scene 1 เริ่มต้นเรื่อง)
+- visual_action สั้น เพื่อใช้เป็น context ของ scene ถัดไป
+- เนื้อหาต้องเป็น family-friendly
+- ต้องมีครบ 5 scenes`;
 
 function ollamaChat(prompt, systemPrompt = SYSTEM_PROMPT) {
   return new Promise((resolve, reject) => {
@@ -72,9 +76,11 @@ function parseScenes(raw) {
   if (!Array.isArray(scenes) || scenes.length === 0)
     throw new Error('scenes ต้องเป็น array ที่มีข้อมูล');
   return scenes.slice(0, 5).map((s, i) => ({
-    scene_number:     s.scene_number    || i + 1,
+    scene_number:     s.scene_number     || i + 1,
     visual_prompt_en: s.visual_prompt_en || `anime style, scene ${i + 1}`,
     subtitle_th:      s.subtitle_th      || '',
+    narration_th:     s.narration_th     || s.subtitle_th || '',
+    visual_action:    s.visual_action    || '',
   }));
 }
 
@@ -193,12 +199,12 @@ async function generateScenesWithCharacters(storyPromptTh, characters) {
   const charList = charIds.map(id => `${id}(${characters[id].name || id})`).join(', ');
   const system = `คุณเป็น AI สร้างสคริปต์วิดีโอ Anime Story
 ตัวละครที่มีในเรื่อง: ${charList}
-แตก story ออกเป็น 5 scenes ตอบเป็น JSON array เท่านั้น ไม่มีข้อความอื่น
+แตก story ออกเป็น 5 scenes ที่มีความต่อเนื่อง ตอบเป็น JSON array เท่านั้น ไม่มีข้อความอื่น
 
 format:
-[{"scene_number":1,"visual_prompt_en":"anime style, [scene 20-40 words], cinematic lighting","subtitle_th":"[ไม่เกิน 15 คำ]","characters":["id1"]}]
+[{"scene_number":1,"visual_prompt_en":"anime style, [scene 20-40 words], cinematic lighting","subtitle_th":"[ไม่เกิน 12 คำ]","narration_th":"[เสียงพากย์นิทาน 2-3 ประโยค ต่อเนื่องจาก scene ก่อน]","visual_action":"[key action 5-10 words en]","characters":["id1"]}]
 
-กฎ: visual_prompt_en เป็นภาษาอังกฤษ, characters คือ array ของ id ตัวละครที่ปรากฏ, family-friendly`;
+กฎ: visual_prompt_en เป็นภาษาอังกฤษ, narration_th สไตล์นิทานไทย, characters คือ array ของ id, family-friendly`;
 
   console.log(`🤖 Typhoon2 scene breakdown (${charIds.length} chars)...`);
   const raw    = await ollamaChat(`สร้าง 5 scenes:\n\n${storyPromptTh}`, system);
@@ -206,9 +212,11 @@ format:
   if (!match) throw new Error('ไม่พบ JSON array');
   const scenes = JSON.parse(match[0]);
   return scenes.slice(0, 5).map((s, i) => ({
-    scene_number:     s.scene_number || i + 1,
+    scene_number:     s.scene_number     || i + 1,
     visual_prompt_en: s.visual_prompt_en || `anime style, scene ${i + 1}`,
-    subtitle_th:      s.subtitle_th || '',
+    subtitle_th:      s.subtitle_th      || '',
+    narration_th:     s.narration_th     || s.subtitle_th || '',
+    visual_action:    s.visual_action    || '',
     characters:       Array.isArray(s.characters) ? s.characters.filter(id => characters[id]) : [charIds[0]],
   }));
 }

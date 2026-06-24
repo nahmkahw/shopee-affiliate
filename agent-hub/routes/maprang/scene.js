@@ -100,6 +100,13 @@ function handle(req, res, url, method, ROOT) {
       return reply(200, { ok: true, message: 'Subtitle updated' });
     }
 
+    if (op === 'update-narration') {
+      if (!body.narration) return reply(400, { ok: false, error: 'ต้องระบุ narration' });
+      scene.narration_th = body.narration;
+      writeMeta(ROOT, id, meta);
+      return reply(200, { ok: true, message: 'Narration updated' });
+    }
+
     return reply(404, { ok: false, error: `Unknown operation: ${op}` });
   }).catch(e => reply(500, { ok: false, error: e.message }));
 

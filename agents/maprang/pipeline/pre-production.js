@@ -84,6 +84,8 @@ async function runPreProduction({ prompt, id, charDescOverride, charIdsArg, comf
       : singleCharNeg;
     return {
       ...s,
+      narration_th:  s.narration_th  || s.subtitle_th,
+      visual_action: s.visual_action || '',
       status: 'pending',
       approved: false,
       skipped: false,

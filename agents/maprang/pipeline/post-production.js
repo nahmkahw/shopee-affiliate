@@ -66,7 +66,7 @@ async function runPostProduction(meta, dir) {
     let withAudio = subPath;
     try {
       const ttsPath = path.join(postDir, `tts_${scene.scene_number}.mp3`);
-      await generateVoiceover(scene.subtitle_th, ttsPath);
+      await generateVoiceover(scene.narration_th || scene.subtitle_th, ttsPath);
       const mixPath = path.join(postDir, `mix_${scene.scene_number}.mp4`);
       mixAudioIntoClip(subPath, ttsPath, mixPath);
       try { fs.unlinkSync(subPath); } catch {}
