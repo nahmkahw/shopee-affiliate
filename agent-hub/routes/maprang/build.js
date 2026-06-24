@@ -54,6 +54,7 @@ function handle(req, res, url, method, ROOT) {
   // approve storyboard → spawn generate-scene สำหรับทุก scene ต่อกัน (sequential ใน run.js)
   const approveM = url.match(/^\/api\/maprang\/([\w]+)\/approve$/);
   if (approveM && method === 'POST') {
+    res._claimed = true;
     getBody(req).then(body => {
       const id   = approveM[1];
       const meta = readMeta(ROOT, id);
@@ -77,6 +78,7 @@ function handle(req, res, url, method, ROOT) {
   // build (post-production)
   const buildM = url.match(/^\/api\/maprang\/([\w]+)\/build$/);
   if (buildM && method === 'POST') {
+    res._claimed = true;
     const id   = buildM[1];
     const meta = readMeta(ROOT, id);
     if (!meta) return reply(404, { ok: false, error: 'ไม่พบ job' });
@@ -89,6 +91,7 @@ function handle(req, res, url, method, ROOT) {
   // update bgm_mood
   const bgmM = url.match(/^\/api\/maprang\/([\w]+)\/bgm$/);
   if (bgmM && (method === 'POST' || method === 'PATCH')) {
+    res._claimed = true;
     getBody(req).then(body => {
       const id   = bgmM[1];
       const meta = readMeta(ROOT, id);

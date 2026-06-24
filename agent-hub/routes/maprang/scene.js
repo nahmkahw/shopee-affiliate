@@ -58,6 +58,7 @@ function handle(req, res, url, method, ROOT) {
   const [, id, sceneStr, op] = m;
   const sceneNum = parseInt(sceneStr, 10);
 
+  res._claimed = true;
   getBody(req).then(body => {
     const meta = readMeta(ROOT, id);
     if (!meta) return reply(404, { ok: false, error: 'ไม่พบ job' });
