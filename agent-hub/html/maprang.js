@@ -195,14 +195,17 @@ function renderDashboard(ROOT, { gallery, allChars, active }) {
     `<input type="checkbox" class="char-check" value="${c.id}" checked> ${c.name || c.id}</label>`
   ).join('');
 
-  // Gallery: เฉพาะ completed jobs (pending_approval / posted)
-  const recentDone = gallery.filter(m => ['pending_approval','posted','error'].includes(m.status)).slice(0, 5);
+  // Gallery: completed jobs (video: pending_approval/posted | comic: done)
+  const recentDone = gallery.filter(m => ['pending_approval','posted','error','done'].includes(m.status)).slice(0, 5);
   const doneCards  = recentDone.map(m => {
+    const isComic  = m.mode === 'comic';
     const hasVideo = fs.existsSync(path.join(ROOT, 'agents', 'maprang', 'gallery', m.id, 'story.mp4'));
-    const emoji    = m.status === 'posted' ? '✅' : m.status === 'error' ? '❌' : '📱';
+    const hasComic = fs.existsSync(path.join(ROOT, 'agents', 'maprang', 'gallery', m.id, 'comic.png'));
+    const emoji    = m.status === 'posted' ? '✅' : m.status === 'error' ? '❌' : isComic ? '🎴' : '📱';
     return `<div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:10px;font-size:12px">
-  ${emoji} <span style="color:#94a3b8">${m.id}</span>
+  ${emoji} <span style="color:#94a3b8">${m.id}</span>${isComic ? ' <span style="color:#a855f7">การ์ตูน</span>' : ''}
   <div style="color:#e2e8f0;margin:4px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px">${m.prompt || ''}</div>
+  ${hasComic ? `<a href="/dashboard/maprang/comic/${m.id}" target="_blank"><img src="/dashboard/maprang/comic/${m.id}?t=${Date.now()}" style="width:100%;max-width:220px;border-radius:6px;margin-top:4px"></a>` : ''}
   ${hasVideo ? `<a href="/dashboard/maprang/video/${m.id}" target="_blank" class="btn btn-ghost btn-sm" style="display:inline-block;margin-top:4px">▶ ดูวิดีโอ</a>` : ''}
 </div>`;
   }).join('');
@@ -221,8 +224,13 @@ ${active ? `<div class="stage-bar">${stagePill(activeStatus)}</div>${stageCard}`
   <textarea id="prompt" rows="3" style="width:100%;margin-bottom:8px" placeholder="ใส่ story prompt ภาษาไทย..."></textarea>
   ${charCheckboxes ? `<div style="font-size:11px;color:#64748b;margin-bottom:4px">ตัวละครในซีรีส์</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${charCheckboxes}</div>` : ''}
   <textarea id="char-desc" rows="1" style="width:100%;font-size:12px;margin-bottom:8px" placeholder="คำอธิบายตัวละคร (ไม่บังคับ)"></textarea>
+  <div style="font-size:11px;color:#64748b;margin-bottom:4px">โหมด</div>
+  <select id="gen-mode" style="width:100%;margin-bottom:8px;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:4px;padding:6px;font-size:12px">
+    <option value="video">🎬 วิดีโอ (นิทาน Ken Burns) — ~18 นาที</option>
+    <option value="comic">🎴 การ์ตูน 4 ช่อง (รูป + บทพูด) — ~10 นาที ⚡</option>
+  </select>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
-    <button class="btn btn-purple" id="btn-gen" onclick="generate()">📋 เริ่ม Pre-production</button>
+    <button class="btn btn-purple" id="btn-gen" onclick="generate()">📋 เริ่มสร้าง</button>
     <button class="btn btn-ghost" onclick="checkComfy()">🔍 ComfyUI</button>
   </div>
   <div id="msg"></div>
@@ -251,7 +259,7 @@ const ACTIVE_ID=${active ? `'${active.id}'` : 'null'};
 const ACTIVE_STATUS=${active ? `'${active.status}'` : 'null'};
 const ACTIVE_SCENES=${active ? (active.scenes || []).length : 0};
 
-async function generate(){const p=document.getElementById('prompt').value.trim();if(!p){alert('กรุณาใส่ story prompt');return;}const btn=document.getElementById('btn-gen'),msg=document.getElementById('msg');btn.disabled=true;msg.textContent='⏳ กำลังสร้าง storyboard...';try{const cd=document.getElementById('char-desc').value.trim();const ci=[...document.querySelectorAll('.char-check:checked')].map(e=>e.value).join(',');const r=await fetch('/api/maprang/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p,char_description:cd,char_ids:ci||undefined})});const j=await r.json();if(j.ok){msg.textContent='✅ Pre-production เริ่มแล้ว! รอสักครู่...';setTimeout(()=>location.reload(),4000);}else{msg.textContent='❌ '+j.error;btn.disabled=false;}}catch(e){msg.textContent='❌ '+e.message;btn.disabled=false;}}
+async function generate(){const p=document.getElementById('prompt').value.trim();if(!p){alert('กรุณาใส่ story prompt');return;}const btn=document.getElementById('btn-gen'),msg=document.getElementById('msg');btn.disabled=true;msg.textContent='⏳ กำลังสร้าง storyboard...';try{const cd=document.getElementById('char-desc').value.trim();const ci=[...document.querySelectorAll('.char-check:checked')].map(e=>e.value).join(',');const mode=document.getElementById('gen-mode').value;const r=await fetch('/api/maprang/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p,char_description:cd,char_ids:ci||undefined,mode})});const j=await r.json();if(j.ok){msg.textContent=mode==='comic'?'✅ เริ่มสร้างการ์ตูน! (~10 นาที)':'✅ Pre-production เริ่มแล้ว! รอสักครู่...';setTimeout(()=>location.reload(),4000);}else{msg.textContent='❌ '+j.error;btn.disabled=false;}}catch(e){msg.textContent='❌ '+e.message;btn.disabled=false;}}
 async function checkComfy(){const msg=document.getElementById('msg');msg.textContent='⏳';const j=await fetch('/api/maprang/check').then(r=>r.json());msg.textContent=j.online?'✅ ComfyUI online'+(j.wan21?' | Wan2.1 ✅':' | Wan2.1 ❌'):'❌ ComfyUI offline';}
 async function approvePreProduction(id){const mood=document.getElementById('bgm-mood').value;const msg=document.getElementById('approve-msg');msg.textContent='⏳';const j=await fetch('/api/maprang/'+id+'/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bgm_mood:mood})}).then(r=>r.json());if(j.ok){msg.textContent='✅ Production เริ่มแล้ว!';setTimeout(()=>location.reload(),2000);}else msg.textContent='❌ '+j.error;}
 async function updateSub(id,n,v){await fetch('/api/maprang/'+id+'/scenes/'+n+'/update-subtitle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subtitle:v})});}

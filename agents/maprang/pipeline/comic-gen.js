@@ -1,0 +1,86 @@
+'use strict';
+/**
+ * comic-gen.js — แตก story ไทย → 4 panel การ์ตูน (4-koma) ด้วย Typhoon2
+ * แต่ละ panel: ฉาก (en) + ตัวละครในช่อง + บทพูด (บอลลูน)
+ * ต่างจาก scene-gen (วิดีโอ): ไม่มี narration/motion/audio — เป็นภาพนิ่ง + ข้อความ
+ */
+
+const { ollamaChat } = require('./scene-gen');
+const { parseJsonArrayLenient } = require('../../../lib/llm-json');
+
+const N_PANELS = parseInt(process.env.MAPRANG_COMIC_PANELS || '4', 10);
+const MAX_LINE = parseInt(process.env.MAPRANG_COMIC_MAXLINE || '40', 10); // บอลลูนพอดี
+
+// ตัดบทพูดยาวเกินบอลลูน
+function capLine(text) {
+  const t = (text || '').trim();
+  return t.length <= MAX_LINE ? t : t.slice(0, MAX_LINE - 1).trimEnd() + '…';
+}
+
+// story beats (4 ช่อง = ตั้ง-ขยาย-หักมุม-จบ) — ปรับตามจำนวน panel
+const BEATS = ['เปิดเรื่อง ตั้งสถานการณ์', 'พัฒนาเหตุการณ์', 'จุดหักมุม/เกิดเรื่องไม่คาดคิด', 'มุกจบ/บทสรุปขำขัน'];
+function beatFor(i, n) { return n === 4 ? BEATS[i] : i === 0 ? BEATS[0] : i === n - 1 ? BEATS[3] : BEATS[1]; }
+
+// normalize 1 panel object → schema มาตรฐาน
+function normPanel(p, idx, characters, charIds) {
+  const chars = (Array.isArray(p?.characters) ? p.characters.filter(id => characters[id]) : []);
+  const dlg = (Array.isArray(p?.dialogue) ? p.dialogue : [])
+    .filter(d => d && d.line_th).slice(0, 2)
+    .map(d => ({ speaker: d.speaker, line_th: capLine(d.line_th),
+                 name: characters[d.speaker]?.name || d.speaker || '' }));
+  return {
+    panel: idx + 1,
+    scene_setting_en: (p?.scene_setting_en || `scene ${idx + 1}`).replace(/^anime style,\s*/i, ''),
+    characters: chars.length ? chars : charIds,
+    dialogue: dlg,
+  };
+}
+
+/**
+ * gen ทีละ panel (โมเดล 8B ทำ multi-item JSON ไม่ครบ → ขอทีละช่องเชื่อถือได้กว่า)
+ * @param {string} storyPromptTh
+ * @param {object} characters  registry { id: {name, description} }
+ * @returns {Promise<Array>}
+ */
+async function generateComicPanels(storyPromptTh, characters) {
+  const charIds  = Object.keys(characters);
+  const charList = charIds.map(id => `${id}(${characters[id].name || id})`).join(', ') || '(ไม่ระบุ)';
+  const exId = charIds[0] || 'Teng';
+  // ตัวอย่างจริง (ไม่ใช่ placeholder ในวงเล็บ) — ลดอาการโมเดลลอก template
+  const system = `คุณเป็นนักเขียนการ์ตูน 4 ช่อง ภาษาไทย ตัวละคร: ${charList}
+ตอบเป็น JSON array ที่มี object เดียวเท่านั้น ไม่มีข้อความอื่น ไม่มี markdown ไม่มีวงเล็บเหลี่ยมในเนื้อหา
+ตัวอย่าง: [{"scene_setting_en":"three friends laughing together at a sunny park bench","characters":["${exId}"],"dialogue":[{"speaker":"${exId}","line_th":"วันนี้สนุกจริง ๆ เลย"}]}]
+กฎ: scene_setting_en เป็นภาษาอังกฤษบรรยายฉากจริง, line_th เป็นบทพูดไทยจริงสั้น ≤${MAX_LINE} ตัวอักษร, speaker = id ตัวละครจริง, family-friendly`;
+
+  // panel ใช้ไม่ได้ถ้า: placeholder / ฉากว่าง-default / ไม่มีบทพูด / ซ้ำช่องก่อน
+  const bad = s => !s || /[\[\]]|อังกฤษ|ตัวอักษร|≤|scene_setting/i.test(s) || s.trim().length < 6;
+  const dlgKey = np => np.dialogue.map(d => d.line_th).join('|');
+  const isValid = (np, prevKey) =>
+    np && !bad(np.scene_setting_en) && !/^scene \d+$/i.test(np.scene_setting_en.trim()) &&
+    np.dialogue.length >= 1 && np.dialogue.every(d => !bad(d.line_th)) &&
+    dlgKey(np) !== prevKey;
+
+  console.log(`🤖 Typhoon2 comic (${N_PANELS} panels ทีละช่อง, ${charIds.length} chars)...`);
+  const panels = [];
+  let recap = '', prevKey = '';
+  for (let i = 0; i < N_PANELS; i++) {
+    const user = `story: ${storyPromptTh}\n${recap ? 'เนื้อหาช่องก่อน (ห้ามซ้ำ): ' + recap + '\n' : ''}เขียนช่องที่ ${i + 1}/${N_PANELS} แบบ ${beatFor(i, N_PANELS)} ต่อเนื่องและแตกต่างจากช่องก่อน`;
+    let np = null;
+    for (let attempt = 0; attempt < 3 && !np; attempt++) {
+      try { const cand = normPanel(parseJsonArrayLenient(await ollamaChat(user, system))[0], i, characters, charIds);
+            if (isValid(cand, prevKey)) np = cand; } catch {}
+    }
+    if (!np) {  // ทุก attempt ล้มเหลว → fallback ไม่ให้ panel ว่าง/ซ้ำ
+      np = normPanel({ scene_setting_en: `the characters reacting in a scene about ${storyPromptTh}` }, i, characters, charIds);
+      np.dialogue = [{ speaker: charIds[0], line_th: i === N_PANELS - 1 ? 'จบแบบนี้เลยเหรอ!' : 'เอ๊ะ เกิดอะไรขึ้น',
+                       name: characters[charIds[0]]?.name || charIds[0] || '' }];
+    }
+    panels.push(np);
+    prevKey = dlgKey(np);
+    recap = np.dialogue.map(d => `${d.name}:${d.line_th}`).join(' ');
+    console.log(`  ✅ ช่อง ${i + 1}: ${np.dialogue.map(d => d.name + ':' + d.line_th).join(' / ')}`);
+  }
+  return panels;
+}
+
+module.exports = { generateComicPanels };

@@ -286,5 +286,8 @@ process.on('exit', code => {
   else if (action === 'build')             await actionBuild(galleryId);
   else if (action === 'gen-char-image')    await charActions.genCharImage(CHAR_CTX, charIdArg);
   else if (action === 'gen-anime-ref')     await charActions.genAnimeRef(CHAR_CTX, charIdArg);
+  else if (action === 'comic')             await require('./pipeline/comic').runComic(
+    { COMFY_CFG, ROOT, GALLERY, saveMeta: m => writeMeta(galleryId || (m.id), m) },
+    { prompt, id: galleryId || Date.now().toString(), charIds });
   else                                     actionStatus(galleryId);
 })().catch(e => { console.error('❌', e.message); _exitError = e.message; process.exit(1); });
