@@ -75,40 +75,54 @@ function flattenField(val) {
   return String(val || '');
 }
 
+// Flux Kontext mode: prompt ระบุเฉพาะ scene/pose/clothing/event — ไม่ระบุหน้าตาตัวละคร
+const FLUX_SYSTEM_PROMPT = `คุณเป็น AI ช่วยเขียน prompt สำหรับ Flux Kontext image editing
+
+ตัวละครหลักถูก lock ไว้แล้วจากรูปต้นแบบ — ห้ามระบุหน้าตา สีขน สีตา รูปร่าง หรือ species ของตัวละครใน prompt เด็ดขาด
+
+ตอบ JSON เท่านั้น ไม่มีข้อความอื่น ทุก value ต้องเป็น string ธรรมดา:
+{"elements":"...","speech":"...","prompt_en":"..."}
+
+- elements: องค์ประกอบภาพ (ภาษาไทย) — เหตุการณ์, สิ่งของ, ท่าทาง, การแต่งกาย, ฉากหลัง, แสง, บรรยากาศ
+- speech: คำพูดสั้นๆ น่ารัก 1 ประโยค ภาษาไทย
+- prompt_en: ภาษาอังกฤษ natural language เท่านั้น ห้ามใช้ Danbooru tags หรือ comma-separated tags
+  • เริ่มด้วย "the character is"
+  • ระบุ: ท่าทาง/เหตุการณ์, การแต่งกาย (ถ้ามีการเปลี่ยน), สิ่งของ, ฉากหลัง, แสง, บรรยากาศ
+  • ห้ามพูดถึง: หน้าตา สีขน หู ตา แก้ม รูปร่างตัวละครเด็ดขาด
+  • ตัวอย่าง: "the character is sitting at a wooden desk writing in a notebook, wearing a white apron, warm desk lamp light, cozy room background with plants"`;
+
 /**
  * @param {Array<{role,content}>} history  — รวม user message ล่าสุดแล้ว
- * @returns {{ character, elements, speech, prompt_en }}
+ * @param {object} [opts]
+ * @param {boolean} [opts.fluxMode]  — true → ใช้ FLUX_SYSTEM_PROMPT (scene-only, no character desc)
+ * @returns {{ character?, elements, speech, prompt_en }}
  */
-async function expandConcept(history) {
-  const messages = [
-    { role: 'system', content: SYSTEM_PROMPT },
-    ...history,
-  ];
+async function expandConcept(history, opts = {}) {
+  const systemPrompt = opts.fluxMode ? FLUX_SYSTEM_PROMPT : SYSTEM_PROMPT;
+  const messages = [{ role: 'system', content: systemPrompt }, ...history];
 
   const raw = await ollamaChat(messages);
 
-  // หา JSON block ใน response
   const jsonMatch = raw.match(/\{[\s\S]*?\}/);
   if (!jsonMatch) throw new Error('AI ไม่ตอบ JSON: ' + raw.substring(0, 300));
 
   let result;
-  try {
-    result = JSON.parse(jsonMatch[0]);
-  } catch {
-    throw new Error('JSON parse ล้มเหลว: ' + jsonMatch[0].substring(0, 300));
-  }
+  try { result = JSON.parse(jsonMatch[0]); }
+  catch { throw new Error('JSON parse ล้มเหลว: ' + jsonMatch[0].substring(0, 300)); }
 
-  // flatten ทุก field เผื่อ model ส่ง nested object
-  const character = flattenField(result.character);
   const elements  = flattenField(result.elements);
   const speech    = flattenField(result.speech);
   let   prompt_en = flattenField(result.prompt_en);
 
-  // สร้าง prompt_en fallback ถ้าหาย
+  if (opts.fluxMode) {
+    if (!prompt_en || prompt_en.length < 10) prompt_en = `the character is ${elements.substring(0, 200)}`;
+    return { elements, speech, prompt_en };
+  }
+
+  const character = flattenField(result.character);
   if (!prompt_en || prompt_en.length < 10) {
     prompt_en = `masterpiece, best quality, anime style, highly detailed, ${character.substring(0, 120)}`;
   }
-
   return { character, elements, speech, prompt_en };
 }
 

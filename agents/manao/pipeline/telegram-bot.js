@@ -12,7 +12,7 @@
  *   🔄 สร้างใหม่ → node generate.js {slug} --force → ส่งขอ approve ใหม่
  */
 
-require('dotenv').config({ path: require('path').join(__dirname, '.env'), override: true });
+require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '..', '.env') });
 const https    = require('https');
 const crypto   = require('crypto');
 const { execSync } = require('child_process');

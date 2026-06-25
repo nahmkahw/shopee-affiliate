@@ -7,8 +7,8 @@
  *   /anime <text>        →  IPAdapter anime + balloon → โพสต์ FB + IG
  *   /help                →  แสดงคำสั่งทั้งหมด
  *
- * ใช้ token เดียวกับ anime-bot — ห้ามรัน anime-bot.js พร้อมกัน
- * ต้องตั้งใน .env: ANIME_TELEGRAM_BOT_TOKEN, ANIME_TELEGRAM_CHAT_ID
+ * ต้องตั้งใน .env: MAMMUANG_TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+ * (fallback: ANIME_TELEGRAM_BOT_TOKEN, ANIME_TELEGRAM_CHAT_ID)
  * รัน: node agents/mammuang/mammuang-bot.js
  */
 
@@ -26,15 +26,15 @@ const { generateAnime }        = require('../anime/anime-gen');
 const { renderBalloonOnImage } = require('../anime/balloon-canvas');
 const { postFacebookImage, postInstagramImage } = require('../anime/post-anime');
 
-const TOKEN    = process.env.ANIME_TELEGRAM_BOT_TOKEN;
-const CHAT_ID  = process.env.ANIME_TELEGRAM_CHAT_ID;
+const TOKEN    = process.env.MAMMUANG_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+const CHAT_ID  = process.env.TELEGRAM_CHAT_ID || process.env.ANIME_TELEGRAM_CHAT_ID;
 const ANIME_TPL = path.join(__dirname, '..', 'anime', 'active-template.json');
 const MAM_GAL   = path.join(__dirname, 'gallery');
 const ANIME_GAL = path.join(__dirname, '..', 'anime', 'gallery');
 const LOCK      = path.join(__dirname, '.mammuang-bot.lock');
 
 if (!TOKEN || !CHAT_ID) {
-  console.error('❌ ขาด ANIME_TELEGRAM_BOT_TOKEN หรือ ANIME_TELEGRAM_CHAT_ID ใน .env');
+  console.error('❌ ขาด MAMMUANG_TELEGRAM_BOT_TOKEN หรือ TELEGRAM_CHAT_ID ใน .env');
   process.exit(1);
 }
 
@@ -97,7 +97,9 @@ async function handleMammuang(concept) {
     await send(`🥭 กำลังขยาย concept… "${concept.substring(0, 40)}"`);
     let speech = concept, prompt_en = '';
     try {
-      const exp = await expandConcept([{ role: 'user', content: concept }]);
+      const refPath2 = path.join(__dirname, 'ref-character.png');
+      const fluxMode = fs.existsSync(refPath2);
+      const exp = await expandConcept([{ role: 'user', content: concept }], { fluxMode });
       speech    = exp.speech    || concept;
       prompt_en = exp.prompt_en || '';
     } catch (e) { console.warn('[mammuang] expandConcept failed:', e.message); }
@@ -109,7 +111,9 @@ async function handleMammuang(concept) {
     const imgPath   = path.join(dir, 'image.png');
     const finalPath = path.join(dir, 'final.jpg');
 
+    const refPath = path.join(__dirname, 'ref-character.png');
     await generateMammuang({ prompt_en: prompt_en || concept, outPath: imgPath,
+      model: fs.existsSync(refPath) ? 'flux-kontext' : undefined,
       onProgress: m => console.log(`  [mammuang ${id}] ${m}`) });
     await renderBalloonOnImage(imgPath, speech, { x: 0.46, y: 0.46 }, finalPath);
     fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ concept, speech, prompt_en, created: Number(id) }, null, 2));
@@ -117,8 +121,9 @@ async function handleMammuang(concept) {
     await tgSendPhoto(finalPath,
       `🥭 รูปใหม่พร้อมแล้ว\n💬 "${speech.substring(0, 80)}"\n\nโพสต์ Facebook?`, {
       inline_keyboard: [[
-        { text: '✅ โพสต์ FB',  callback_data: `mam_ok__${id}` },
-        { text: '❌ ยกเลิก',    callback_data: `mam_no__${id}` },
+        { text: '✅ โพสต์ FB',    callback_data: `mam_ok__${id}` },
+        { text: '🔄 สร้างใหม่',  callback_data: `mam_regen__${id}` },
+        { text: '❌ ยกเลิก',      callback_data: `mam_no__${id}` },
       ]],
     });
   } catch (e) {
@@ -181,6 +186,37 @@ async function handleCallback(cb) {
 
   if (action === 'no') {
     if (msgId) await tg('editMessageCaption', { chat_id: CHAT_ID, message_id: msgId, caption: '❌ ยกเลิกแล้ว' });
+    return;
+  }
+  if (action === 'regen' && agent === 'mammuang') {
+    if (busy) { await send('⏳ กำลังสร้างรูปอยู่ รอสักครู่นะคะ'); return; }
+    if (!fs.existsSync(metaPath)) { await send('⚠️ ไม่พบข้อมูลเดิม'); return; }
+    let meta; try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { await send('⚠️ อ่าน meta ไม่ได้'); return; }
+    if (msgId) await tg('editMessageCaption', { chat_id: CHAT_ID, message_id: msgId, caption: '🔄 กำลังสร้างใหม่…' });
+    busy = true;
+    try {
+      const newId   = Date.now().toString();
+      const newDir  = path.join(MAM_GAL, newId);
+      fs.mkdirSync(newDir, { recursive: true });
+      const imgPath    = path.join(newDir, 'image.png');
+      const finalPath2 = path.join(newDir, 'final.jpg');
+      const refPath = path.join(__dirname, 'ref-character.png');
+      await generateMammuang({ prompt_en: meta.prompt_en || meta.concept, outPath: imgPath,
+        model: fs.existsSync(refPath) ? 'flux-kontext' : undefined,
+        onProgress: m => console.log(`  [mammuang regen ${newId}] ${m}`) });
+      await renderBalloonOnImage(imgPath, meta.speech || meta.concept, { x: 0.46, y: 0.46 }, finalPath2);
+      fs.writeFileSync(path.join(newDir, 'meta.json'), JSON.stringify({ ...meta, created: Number(newId) }, null, 2));
+      await tgSendPhoto(finalPath2,
+        `🔄 สร้างใหม่แล้ว\n💬 "${(meta.speech || meta.concept).substring(0, 80)}"\n\nโพสต์ Facebook?`, {
+        inline_keyboard: [[
+          { text: '✅ โพสต์ FB',    callback_data: `mam_ok__${newId}` },
+          { text: '🔄 สร้างใหม่',  callback_data: `mam_regen__${newId}` },
+          { text: '❌ ยกเลิก',      callback_data: `mam_no__${newId}` },
+        ]],
+      });
+    } catch (e) {
+      await send('❌ สร้างใหม่ไม่สำเร็จ: ' + e.message.substring(0, 150));
+    } finally { busy = false; }
     return;
   }
   if (action === 'ok') {

@@ -62,6 +62,14 @@ const AGENTS = {
     hasDashboard: true,
     actions: [],
   },
+  maprang: {
+    label: 'มะปราง', role: 'Anime Story Video', color: '#a855f7', colorLight: '#faf5ff', emoji: '🎌',
+    hasDashboard: true,
+    actions: [
+      { id: 'check',    label: '🔍 ตรวจ ComfyUI',    icon: '🔍' },
+      { id: 'status',   label: '📊 ดูสถานะ',          icon: '📊' },
+    ],
+  },
 };
 
 const pipelineProcs = {

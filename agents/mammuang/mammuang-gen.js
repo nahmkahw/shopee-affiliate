@@ -27,7 +27,6 @@ const DEFAULT_NEG = [
 const POSITIVE_PREFIX = [
   'masterpiece', 'best quality', 'anime style', 'highly detailed',
   'chibi', 'kawaii', 'cute',
-  '(clean lineart:1.3)', '(black outlines:1.2)', '(sharp focus:1.1)',
   'pastel color palette',
 ].join(', ');
 
@@ -85,6 +84,30 @@ function comfyUploadImage(imagePath) {
   });
 }
 
+const REF_CHARACTER_PATH = path.join(__dirname, 'ref-character.png');
+
+// Flux Kontext — img2img: ref เป็น starting latent, prompt เปลี่ยน scene
+// denoise 0.92 = เปลี่ยน scene ได้มาก แต่ Flux Kontext ยังคง structure ตัวละครจาก ref
+function buildWorkflowFluxKontext({ refImageName, positive, seed, width, height }) {
+  return {
+    '1': { class_type: 'UNETLoader',      inputs: { unet_name: 'flux1-dev-kontext_fp8_scaled.safetensors', weight_dtype: 'fp8_e4m3fn' } },
+    '2': { class_type: 'DualCLIPLoader',  inputs: { clip_name1: 't5xxl_fp8_e4m3fn.safetensors', clip_name2: 'clip_l.safetensors', type: 'flux' } },
+    '3': { class_type: 'CLIPTextEncodeFlux', inputs: { clip: ['2', 0], clip_l: positive, t5xxl: positive, guidance: 3.5 } },
+    '4': { class_type: 'VAELoader',       inputs: { vae_name: 'ae.safetensors' } },
+    '5': { class_type: 'LoadImage',       inputs: { image: refImageName } },
+    '6': { class_type: 'VAEEncode',       inputs: { pixels: ['5', 0], vae: ['4', 0] } },
+    '7': { class_type: 'FluxGuidance',    inputs: { conditioning: ['3', 0], guidance: 3.5 } },
+    '8': { class_type: 'ModelSamplingFlux', inputs: { model: ['1', 0], max_shift: 1.15, base_shift: 0.5, width, height } },
+    '9': { class_type: 'KSampler',        inputs: {
+      model: ['8', 0], positive: ['7', 0], negative: ['7', 0],
+      latent_image: ['6', 0], seed, steps: 25, cfg: 1.0,
+      sampler_name: 'euler', scheduler: 'simple', denoise: 0.92,
+    } },
+    '10': { class_type: 'VAEDecode',      inputs: { samples: ['9', 0], vae: ['4', 0] } },
+    '11': { class_type: 'SaveImage',      inputs: { images: ['10', 0], filename_prefix: 'mammuang_kontext' } },
+  };
+}
+
 function buildWorkflow({ positive, negative, seed, width, height }) {
   return {
     '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'AnythingXL_xl.safetensors' } },
@@ -134,7 +157,8 @@ async function generateMammuang(options = {}) {
   const {
     prompt_en    = '1girl, bunny ears, sitting, holding flower, pink dress, cream background, soft smile',
     neg_prompt,
-    refImagePath,           // ถ้ามี → ใช้ IPAdapter FaceID
+    model,                  // 'flux-kontext' → ใช้ Flux Kontext local inference
+    refImagePath,           // ถ้ามี → ใช้ IPAdapter FaceID (SDXL mode)
     outPath,
     width        = 832,
     height       = 1216,
@@ -143,7 +167,9 @@ async function generateMammuang(options = {}) {
     onProgress   = () => {},
   } = options;
 
-  const positive = prompt_en.startsWith('masterpiece') ? prompt_en
+  // flux-kontext: ใช้ natural language ตรงๆ ไม่ prepend SDXL tags
+  const positive = model === 'flux-kontext' ? prompt_en
+    : prompt_en.startsWith('masterpiece') ? prompt_en
     : POSITIVE_PREFIX + ', ' + prompt_en;
   const negative = (neg_prompt && neg_prompt.trim()) ? neg_prompt.trim() : DEFAULT_NEG;
 
@@ -151,7 +177,15 @@ async function generateMammuang(options = {}) {
   let workflow, saveNodeId;
 
   let usingRef = false;
-  if (refImagePath && fs.existsSync(refImagePath)) {
+  if (model === 'flux-kontext') {
+    if (!fs.existsSync(REF_CHARACTER_PATH)) {
+      throw new Error(`ไม่พบ ref-character.jpg ที่ ${REF_CHARACTER_PATH} — วางรูปตัวละครอ้างอิงก่อนใช้ flux-kontext`);
+    }
+    onProgress('upload ref-character เข้า ComfyUI...');
+    const refImageName = await comfyUploadImage(REF_CHARACTER_PATH);
+    workflow   = buildWorkflowFluxKontext({ refImageName, positive, seed, width, height });
+    saveNodeId = '11';
+  } else if (refImagePath && fs.existsSync(refImagePath)) {
     onProgress('upload รูปต้นแบบเข้า ComfyUI...');
     const refImageName = await comfyUploadImage(refImagePath);
     workflow   = buildWorkflowWithRef({ refImageName, positive, negative, seed, width, height });
