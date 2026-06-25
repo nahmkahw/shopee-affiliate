@@ -223,6 +223,15 @@ node agents\makrut\pipeline\makrut.js --resend
 
 3-stage: pre-production (storyboard + char_ref) → generate-scene → build (TTS + subtitle + concat).
 
+**2-stage anime_ref (สำคัญ — แก้ ref รูปถ่ายจริง → anime แล้ว identity/เพศ/อายุหลุด):** ดู [ADR-001](agents/maprang/docs/ADR-001-anime-ref-2stage.md)
+- ปัญหา: ref ที่อัปโหลดเป็น**รูปถ่ายจริง** (photoreal) แต่ output เป็น anime → Flux Kontext แปลง+คงอัตลักษณ์พร้อมกันไม่ไหว (domain gap) → หน้า/เพศ/อายุ collapse
+- **Stage-0** ([anime-portrait.js](agents/maprang/pipeline/anime-portrait.js)): รูปถ่าย → canonical anime portrait (`anime_ref`) ครั้งเดียวต่อตัวละคร ด้วย **IPAdapterFaceID (FACEID PLUS V2) + AnythingXL** — InsightFace ครอป+align หน้าให้ในตัว. Stage-1/2 เดิมใช้ `anime_ref` เป็น anchor (domain เดียวกับ output → identity คงตัว)
+- char-registry: field ใหม่ `anime_ref` (anchor จริง) แยกจาก `ref_image` (รูปถ่ายต้นฉบับ) + `gender` (structured: male/female). `resolveSceneRefs`/`collectCharRefs` อ่าน `anime_ref` ?? `ref_image`
+- เพศ lock 2 ชั้น: Stage-0 portrait prompt + `buildSceneCharNeg` (ปฏิเสธเพศตรงข้ามถ้าทุกตัวเพศเดียวกัน); อายุ = band หยาบ กันออกมาเป็นเด็ก
+- auto: อัปโหลดรูป → route spawn `--action gen-anime-ref` อัตโนมัติ; AI-gen (`gen-char-image`) ได้ anime อยู่แล้ว → `anime_ref` = `ref_image`
+- **guard:** route `/api/maprang/generate` block ถ้าตัวละครที่เลือกยังไม่มี `anime_ref`/`ref_image` (กัน race ที่ทำ `char_refs` หาย → fallback T2V)
+- models บน ComfyUI: `AnythingXL_xl.safetensors`, `ip-adapter-faceid-plusv2_sdxl.bin`, InsightFace (CUDA); env: `MAPRANG_FACEID_WEIGHT` (1.0), `PORTRAIT_TIMEOUT_MS` (300000), `MAPRANG_IPA_PROVIDER` (CUDA)
+
 **Character consistency (สำคัญ):** scene clip **ไม่ใช้ T2V ล้วน** (วาดตัวละครใหม่ทุก scene → หน้าตาเปลี่ยน) แต่ใช้ **Flux Kontext anchor**:
 - `char_ref.png` (สร้างครั้งเดียวใน pre-production) = identity anchor
 - ทุก scene: `flux-kontext.js` `generateSceneImage()` วางตัวละครเดิมลงฉากใหม่ → `still_N.png` (หน้า/ผม/ชุด คงเดิม)

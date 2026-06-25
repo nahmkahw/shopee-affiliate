@@ -28,7 +28,8 @@ async function collectCharRefs(meta, useCharIds, useChars, comfyCfg, sharedSeed,
   for (const cid of useCharIds) {
     const c = useChars[cid] || {};
     meta.char_names[cid] = c.name || cid;
-    let refRel = c.ref_image;
+    // anime_ref (Stage-0 portrait) มาก่อน → fallback ref_image (รูปถ่าย/AI-gen)
+    let refRel = c.anime_ref || c.ref_image;
     if (!refRel) {
       appendLog(meta, `🎨 สร้างรูปตัวละคร ${cid}...`, saveMeta);
       const outPath = path.join(CHAR_DIR, `${cid}.png`);
@@ -36,7 +37,7 @@ async function collectCharRefs(meta, useCharIds, useChars, comfyCfg, sharedSeed,
       try {
         await generateCharacterImage(comfyCfg, c.description || cid, outPath, sharedSeed + cid.length);
         refRel = path.relative(ROOT, outPath);
-        charReg.upsert({ id: cid, ref_image: refRel });
+        charReg.upsert({ id: cid, ref_image: refRel, anime_ref: refRel });
       } catch (e) { appendLog(meta, `⚠️ gen รูป ${cid} ล้มเหลว: ${e.message}`, saveMeta); }
     }
     const abs = refRel && (path.isAbsolute(refRel) ? refRel : path.join(ROOT, refRel));
