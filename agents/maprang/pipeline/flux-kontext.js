@@ -12,7 +12,7 @@
 const { submitImageWorkflow, uploadImageToComfy } = require('./comfy-client');
 
 const KONTEXT_MODEL = 'flux1-dev-kontext_fp8_scaled.safetensors';
-const KONTEXT_TIMEOUT = parseInt(process.env.KONTEXT_TIMEOUT_MS || '420000', 10); // 7 นาที
+const KONTEXT_TIMEOUT = parseInt(process.env.KONTEXT_TIMEOUT_MS || '600000', 10); // 10 นาที (multi-char ใช้นานกว่า)
 
 /**
  * สร้าง editing instruction — คงตัวละครเดิมแล้วเปลี่ยนแค่ฉาก (รองรับ 1+ ตัวละคร)
