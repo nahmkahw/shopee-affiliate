@@ -10,18 +10,25 @@ const fs    = require('fs');
 const path  = require('path');
 const https = require('https');
 
-const { generateClip }          = require('./pipeline/comfy-client');
-const { checkHealth, checkWan21Model } = require('./pipeline/comfy-client');
+const { generateClip, generateClipI2V, checkI2VCapability, generateCharacterImage, checkHealth, checkWan21Model } = require('./pipeline/comfy-client');
+const { generateSceneStill }    = require('./pipeline/flux-kontext');
+const { resolveSceneRefs }      = require('./pipeline/scene-refs');
+const { detectGenderEn }        = require('./pipeline/scene-gen');
+const { kenBurnsClip }          = require('./pipeline/video-build');
 const { runPreProduction }      = require('./pipeline/pre-production');
 const { runPostProduction }     = require('./pipeline/post-production');
+const charReg = require('./pipeline/char-registry');
 
-const GALLERY   = path.join(__dirname, 'gallery');
+const ROOT = path.join(__dirname, '..', '..'), GALLERY = path.join(__dirname, 'gallery'), CHAR_DIR = path.join(__dirname, 'characters');
 const COMFY_CFG = {
   host:      process.env.COMFY_HOST     || '10.3.17.118',
   port:      parseInt(process.env.COMFY_PORT || '8188', 10),
   timeoutMs: parseInt(process.env.COMFY_TIMEOUT_MS || '600000', 10),
   modelName: process.env.WAN21_MODEL    || 'Wan2.1\\wan2.1_t2v_1.3B_bf16.safetensors',
 };
+// animate scene still: 'kenburns' (default, เร็ว) | 'i2v' (motion จริง แต่ 14B ช้า)
+const ANIMATE = (process.env.MAPRANG_ANIMATE || 'kenburns').toLowerCase();
+
 const TG_TOKEN   = process.env.MAPRANG_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
 const TG_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const TG_OK      = !!(TG_TOKEN && TG_CHAT_ID);
@@ -88,6 +95,19 @@ function writeMeta(id, meta) {
   fs.writeFileSync(path.join(GALLERY, id, 'meta.json'), JSON.stringify(meta, null, 2));
 }
 
+// animate still → clip: Ken Burns (default) | I2V
+async function animateStill(stillPath, clipPath, sceneNum, sceneSetting, seed, charNeg) {
+  if (ANIMATE === 'i2v') {
+    const cap = await checkI2VCapability(COMFY_CFG);
+    if (cap.available) {
+      const i2vCfg = { ...COMFY_CFG, timeoutMs: Math.max(COMFY_CFG.timeoutMs, 1200000), i2vModelName: cap.i2vModel, clipVisionModel: cap.clipVisionModel };
+      return generateClipI2V(i2vCfg, sceneSetting, stillPath, clipPath, seed, charNeg);
+    }
+    console.warn('  ℹ️ I2V ไม่พร้อม — ใช้ Ken Burns แทน');
+  }
+  return kenBurnsClip(stillPath, clipPath, { variant: (sceneNum - 1) % 4 });
+}
+
 // ─── Actions ─────────────────────────────────────────────────────────────────
 
 async function actionCheck() {
@@ -145,7 +165,22 @@ async function actionGenerateScene(id, sceneNum) {
 
   console.log(`\n[Scene ${sceneNum}] ${scene.subtitle_th}`);
   const t0 = Date.now();
-  await generateClip(COMFY_CFG, visualPrompt, clipPath, sceneSeed, scene._charNeg || '');
+
+  // ── Flux Kontext anchor: ref ตัวละคร = identity anchor → คงเดิมทุก scene (รองรับหลายตัว) ──
+  const { refs, names } = resolveSceneRefs(meta, scene, GALLERY, id);
+  const sceneSetting = scene.scene_setting_en || scene.visual_prompt_en;
+  let generated = false;
+  if (refs.length) {
+    try {
+      const stillPath = path.join(clipsDir, `still_${sceneNum}.png`);
+      await generateSceneStill(COMFY_CFG, refs, sceneSetting, stillPath, { seed: sceneSeed, names });
+      await animateStill(stillPath, clipPath, sceneNum, sceneSetting, sceneSeed, scene._charNeg || '');
+      generated = true;
+    } catch (e) {
+      console.warn(`  ⚠️ Flux Kontext ล้มเหลว (${e.message}) — fallback T2V`);
+    }
+  }
+  if (!generated) await generateClip(COMFY_CFG, visualPrompt, clipPath, sceneSeed, scene._charNeg || '');
   const durS = Math.round((Date.now() - t0) / 1000);
 
   scene.status  = 'done';
@@ -155,6 +190,18 @@ async function actionGenerateScene(id, sceneNum) {
   console.log(`✅ Scene ${sceneNum} เสร็จ`);
 
   await tgSendText(`✅ Scene ${sceneNum}/${meta.scenes.length} เสร็จแล้ว\n🎬 "${scene.subtitle_th}"`);
+}
+
+// สร้าง ref image ให้ character ที่ define (จาก description) + เก็บ ref_image/gender ใน registry
+async function actionGenCharImage(charId) {
+  const c = charReg.load()[charId];
+  if (!c) { console.error(`❌ ไม่พบ character ${charId}`); process.exit(1); }
+  fs.mkdirSync(CHAR_DIR, { recursive: true });
+  const outPath = path.join(CHAR_DIR, `${charId}.png`);
+  console.log(`🎨 สร้างรูปตัวละคร ${charId}...`);
+  await generateCharacterImage(COMFY_CFG, c.description, outPath, Math.floor(Math.random() * 1e9));
+  charReg.upsert({ id: charId, ref_image: path.relative(ROOT, outPath), gender: detectGenderEn(c.description) || '' });
+  console.log(`✅ ref image: ${outPath}`);
 }
 
 async function actionSkipScene(id, sceneNum) {
@@ -216,18 +263,30 @@ function actionStatus(galleryId) {
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 
-const args       = process.argv.slice(2);
-const action     = args[args.indexOf('--action') + 1]    || 'status';
-const promptI    = args.indexOf('--prompt');
-const prompt     = promptI !== -1 ? args[promptI + 1]    : null;
-const idI        = args.indexOf('--id');
-const galleryId  = idI !== -1 ? args[idI + 1]            : null;
-const charI      = args.indexOf('--char-desc');
-const charDesc   = charI !== -1 ? args[charI + 1]        : null;
-const charsI     = args.indexOf('--chars');
-const charIds    = charsI !== -1 ? args[charsI + 1]      : null;
-const sceneI     = args.indexOf('--scene');
-const sceneNum   = sceneI !== -1 ? parseInt(args[sceneI + 1], 10) : null;
+const args      = process.argv.slice(2);
+const arg        = f => { const i = args.indexOf(f); return i !== -1 ? args[i + 1] : null; };
+const action    = arg('--action') || 'status';
+const prompt    = arg('--prompt');
+const galleryId = arg('--id');
+const charDesc  = arg('--char-desc');
+const charIds   = arg('--chars');
+const sceneNum  = arg('--scene') !== null ? parseInt(arg('--scene'), 10) : null;
+const charIdArg = arg('--char-id');
+
+// เขียน status='error' ตอน exit ผิดปกติ (ครอบทั้ง throw และ process.exit) — กัน job ค้าง active
+let _exitError = null;
+process.on('exit', code => {
+  if (code === 0) return;
+  try {
+    const m = galleryId && readMeta(galleryId);
+    if (m && ['pre_production', 'producing', 'building'].includes(m.status)) {
+      m.status = 'error';
+      m.error_reason = _exitError || 'process exited abnormally';
+      appendLog(m, `❌ ล้มเหลว: ${m.error_reason}`);
+      writeMeta(galleryId, m);
+    }
+  } catch {}
+});
 
 (async () => {
   if (action === 'check')                  await actionCheck();
@@ -236,5 +295,6 @@ const sceneNum   = sceneI !== -1 ? parseInt(args[sceneI + 1], 10) : null;
   else if (action === 'generate-all-scenes') await actionGenerateAllScenes(galleryId);
   else if (action === 'skip-scene')        await actionSkipScene(galleryId, sceneNum);
   else if (action === 'build')             await actionBuild(galleryId);
+  else if (action === 'gen-char-image')    await actionGenCharImage(charIdArg);
   else                                     actionStatus(galleryId);
-})().catch(e => { console.error('❌', e.message); process.exit(1); });
+})().catch(e => { console.error('❌', e.message); _exitError = e.message; process.exit(1); });

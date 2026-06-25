@@ -20,7 +20,8 @@ format ที่ต้องการ:
     "scene_number": 1,
     "visual_prompt_en": "anime style, [English description 20-40 words], cinematic lighting, detailed background",
     "subtitle_th": "[คำบรรยายกระชับ ไม่เกิน 12 คำ]",
-    "narration_th": "[เสียงพากย์แบบผู้เล่านิทาน 2-3 ประโยค ภาษาไทย เชื่อมต่อจาก scene ก่อนหน้า]",
+    "narration_th": "[เสียงพากย์สไตล์เล่านิทาน 1 ประโยคสั้น กระชับ ไม่เกิน 55 ตัวอักษร เชื่อมจาก scene ก่อน]",
+    "dialogue": [{"speaker":"narrator","line_th":"[บทเล่า/บทพูด สั้น ไม่เกิน 60 ตัวอักษร]"},{"speaker":"[ชื่อตัวละคร]","line_th":"[บทพูดตัวละคร]"}],
     "visual_action": "[English summary of key visual action 5-10 words, used as context for next scene]"
   },
   ...
@@ -29,7 +30,8 @@ format ที่ต้องการ:
 กฎสำคัญ:
 - visual_prompt_en ต้องเป็นภาษาอังกฤษ เริ่มด้วย "anime style,"
 - subtitle_th กระชับ ไม่เกิน 12 คำ
-- narration_th สไตล์นิทาน ลื่นไหล ต่อเนื่องจาก scene ก่อน (scene 1 เริ่มต้นเรื่อง)
+- narration_th สไตล์นิทาน กระชับ 1 ประโยคสั้น ไม่เกิน 55 ตัวอักษร (เสียงพากย์จะได้ไม่ขาด)
+- dialogue: บทสนทนา 1-3 บรรทัด, speaker เป็น "narrator" หรือชื่อตัวละคร, แต่ละบรรทัดไม่เกิน 60 ตัวอักษร
 - visual_action สั้น เพื่อใช้เป็น context ของ scene ถัดไป
 - เนื้อหาต้องเป็น family-friendly
 - ต้องมีครบ 5 scenes`;
@@ -68,18 +70,43 @@ function ollamaChat(prompt, systemPrompt = SYSTEM_PROMPT) {
   });
 }
 
-function parseScenes(raw) {
-  // ลอง extract JSON array จาก response
-  const match = raw.match(/\[[\s\S]*\]/);
-  if (!match) throw new Error('ไม่พบ JSON array ใน response ของ Typhoon2');
-  const scenes = JSON.parse(match[0]);
-  if (!Array.isArray(scenes) || scenes.length === 0)
-    throw new Error('scenes ต้องเป็น array ที่มีข้อมูล');
+// จำกัดความยาว narration ให้ TTS ไม่เกิน ~8s (≈60 ตัวอักษร @ ~8 ตัว/วิ) กันเสียงขาดเพราะ clip สั้นกว่า
+function capNarration(text, maxChars = 60) {
+  const t = (text || '').trim();
+  if (t.length <= maxChars) return t;
+  const slice = t.slice(0, maxChars);
+  const b = Math.max(slice.lastIndexOf(' '), slice.lastIndexOf('.'), slice.lastIndexOf('!'), slice.lastIndexOf('?'));
+  return (b > maxChars * 0.5 ? slice.slice(0, b) : slice).trim();
+}
+
+const { pickVoiceK } = require('../../../lib/dialogue-audio');
+const { parseJsonArrayLenient } = require('../../../lib/llm-json');
+
+// speaker → pitchK: narrator=1.0, match charPitch ใช้ค่านั้น, ไม่ match ใช้ defaultCharK
+function assignPitch(speaker, charPitch, defaultCharK) {
+  const s = (speaker || '').toLowerCase().trim();
+  if (!s || /narrat|ผู้เล่า|บรรยาย|เล่าเรื่อง/.test(s)) return 1.0;
+  for (const key in charPitch) if (key && s.includes(key.toLowerCase())) return charPitch[key];
+  return defaultCharK;
+}
+
+function mapDialogue(rawDialogue, charPitch, defaultCharK) {
+  if (!Array.isArray(rawDialogue)) return [];
+  return rawDialogue.slice(0, 6).map(d => ({
+    speaker: d.speaker || 'narrator',
+    line_th: capNarration(d.line_th || d.line || '', 70),
+    pitchK:  assignPitch(d.speaker, charPitch, defaultCharK),
+  })).filter(d => d.line_th);
+}
+
+function parseScenes(raw, defaultCharK = 1.0) {
+  const scenes = parseJsonArrayLenient(raw);
   return scenes.slice(0, 5).map((s, i) => ({
     scene_number:     s.scene_number     || i + 1,
     visual_prompt_en: s.visual_prompt_en || `anime style, scene ${i + 1}`,
     subtitle_th:      s.subtitle_th      || '',
-    narration_th:     s.narration_th     || s.subtitle_th || '',
+    narration_th:     capNarration(s.narration_th || s.subtitle_th || ''),
+    dialogue:         mapDialogue(s.dialogue, {}, defaultCharK),
     visual_action:    s.visual_action    || '',
   }));
 }
@@ -91,7 +118,8 @@ function parseScenes(raw) {
 async function generateScenes(storyPromptTh) {
   console.log('🤖 Typhoon2 กำลังสร้าง scene breakdown...');
   const raw    = await ollamaChat(`สร้าง 5 scenes สำหรับ story นี้:\n\n${storyPromptTh}`);
-  const scenes = parseScenes(raw);
+  const mainK  = pickVoiceK(detectGender(storyPromptTh), 0); // เสียงตัวละครหลัก (single-char)
+  const scenes = parseScenes(raw, mainK);
   console.log(`✅ ได้ ${scenes.length} scenes`);
   scenes.forEach(s => console.log(`  [${s.scene_number}] ${s.subtitle_th}`));
   return scenes;
@@ -108,15 +136,55 @@ Format: "a [age] [gender] with [hair color and style], [eye color] eyes, wearing
 Example output:
 a 10-year-old girl with long wavy brown hair and side bangs, bright brown eyes, wearing a cobalt blue dress with a white collar and a small red ribbon, fair skin, and a curious bright expression`;
 
+// ตรวจเพศตัวละครจาก keyword ภาษาไทย — กัน Typhoon2 หลุดเพศ (เคยได้ "1boy" จาก story เด็กหญิง)
+const FEMALE_KW = ['ผู้หญิง','เด็กหญิง','เด็กผู้หญิง','สาว','หญิง','เธอ','น้องสาว','พี่สาว','เจ้าหญิง','นางฟ้า','แม่','ยาย','คุณนาย'];
+const MALE_KW   = ['ผู้ชาย','เด็กชาย','เด็กผู้ชาย','หนุ่ม','ชาย','เขา','น้องชาย','พี่ชาย','เจ้าชาย','พ่อ','ปู่','ตา'];
+
+function detectGender(promptTh) {
+  const f = FEMALE_KW.some(k => promptTh.includes(k));
+  const m = MALE_KW.some(k => promptTh.includes(k));
+  if (f && !m) return 'female';
+  if (m && !f) return 'male';
+  return null; // ambiguous → ปล่อยให้ LLM ตัดสิน
+}
+
+function detectGenderEn(descEn) {
+  const s = descEn.toLowerCase();
+  if (/\b(child|kid|little (boy|girl)|young (boy|girl))\b/.test(s)) return 'child';
+  if (/\b(old man|elder|grandpa|grandfather|wizard)\b/.test(s)) return 'elder';
+  if (/\b(girl|woman|female|lady|she|her|princess|queen)\b/.test(s)) return 'female';
+  if (/\b(boy|man|male|he|his|prince|king)\b/.test(s)) return 'male';
+  return null;
+}
+
+// ถ้า desc หลุดเพศ → แก้คำให้ตรง (กัน Wan2.1 gen ผิดเพศ)
+function enforceGender(desc, gender) {
+  if (!gender) return desc;
+  const wrong = gender === 'female'
+    ? /\b(boys?|man|men|male|1boy|muscular|masculine|beard|bearded)\b/gi
+    : /\b(girls?|woman|women|female|1girl|feminine)\b/gi;
+  if (!wrong.test(desc)) return desc;
+  const noun = gender === 'female' ? 'girl' : 'boy';
+  // ตัด marker เพศผิดทั้งหมด แล้ว prefix เพศที่ถูกต้อง
+  const cleaned = desc.replace(wrong, '')
+    .replace(/,\s*,/g, ',').replace(/\s{2,}/g, ' ').replace(/^[,\s]+/, '').replace(/,\s*$/, '').trim();
+  return `a young ${noun}, ${cleaned}`;
+}
+
 /**
  * @param {string} storyPromptTh
  * @returns {Promise<string>}  Natural language character description (for UMT5/Wan2.1)
  */
 async function generateCharacterDescription(storyPromptTh) {
   console.log('🎨 Typhoon2 สร้าง character description (natural language for Wan2.1)...');
-  const raw  = await ollamaChat(storyPromptTh, CHAR_SYSTEM);
-  const desc = raw.trim().split('\n')[0].replace(/^[-*•"]\s*/, '').replace(/"$/, '').trim();
-  console.log(`✅ Character description: ${desc}`);
+  const gender = detectGender(storyPromptTh);
+  const genderHint = gender
+    ? `\n\nIMPORTANT: The main character MUST be ${gender}. Start the sentence with "a [age] ${gender === 'female' ? 'girl/woman' : 'boy/man'}".`
+    : '';
+  const raw  = await ollamaChat(storyPromptTh, CHAR_SYSTEM + genderHint);
+  let desc = raw.trim().split('\n')[0].replace(/^[-*•"]\s*/, '').replace(/"$/, '').trim();
+  desc = enforceGender(desc, gender);
+  console.log(`✅ Character description${gender ? ` (${gender})` : ''}: ${desc}`);
   return desc;
 }
 
@@ -195,23 +263,33 @@ async function generateScenesWithCharacters(storyPromptTh, characters) {
 แตก story ออกเป็น 5 scenes ที่มีความต่อเนื่อง ตอบเป็น JSON array เท่านั้น ไม่มีข้อความอื่น
 
 format:
-[{"scene_number":1,"visual_prompt_en":"anime style, [scene 20-40 words], cinematic lighting","subtitle_th":"[ไม่เกิน 12 คำ]","narration_th":"[เสียงพากย์นิทาน 2-3 ประโยค ต่อเนื่องจาก scene ก่อน]","visual_action":"[key action 5-10 words en]","characters":["id1"]}]
+[{"scene_number":1,"visual_prompt_en":"anime style, [scene 20-40 words], cinematic lighting","subtitle_th":"[ไม่เกิน 12 คำ]","narration_th":"[เสียงพากย์นิทาน 1 ประโยคสั้น]","dialogue":[{"speaker":"narrator","line_th":"[บทเล่าสั้น]"},{"speaker":"[ชื่อตัวละคร]","line_th":"[บทพูด ไม่เกิน 60 ตัวอักษร]"}],"visual_action":"[key action 5-10 words en]","characters":["id1"]}]
 
-กฎ: visual_prompt_en เป็นภาษาอังกฤษ, narration_th สไตล์นิทานไทย, characters คือ array ของ id, family-friendly`;
+กฎ: visual_prompt_en เป็นภาษาอังกฤษ, narration_th สไตล์นิทานไทย, dialogue บทสนทนาระหว่างตัวละคร (speaker=ชื่อตัวละครหรือ narrator), characters คือ array ของ id, family-friendly`;
+
+  // charPitch: ชื่อตัวละคร → pitchK ตามเพศ (กันเสียงซ้ำเมื่อหลายตัวเพศเดียวกัน)
+  const genderIdx = { male: 0, female: 0, child: 0, elder: 0 };
+  const charPitch = {};
+  for (const id of charIds) {
+    const g = detectGenderEn(characters[id].description || '') || 'male';
+    charPitch[id] = pickVoiceK(g, genderIdx[g]);
+    if (characters[id].name) charPitch[characters[id].name] = charPitch[id];
+    genderIdx[g] = (genderIdx[g] || 0) + 1;
+  }
 
   console.log(`🤖 Typhoon2 scene breakdown (${charIds.length} chars)...`);
   const raw    = await ollamaChat(`สร้าง 5 scenes:\n\n${storyPromptTh}`, system);
-  const match  = raw.match(/\[[\s\S]*\]/);
-  if (!match) throw new Error('ไม่พบ JSON array');
-  const scenes = JSON.parse(match[0]);
+  const scenes = parseJsonArrayLenient(raw);
   return scenes.slice(0, 5).map((s, i) => ({
     scene_number:     s.scene_number     || i + 1,
     visual_prompt_en: s.visual_prompt_en || `anime style, scene ${i + 1}`,
     subtitle_th:      s.subtitle_th      || '',
-    narration_th:     s.narration_th     || s.subtitle_th || '',
+    narration_th:     capNarration(s.narration_th || s.subtitle_th || ''),
+    dialogue:         mapDialogue(s.dialogue, charPitch, 1.0),
     visual_action:    s.visual_action    || '',
-    characters:       Array.isArray(s.characters) ? s.characters.filter(id => characters[id]) : [charIds[0]],
+    characters:       (Array.isArray(s.characters) ? s.characters.filter(id => characters[id]) : []).length
+                        ? s.characters.filter(id => characters[id]) : charIds,
   }));
 }
 
-module.exports = { generateScenes, generateScenesWithCharacters, generateCharacterDescription, buildCharacterNegative, describeCharacterImage };
+module.exports = { generateScenes, generateScenesWithCharacters, generateCharacterDescription, buildCharacterNegative, describeCharacterImage, detectGender, enforceGender, capNarration };

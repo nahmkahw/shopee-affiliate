@@ -6,6 +6,7 @@
 
 const http      = require('http');
 const fs        = require('fs');
+const path      = require('path');
 const crypto    = require('crypto');
 const WebSocket = require('ws');
 
@@ -80,31 +81,19 @@ function buildWan21Workflow(positivePrompt, modelName, seed, charNeg = '') {
   const unetName  = modelName || 'Wan2.1\\wan2.1_t2v_1.3B_bf16.safetensors';
   const negPrompt = charNeg ? `${NEG_BASE}, ${charNeg}` : NEG_BASE;
   return {
-    '1': { class_type: 'UNETLoader',
-           inputs: { unet_name: unetName, weight_dtype: 'fp8_e4m3fn' } },
-    '2': { class_type: 'CLIPLoader',
-           inputs: { clip_name: 'umt5_xxl_fp16.safetensors', type: 'wan' } },
-    '3': { class_type: 'CLIPTextEncode',
-           inputs: { clip: ['2', 0], text: positivePrompt } },
-    '4': { class_type: 'CLIPTextEncode',
-           inputs: { clip: ['2', 0], text: negPrompt } },
-    '5': { class_type: 'EmptyHunyuanLatentVideo',
-           inputs: { width: 512, height: 512, length: DEFAULT_FRAMES, batch_size: 1 } },
-    '6': { class_type: 'ModelSamplingSD3',
-           inputs: { model: ['1', 0], shift: 8.0 } },
-    '7': { class_type: 'KSampler',
-           inputs: { model: ['6', 0], positive: ['3', 0], negative: ['4', 0],
-                     latent_image: ['5', 0], seed: seed || Math.floor(Math.random() * 1e10),
-                     steps: 20, cfg: 6.0, sampler_name: 'euler',
-                     scheduler: 'simple', denoise: 1.0 } },
-    '8': { class_type: 'VAELoader',
-           inputs: { vae_name: 'wan_2.1_vae.safetensors' } }, // ✅ confirmed filename
-    '9': { class_type: 'VAEDecodeLoopKJ',
-           inputs: { samples: ['7', 0], vae: ['8', 0], overlap_latent_frames: 2 } },
-   '10': { class_type: 'VHS_VideoCombine',
-           inputs: { images: ['9', 0], frame_rate: DEFAULT_FPS, loop_count: 0,
-                     filename_prefix: 'maprang', format: 'video/h264-mp4',
-                     pingpong: false, save_output: true } },
+    '1': { class_type: 'UNETLoader',  inputs: { unet_name: unetName, weight_dtype: 'fp8_e4m3fn' } },
+    '2': { class_type: 'CLIPLoader',  inputs: { clip_name: 'umt5_xxl_fp16.safetensors', type: 'wan' } },
+    '3': { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 0], text: positivePrompt } },
+    '4': { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 0], text: negPrompt } },
+    '5': { class_type: 'EmptyHunyuanLatentVideo', inputs: { width: 512, height: 512, length: DEFAULT_FRAMES, batch_size: 1 } },
+    '6': { class_type: 'ModelSamplingSD3', inputs: { model: ['1', 0], shift: 8.0 } },
+    '7': { class_type: 'KSampler', inputs: { model: ['6', 0], positive: ['3', 0], negative: ['4', 0],
+             latent_image: ['5', 0], seed: seed || Math.floor(Math.random() * 1e10),
+             steps: 20, cfg: 6.0, sampler_name: 'euler', scheduler: 'simple', denoise: 1.0 } },
+    '8': { class_type: 'VAELoader', inputs: { vae_name: 'wan_2.1_vae.safetensors' } },
+    '9': { class_type: 'VAEDecodeLoopKJ', inputs: { samples: ['7', 0], vae: ['8', 0], overlap_latent_frames: 2 } },
+   '10': { class_type: 'VHS_VideoCombine', inputs: { images: ['9', 0], frame_rate: DEFAULT_FPS, loop_count: 0,
+             filename_prefix: 'maprang', format: 'video/h264-mp4', pingpong: false, save_output: true } },
   };
 }
 
@@ -126,98 +115,182 @@ function buildCharImageWorkflow(charDesc, seed) {
 }
 
 /**
+ * Shared: submit image workflow → poll → download. ใช้ทั้ง T2I และ Flux Kontext
+ * @returns {Promise<{outputPath, bytes}>}
+ */
+async function submitImageWorkflow(cfg, workflow, outNodeId, outputPath, timeoutMs = 180000) {
+  const clientId = crypto.randomUUID();
+  const { prompt_id } = await _request(cfg, 'POST', '/prompt', { client_id: clientId, prompt: workflow });
+  if (!prompt_id) throw new Error('ComfyUI ไม่ตอบ prompt_id (image)');
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await new Promise(r => setTimeout(r, 3000));
+    const history = await _request(cfg, 'GET', `/history/${prompt_id}`);
+    const job     = history[prompt_id];
+    if (!job) { process.stdout.write('.'); continue; }
+    if (job.status?.status_str === 'error') throw new Error('ComfyUI image job error');
+    const imgOut  = job.outputs?.[outNodeId]?.images?.[0];
+    if (!imgOut) continue;
+    const url = `/view?filename=${encodeURIComponent(imgOut.filename)}&subfolder=${encodeURIComponent(imgOut.subfolder || '')}&type=${encodeURIComponent(imgOut.type || 'output')}`;
+    const buf = await _getBinary(cfg, url, 60000);
+    fs.writeFileSync(outputPath, buf);
+    return { outputPath, bytes: buf.length };
+  }
+  throw new Error('ComfyUI timeout (image)');
+}
+
+/**
  * สร้างรูปตัวละคร reference (AnythingXL T2I) — ใช้ anchor ทุก scene
  * @returns {Promise<string>} outputPath
  */
 async function generateCharacterImage(cfg, charDesc, outputPath, seed) {
-  const clientId = crypto.randomUUID();
-  const workflow = buildCharImageWorkflow(charDesc, seed);
   console.log('  🎨 ComfyUI T2I: สร้าง character reference image...');
-  const { prompt_id } = await _request(cfg, 'POST', '/prompt', { client_id: clientId, prompt: workflow });
-  if (!prompt_id) throw new Error('ComfyUI ไม่ตอบ prompt_id (char image)');
-
-  const start = Date.now();
-  while (Date.now() - start < 180000) {
-    await new Promise(r => setTimeout(r, 3000));
-    const history = await _request(cfg, 'GET', `/history/${prompt_id}`);
-    const job     = history[prompt_id];
-    if (!job) continue;
-    if (job.status?.status_str === 'error') throw new Error('ComfyUI char image error');
-    const imgOut  = job.outputs?.['7']?.images?.[0];
-    if (!imgOut) continue;
-
-    const url = `/view?filename=${encodeURIComponent(imgOut.filename)}&subfolder=${encodeURIComponent(imgOut.subfolder || '')}&type=${encodeURIComponent(imgOut.type || 'output')}`;
-    const buf = await _getBinary(cfg, url, 60000);
-    fs.writeFileSync(outputPath, buf);
-    console.log(`  ✅ ref image: ${outputPath} (${(buf.length / 1024).toFixed(0)} KB)`);
-    return outputPath;
-  }
-  throw new Error('ComfyUI timeout (char image)');
+  const { outputPath: out, bytes } = await submitImageWorkflow(cfg, buildCharImageWorkflow(charDesc, seed), '7', outputPath);
+  console.log(`  ✅ ref image: ${out} (${(bytes / 1024).toFixed(0)} KB)`);
+  return out;
 }
 
 /**
- * Generate a single video clip via ComfyUI Wan2.1
- * @param {object} cfg          { host, port, timeoutMs, modelName }
- * @param {string} prompt       English visual prompt
- * @param {string} outputPath   Path to save the downloaded .mp4
- * @returns {Promise<string>}   outputPath
+ * Shared: submit workflow → WS progress → poll → download mp4
+ * Used by both T2V and I2V paths
  */
-async function generateClip(cfg, prompt, outputPath, seed, charNeg = '') {
-  const clientId     = crypto.randomUUID();
-  const workflow     = buildWan21Workflow(prompt, cfg.modelName, seed, charNeg);
-  const progressFile = outputPath.replace(/clip_(\d+)\.mp4$/, 'progress_$1.json');
-  const previewFile  = outputPath.replace(/clip_(\d+)\.mp4$/, 'preview_$1.jpg');
-
-  // WebSocket สำหรับ step progress + preview (best-effort — ไม่กระทบถ้า WS fail)
+async function _runClipWorkflow(cfg, workflow, outputPath) {
+  const clientId = crypto.randomUUID();
+  const progM    = outputPath.match(/clip_(\d+)\.mp4$/);
+  const progFile = progM ? outputPath.replace(/clip_(\d+)\.mp4$/, 'progress_$1.json') : null;
+  const prevFile = progM ? outputPath.replace(/clip_(\d+)\.mp4$/, 'preview_$1.jpg')  : null;
   let ws;
   try {
-    ws = new WebSocket(`ws://${cfg.host || '10.3.17.118'}:${cfg.port || 8188}/ws?clientId=${clientId}`);
+    ws = new WebSocket(`ws://${cfg.host||'10.3.17.118'}:${cfg.port||8188}/ws?clientId=${clientId}`);
     ws.on('message', (data, isBinary) => {
       try {
-        if (isBinary) {
-          // ComfyUI binary frame: 4 bytes type + 4 bytes format + JPEG bytes
-          if (data.length > 8) fs.writeFileSync(previewFile, data.slice(8));
-          return;
-        }
+        if (isBinary) { if (prevFile && data.length > 8) fs.writeFileSync(prevFile, data.slice(8)); return; }
         const msg = JSON.parse(data.toString());
-        if (msg.type === 'progress') {
+        if (msg.type === 'progress' && progFile) {
           const { value, max } = msg.data || {};
-          if (value != null && max) fs.writeFileSync(progressFile,
-            JSON.stringify({ step: value, total: max, pct: Math.round(value / max * 100), t: Date.now() })
-          );
+          if (value != null && max)
+            fs.writeFileSync(progFile, JSON.stringify({ step: value, total: max, pct: Math.round(value/max*100), t: Date.now() }));
         }
       } catch {}
     });
     ws.on('error', () => {});
   } catch {}
-
-  console.log(`  🎬 ComfyUI: submit "${prompt.substring(0, 60)}..."`);
   const { prompt_id } = await _request(cfg, 'POST', '/prompt', { client_id: clientId, prompt: workflow });
   if (!prompt_id) { ws?.close(); throw new Error('ComfyUI ไม่ตอบ prompt_id'); }
-
   const timeout = cfg.timeoutMs || 600000;
   const start   = Date.now();
-
   while (Date.now() - start < timeout) {
     await new Promise(r => setTimeout(r, 5000));
     const history = await _request(cfg, 'GET', `/history/${prompt_id}`);
     const job     = history[prompt_id];
     if (!job) { process.stdout.write('.'); continue; }
     if (job.status?.status_str === 'error') { ws?.close(); throw new Error('ComfyUI job error'); }
-
-    const videoOut = job.outputs?.['10']?.videos?.[0] || job.outputs?.['10']?.gifs?.[0];
+    let videoOut = null;
+    for (const nid of Object.keys(job.outputs || {})) {
+      const out = job.outputs[nid];
+      videoOut = out.videos?.[0] || out.gifs?.[0];
+      if (videoOut) break;
+    }
     if (!videoOut) continue;
-
     process.stdout.write('\n');
-    const url = `/view?filename=${encodeURIComponent(videoOut.filename)}&subfolder=${encodeURIComponent(videoOut.subfolder || '')}&type=${encodeURIComponent(videoOut.type || 'output')}`;
+    const url = `/view?filename=${encodeURIComponent(videoOut.filename)}&subfolder=${encodeURIComponent(videoOut.subfolder||'')}&type=${encodeURIComponent(videoOut.type||'output')}`;
     const buf = await _getBinary(cfg, url);
     fs.writeFileSync(outputPath, buf);
     ws?.close();
-    console.log(`  ✅ บันทึก ${outputPath} (${(buf.length / 1024 / 1024).toFixed(1)} MB)`);
+    console.log(`  ✅ บันทึก ${outputPath} (${(buf.length/1024/1024).toFixed(1)} MB)`);
     return outputPath;
   }
   ws?.close();
-  throw new Error(`ComfyUI timeout หลัง ${timeout / 60000} นาที`);
+  throw new Error(`ComfyUI timeout หลัง ${timeout/60000} นาที`);
 }
 
-module.exports = { checkHealth, checkWan21Model, generateClip, generateCharacterImage };
+async function generateClip(cfg, prompt, outputPath, seed, charNeg = '') {
+  console.log(`  🎬 ComfyUI T2V: "${prompt.substring(0, 60)}..."`);
+  return _runClipWorkflow(cfg, buildWan21Workflow(prompt, cfg.modelName, seed, charNeg), outputPath);
+}
+
+// ─── I2V ─────────────────────────────────────────────────────────────────────
+
+async function checkI2VCapability(cfg) {
+  try {
+    const [diff, cv] = await Promise.all([
+      _request(cfg, 'GET', '/api/models/diffusion_models').catch(() => []),
+      _request(cfg, 'GET', '/api/models/clip_vision').catch(() => []),
+    ]);
+    const i2vModel = (Array.isArray(diff) ? diff : []).find(m => m.toLowerCase().includes('i2v'));
+    // actual filename: CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors — match ViT-H
+    const cvModel  = (Array.isArray(cv)   ? cv   : []).find(m => /vit[-_]h/i.test(m));
+    return { available: !!(i2vModel && cvModel), i2vModel: i2vModel || null, clipVisionModel: cvModel || null };
+  } catch { return { available: false, i2vModel: null, clipVisionModel: null }; }
+}
+
+const I2V_FRAMES = 25;  // 14B model หนัก — ลดจาก 49 เพื่อ speed
+const I2V_STEPS  = 10;  // ลดจาก 20
+
+function buildWan21I2VWorkflow(prompt, i2vModel, clipVisionModel, imageFilename, seed, charNeg = '') {
+  const neg = charNeg ? `${NEG_BASE}, ${charNeg}` : NEG_BASE;
+  return {
+    '1':  { class_type: 'UNETLoader',        inputs: { unet_name: i2vModel, weight_dtype: 'fp8_e4m3fn' } },
+    '2':  { class_type: 'CLIPLoader',        inputs: { clip_name: 'umt5_xxl_fp16.safetensors', type: 'wan' } },
+    '3':  { class_type: 'VAELoader',         inputs: { vae_name: 'wan_2.1_vae.safetensors' } },
+    '4':  { class_type: 'CLIPVisionLoader',  inputs: { clip_name: clipVisionModel } },
+    '5':  { class_type: 'LoadImage',         inputs: { image: imageFilename } },
+    '6':  { class_type: 'CLIPVisionEncode',  inputs: { clip_vision: ['4',0], image: ['5',0], crop: 'center' } },
+    '7':  { class_type: 'CLIPTextEncode',    inputs: { clip: ['2',0], text: prompt } },
+    '8':  { class_type: 'CLIPTextEncode',    inputs: { clip: ['2',0], text: neg } },
+    '9':  { class_type: 'WanImageToVideo',   inputs: { positive: ['7',0], negative: ['8',0], vae: ['3',0],
+                                                        clip_vision_output: ['6',0], start_image: ['5',0],
+                                                        width: 512, height: 512, length: I2V_FRAMES, batch_size: 1 } },
+    '10': { class_type: 'ModelSamplingSD3',  inputs: { model: ['1',0], shift: 8.0 } },
+    '11': { class_type: 'KSampler',          inputs: { model: ['10',0],
+                                                        positive: ['9',0], negative: ['9',1], latent_image: ['9',2],
+                                                        seed: seed||Math.floor(Math.random()*1e10),
+                                                        steps: I2V_STEPS, cfg: 6.0, sampler_name: 'euler',
+                                                        scheduler: 'simple', denoise: 1.0 } },
+    '12': { class_type: 'VAEDecodeLoopKJ',   inputs: { samples: ['11',0], vae: ['3',0], overlap_latent_frames: 2 } },
+    '13': { class_type: 'VHS_VideoCombine',  inputs: { images: ['12',0], frame_rate: DEFAULT_FPS, loop_count: 0,
+                                                        filename_prefix: 'maprang_i2v', format: 'video/h264-mp4',
+                                                        pingpong: false, save_output: true } },
+  };
+}
+
+function uploadImageToComfy(cfg, imagePath) {
+  return new Promise((resolve, reject) => {
+    const boundary = '----CF' + Math.random().toString(36).slice(2);
+    const imgBuf   = fs.readFileSync(imagePath);
+    const fname    = path.basename(imagePath);
+    const head     = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="${fname}"\r\nContent-Type: image/jpeg\r\n\r\n`);
+    const body     = Buffer.concat([head, imgBuf, Buffer.from(`\r\n--${boundary}--\r\n`)]);
+    const req      = http.request({
+      hostname: cfg.host||'10.3.17.118', port: cfg.port||8188,
+      path: '/upload/image', method: 'POST',
+      headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': body.length },
+    }, res => {
+      let buf = '';
+      res.on('data', d => buf += d);
+      res.on('end', () => { try { resolve(JSON.parse(buf).name || fname); } catch { resolve(fname); } });
+    });
+    req.setTimeout(30000, () => { req.destroy(); reject(new Error('upload timeout')); });
+    req.on('error', reject);
+    req.write(body); req.end();
+  });
+}
+
+async function generateClipI2V(cfg, prompt, refImagePath, outputPath, seed, charNeg = '') {
+  let filename;
+  try { filename = await uploadImageToComfy(cfg, refImagePath); }
+  catch (e) {
+    console.warn(`  ⚠️ I2V upload failed (${e.message}) — fallback T2V`);
+    return generateClip(cfg, prompt, outputPath, seed, charNeg);
+  }
+  console.log(`  🎬 ComfyUI I2V: "${prompt.substring(0, 50)}..." ref=${filename}`);
+  const workflow = buildWan21I2VWorkflow(prompt, cfg.i2vModelName, cfg.clipVisionModel, filename, seed, charNeg);
+  try { return await _runClipWorkflow(cfg, workflow, outputPath); }
+  catch (e) {
+    console.warn(`  ⚠️ I2V workflow failed (${e.message}) — fallback T2V`);
+    return generateClip(cfg, prompt, outputPath, seed, charNeg);
+  }
+}
+
+module.exports = { checkHealth, checkWan21Model, generateClip, generateClipI2V, checkI2VCapability,
+  generateCharacterImage, submitImageWorkflow, uploadImageToComfy };

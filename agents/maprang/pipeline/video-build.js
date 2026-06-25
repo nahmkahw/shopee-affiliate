@@ -63,6 +63,56 @@ function addSubtitle(clipPath, text, outPath) {
   return outPath;
 }
 
+// Ken Burns motion presets — pan/zoom ต่างกันต่อ scene ให้ภาพนิ่งดูมีชีวิต
+const KB_VARIANTS = [
+  "z='min(zoom+0.0012,1.18)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'",       // zoom in center
+  "z='if(eq(on,1),1.18,max(zoom-0.0012,1.0))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'", // zoom out
+  "z='1.12':x='(iw-iw/zoom)*on/D':y='ih/2-(ih/zoom/2)'",                          // pan left→right
+  "z='1.12':x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*on/D'",                          // pan top→bottom
+];
+
+/**
+ * Animate still image → clip ด้วย Ken Burns (pan/zoom) — ใช้กับ Flux Kontext scene still
+ * รับประกันตัวละครคงเดิม (เป็นภาพเดียวกัน) ต่างจาก T2V ที่วาดใหม่
+ * @param {string} imagePath  scene still .png
+ * @param {string} outPath    output .mp4
+ * @param {object} [opts]     { durationSec=3, fps=16, size=512, variant=0 }
+ */
+function kenBurnsClip(imagePath, outPath, opts = {}) {
+  const ffmpeg   = resolveFFmpeg();
+  const { durationSec = 3, fps = 16, size = 512, variant = 0 } = opts;
+  const frames   = Math.round(durationSec * fps);
+  const motion   = KB_VARIANTS[variant % KB_VARIANTS.length].replace(/D/g, String(frames));
+  const big      = size * 2; // upscale ก่อน zoompan กัน jitter
+  const vf = `scale=${big}:${big}:force_original_aspect_ratio=increase,crop=${big}:${big},` +
+             `zoompan=${motion}:d=${frames}:s=${size}x${size}:fps=${fps},format=yuv420p`;
+  execFileSync(ffmpeg, [
+    '-y', '-loop', '1', '-i', imagePath, '-t', String(durationSec), '-r', String(fps),
+    '-vf', vf, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+    outPath,
+  ], { timeout: 120000, stdio: ['ignore', 'ignore', 'pipe'] });
+  return outPath;
+}
+
+/**
+ * ขยาย clip ให้ยาวเท่า durationSec โดยค้างเฟรมสุดท้าย — ใช้กับ T2V fallback ที่ยาวคงที่
+ * (Ken Burns path สร้าง clip ความยาวพอดีตั้งแต่แรกอยู่แล้ว ไม่ต้องใช้)
+ * @param {string} clipPath  input .mp4
+ * @param {string} outPath   output .mp4
+ * @param {number} durationSec  ความยาวเป้าหมาย
+ */
+function extendClipToDuration(clipPath, outPath, durationSec) {
+  const ffmpeg = resolveFFmpeg();
+  execFileSync(ffmpeg, [
+    '-y', '-i', clipPath,
+    '-vf', `tpad=stop_mode=clone:stop_duration=${durationSec}`,
+    '-t', String(durationSec),
+    '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+    outPath,
+  ], { timeout: 120000, stdio: ['ignore', 'ignore', 'pipe'] });
+  return outPath;
+}
+
 /**
  * Concat หลาย .mp4 เป็นไฟล์เดียว
  * @param {string[]} clipPaths  รายการ clip ตามลำดับ
@@ -115,4 +165,4 @@ async function buildStoryVideo(clips, outputDir) {
   return storyPath;
 }
 
-module.exports = { addSubtitle, concatClips, buildStoryVideo };
+module.exports = { addSubtitle, concatClips, buildStoryVideo, kenBurnsClip, extendClipToDuration };

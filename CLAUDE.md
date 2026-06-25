@@ -217,6 +217,42 @@ node agents\makrut\pipeline\makrut.js --resend
 - Models ที่ต้อง install บน ComfyUI ก่อนใช้งาน: `flux1-kontext-dev-fp8.safetensors`, `t5xxl_fp8_e4m3fn.safetensors`, `clip_l.safetensors`, `ae.safetensors`
 - SDXL workflows เดิม (`buildWorkflow`, `buildWorkflowWithRef`) ยังคงทำงานได้ปกติ
 
+### Agent มะปราง (`agents/maprang/`) — Anime Story Video
+
+3-stage: pre-production (storyboard + char_ref) → generate-scene → build (TTS + subtitle + concat).
+
+**Character consistency (สำคัญ):** scene clip **ไม่ใช้ T2V ล้วน** (วาดตัวละครใหม่ทุก scene → หน้าตาเปลี่ยน) แต่ใช้ **Flux Kontext anchor**:
+- `char_ref.png` (สร้างครั้งเดียวใน pre-production) = identity anchor
+- ทุก scene: `flux-kontext.js` `generateSceneImage()` วางตัวละครเดิมลงฉากใหม่ → `still_N.png` (หน้า/ผม/ชุด คงเดิม)
+- animate still → clip: **Ken Burns** (default, pan/zoom, ตัวละครคงเดิม 100%) หรือ I2V ถ้า `MAPRANG_ANIMATE=i2v`
+- fallback → Wan2.1 T2V เดิม ถ้าไม่มี `char_ref.png` หรือ Kontext ล้มเหลว
+- gender bug guard: `scene-gen.js` `detectGender()`/`enforceGender()` กัน Typhoon2 หลุดเพศ (เคยได้ "1boy" จาก story เด็กหญิง)
+- models บน ComfyUI: `flux1-dev-kontext_fp8_scaled.safetensors`, `clip_l.safetensors`, `t5xxl_fp8_e4m3fn.safetensors`, `ae.safetensors`
+- env: `KONTEXT_TIMEOUT_MS` (default 420000), `MAPRANG_ANIMATE` (kenburns|i2v)
+- `scene_setting_en` ใน meta scene = คำบรรยายฉากล้วน (ป้อนเป็น Kontext instruction)
+
+**Narration sync (กันเสียงเล่าเรื่องขาด):** clip ความยาวคงที่ 3s แต่ narration ยาว 6-12s → `-shortest` เคยตัดเสียง แก้โดย:
+- `scene-gen.js` `capNarration()` จำกัด narration ≤ 60 ตัวอักษร (≈ ≤8s TTS) + prompt ขอ 1 ประโยคสั้น
+- `post-production.js` สร้าง TTS **ก่อน** → วัดความยาว → สร้าง clip ยาว `clamp(ttsDur, 3, MAX_SCENE_SEC)` (Ken Burns ใหม่จาก still / `extendClipToDuration` ค้างเฟรมท้ายสำหรับ T2V)
+- env: `MAPRANG_MAX_SCENE_SEC` (default 8)
+
+**Multi-character dialogue + เสียงแยกตัวละคร (Level A):** ตัวละครพูดคุยได้ เสียงต่างกัน (ปากไม่ขยับ — แบบละครวิทยุ/นิทานมีเสียงพากย์):
+- scene เพิ่ม `dialogue: [{speaker, line_th, pitchK}]` — `scene-gen.js` สร้างจาก Typhoon2 + assign `pitchK` ต่อ speaker (`assignPitch`/`mapDialogue`)
+- **TTS = gTTS + ffmpeg pitch shift** (`lib/dialogue-audio.js` `VOICE_PROFILES`/`pickVoiceK`) — *ไม่ใช้ edge-tts* เพราะ rate-limit ไม่เสถียร แม้มีเสียงไทย 2 เสียงจริง
+- `lib/tiktok-tts.js` `generateVoiceover(text, out, {pitchK})` — `asetrate*K, atempo=1/K` คงความยาว (K<1 ทุ้ม, K>1 แหลม)
+- `assembleSceneAudio()` ต่อ narration + บทพูดแต่ละตัว (เว้น gap) → track เดียว → clip ยาวเท่า audio
+- voice: narrator=1.0, male=0.85/0.78/0.92, female=1.12/1.20/1.06, child=1.28, elder=0.72 (idx กันเสียงซ้ำ)
+- env: `MAPRANG_MAX_DIALOG_SEC` (default 24 — scene บทสนทนายาวกว่า narration ปกติ)
+- ⚠️ subtitle ยังเป็น `subtitle_th` รวม (timed per-speaker subtitle + lip-sync = งานต่อยอด Level B)
+
+**กำหนดตัวละครเอง + วิดีโอหลายตัวละคร:** ตัวละครคงหน้าตาข้ามฉาก แม้หลายตัวในเฟรมเดียว:
+- define ตัวละครผ่าน dashboard (`/api/maprang/characters`) — เก็บใน `agents/maprang/characters.json` (char-registry)
+- ref image ต่อตัว 2 ทาง: **AI สร้าง** (`POST .../characters/:id/generate` → spawn `run.js --action gen-char-image`) หรือ **อัปโหลดเอง** (`POST .../characters/:id/image` raw body) → เก็บใน `agents/maprang/characters/{id}.png`, `ref_image` ใน registry
+- multi-char scene: `flux-kontext.js` `generateSceneStill(refs[])` → `ImageStitch` ต่อรูป ref 2-3 ตัว (ซ้าย→ขวา) → Flux Kontext วางทุกตัวลงฉากคงหน้าตา (de-risk แล้ว: identity คงข้ามฉาก)
+- `pre-production.js` `collectCharRefs()` → multi-char job เก็บ `meta.char_refs{id:absPath}` + `char_names` (gen รูปให้ถ้ายังไม่มี)
+- `run.js` `resolveSceneRefs` ([scene-refs.js](agents/maprang/pipeline/scene-refs.js)) → เลือก refs ตาม `scene.characters` → `actionGenerateScene` ใช้ multi-ref; เสียงแยกตัว auto ตามเพศ (`detectGenderEn`)
+- ⚠️ หลายตัว interact กัน (ท่าทาง) ยังไม่เป๊ะ 100% — ปรับด้วย instruction; ~2.5 นาที/ฉาก (Flux Kontext)
+
 ### Agent มะกรูด (`agents/makrut/`)
 
 FIFA World Cup 2026 news pipeline — ทำงานเหมือน manao แต่ scrape จากแหล่งข่าว FIFA/กีฬา
@@ -378,6 +414,7 @@ tracking.xlsx           ← sort ตาม post_date | status: scraped → draft
 | `Cannot find module` | `npm install` |
 | TikTok video TTS error | `make-tiktok-video.js` ใช้ `msedge-tts` npm — รัน `npm install msedge-tts` ถ้าพัง |
 | ข่าว makrut/manao ค้างใน Telegram | รัน `--resend` (ดู Node.js Scripts) |
+| มะปราง dashboard โชว์ "Pre-production กำลังทำงาน" ค้าง | job orphaned (process ตายไม่อัปเดต status) — `run.js` เขียน `status='error'` ตอน exit ผิดปกติแล้ว (ทั้ง throw + process.exit) แต่ถ้าถูก `kill -9` ต้องล้าง meta status เอง |
 | Ollama output เป็น `??????` | ตรวจว่าใช้ model Typhoon2 (`OLLAMA_MODEL` ใน `.env`) — `llama3.2` ไม่รองรับไทย |
 
 ---

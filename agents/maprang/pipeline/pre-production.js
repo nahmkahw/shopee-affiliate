@@ -11,12 +11,38 @@ const { execFileSync } = require('child_process');
 const { generateScenes, generateScenesWithCharacters,
         generateCharacterDescription, buildCharacterNegative,
         describeCharacterImage } = require('./scene-gen');
-const { generateClip } = require('./comfy-client');
+const { generateClip, generateCharacterImage } = require('./comfy-client');
 const charReg = require('./char-registry');
 
 const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
 
-const GALLERY = path.join(__dirname, '..', 'gallery');
+const GALLERY  = path.join(__dirname, '..', 'gallery');
+const ROOT     = path.join(__dirname, '..', '..', '..');
+const CHAR_DIR = path.join(__dirname, '..', 'characters');
+
+// multi-char: เก็บ ref image (abs path) + ชื่อ ของตัวละครที่เลือก → meta.char_refs/char_names
+// ตัวไหนยังไม่มีรูป → gen ให้เดี๋ยวนั้น (define ผ่าน dashboard ปกติจะมีรูปแล้ว)
+async function collectCharRefs(meta, useCharIds, useChars, comfyCfg, sharedSeed, appendLog, saveMeta) {
+  meta.char_refs = {};
+  meta.char_names = {};
+  for (const cid of useCharIds) {
+    const c = useChars[cid] || {};
+    meta.char_names[cid] = c.name || cid;
+    let refRel = c.ref_image;
+    if (!refRel) {
+      appendLog(meta, `🎨 สร้างรูปตัวละคร ${cid}...`, saveMeta);
+      const outPath = path.join(CHAR_DIR, `${cid}.png`);
+      fs.mkdirSync(CHAR_DIR, { recursive: true });
+      try {
+        await generateCharacterImage(comfyCfg, c.description || cid, outPath, sharedSeed + cid.length);
+        refRel = path.relative(ROOT, outPath);
+        charReg.upsert({ id: cid, ref_image: refRel });
+      } catch (e) { appendLog(meta, `⚠️ gen รูป ${cid} ล้มเหลว: ${e.message}`, saveMeta); }
+    }
+    const abs = refRel && (path.isAbsolute(refRel) ? refRel : path.join(ROOT, refRel));
+    if (abs && fs.existsSync(abs)) meta.char_refs[cid] = abs;
+  }
+}
 
 /**
  * @param {object} params
@@ -75,6 +101,8 @@ async function runPreProduction({ prompt, id, charDescOverride, charIdsArg, comf
     meta.character_negative    = singleCharNeg;
   } else {
     meta.characters = useCharIds;
+    await collectCharRefs(meta, useCharIds, useChars, comfyCfg, sharedSeed, appendLog, saveMeta);
+    saveMeta(meta);
   }
 
   // 4. Build scene list (พร้อม _charNeg — ใช้ตอน generate-scene)
@@ -85,10 +113,13 @@ async function runPreProduction({ prompt, id, charDescOverride, charIdsArg, comf
     const charNeg = isMulti
       ? charReg.buildSceneCharNeg(s.characters || useCharIds, useChars)
       : singleCharNeg;
+    // scene_setting_en = คำบรรยายฉากล้วน (ไม่มี char desc) — ใช้เป็น instruction ให้ Flux Kontext
+    const sceneSetting = s.visual_prompt_en.replace(/^anime style,\s*/i, '').trim();
     return {
       ...s,
       narration_th:  s.narration_th  || s.subtitle_th,
       visual_action: s.visual_action || '',
+      scene_setting_en: sceneSetting,
       status: 'pending',
       approved: false,
       skipped: false,

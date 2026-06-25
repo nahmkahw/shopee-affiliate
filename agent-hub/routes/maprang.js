@@ -25,6 +25,22 @@ function getBody(req) {
   });
 }
 
+function getRawBody(req) {
+  return new Promise(resolve => {
+    const chunks = [];
+    req.on('data', d => chunks.push(d));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+  });
+}
+
+// spawn run.js --action gen-char-image (สร้างรูปตัวละคร async ไม่ block response)
+function spawnGenCharImage(ROOT, charId) {
+  const proc = spawn(process.execPath,
+    [path.join(ROOT, 'agents', 'maprang', 'run.js'), '--action', 'gen-char-image', '--char-id', charId],
+    { cwd: ROOT, stdio: 'inherit', env: { ...process.env } });
+  proc.on('error', e => console.error(`[maprang] gen-char spawn error: ${e.message}`));
+}
+
 function readMeta(ROOT, id) {
   const p = path.join(ROOT, 'agents', 'maprang', 'gallery', id, 'meta.json');
   if (!fs.existsSync(p)) return null;
@@ -65,6 +81,27 @@ function register(req, res, url, rawUrl, method, deps) {
   if (delCharMatch && method === 'DELETE') {
     charReg.remove(delCharMatch[1]);
     return reply(res, 200, { ok: true });
+  }
+  // สร้างรูปตัวละครด้วย AI (จาก description)
+  const genCharMatch = url.match(/^\/api\/maprang\/characters\/([\w-]+)\/generate$/);
+  if (genCharMatch && method === 'POST') {
+    const c = charReg.load()[genCharMatch[1]];
+    if (!c) return reply(res, 404, { ok: false, error: 'ไม่พบตัวละคร' });
+    spawnGenCharImage(ROOT, genCharMatch[1]);
+    return reply(res, 200, { ok: true, generating: true });
+  }
+  // อัปโหลดรูปตัวละครเอง (raw image body)
+  const upCharMatch = url.match(/^\/api\/maprang\/characters\/([\w-]+)\/image$/);
+  if (upCharMatch && method === 'POST') {
+    return getRawBody(req).then(buf => {
+      if (!buf || !buf.length) return reply(res, 400, { ok: false, error: 'ไม่มีรูป' });
+      const dir = path.join(ROOT, 'agents', 'maprang', 'characters');
+      fs.mkdirSync(dir, { recursive: true });
+      const outPath = path.join(dir, `${upCharMatch[1]}.png`);
+      fs.writeFileSync(outPath, buf);
+      charReg.upsert({ id: upCharMatch[1], ref_image: path.relative(ROOT, outPath) });
+      return reply(res, 200, { ok: true });
+    }).catch(e => reply(res, 500, { ok: false, error: e.message }));
   }
 
   // ─── Static file serving ────────────────────────────────────────────────────

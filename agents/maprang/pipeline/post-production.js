@@ -9,10 +9,26 @@ const path = require('path');
 const os   = require('os');
 const { execFileSync } = require('child_process');
 
-const { addSubtitle, concatClips } = require('./video-build');
-const { generateVoiceover }        = require('../../../lib/tiktok-tts');
+const { addSubtitle, concatClips, kenBurnsClip, extendClipToDuration } = require('./video-build');
+const { assembleSceneAudio }       = require('../../../lib/dialogue-audio');
+const { capNarration }             = require('./scene-gen');
 
 const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
+
+// ความยาว clip = ความยาวเสียงพากย์ (clamp) — กันเสียงเล่าเรื่องขาด
+const MIN_SCENE_SEC = 3;
+const MAX_SCENE_SEC = parseFloat(process.env.MAPRANG_MAX_SCENE_SEC || '8');
+const MAX_DIALOG_SEC = parseFloat(process.env.MAPRANG_MAX_DIALOG_SEC || '24'); // scene มีบทสนทนายาวกว่าได้
+const TTS_PAD_SEC   = 0.3;
+
+// สร้าง track เสียงของ scene: ถ้ามี dialogue → หลายเสียงต่อกัน, ไม่งั้น narration เสียงเดียว
+async function buildSceneAudio(scene, outPath) {
+  const segs = [];
+  if (scene.narration_th) segs.push({ text: capNarration(scene.narration_th), pitchK: 1.0 });
+  for (const d of (scene.dialogue || [])) segs.push({ text: d.line_th, pitchK: d.pitchK || 1.0 });
+  if (!segs.length) segs.push({ text: scene.subtitle_th || '', pitchK: 1.0 });
+  return assembleSceneAudio(segs, outPath);
+}
 
 /**
  * Mix audio (TTS) ลง clip ที่มีอยู่
@@ -21,14 +37,16 @@ const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
  * @param {string} outPath    mp4 output
  */
 function mixAudioIntoClip(clipPath, audioPath, outPath) {
-  // Loop audio ถ้าสั้นกว่าวิดีโอ, ตัดถ้ายาวกว่า, volume 0.85
+  // clip จาก ComfyUI เป็น video-only (ไม่มี audio stream)
+  // [1:a]apad: pad TTS ด้วย silence ถ้าสั้นกว่าวิดีโอ
+  // -shortest: ตัดที่ความยาววิดีโอถ้า TTS ยาวกว่า
   execFileSync(FFMPEG, [
     '-y',
     '-i', clipPath,
     '-i', audioPath,
-    '-filter_complex', '[1:a]aloop=loop=-1:size=2e+09[looped];[looped]atrim=duration=3[atrimmed];[0:a][atrimmed]amix=inputs=2:duration=first:weights=0 0.85[aout]',
+    '-filter_complex', '[1:a]apad[aout]',
     '-map', '0:v', '-map', '[aout]',
-    '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k',
+    '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-shortest',
     outPath,
   ], { timeout: 60000, stdio: ['ignore', 'ignore', 'pipe'] });
 }
@@ -51,33 +69,48 @@ async function runPostProduction(meta, dir) {
   const finalClips = [];
 
   for (const scene of approvedScenes) {
-    const clipPath = path.join(clipsDir, `clip_${scene.scene_number}.mp4`);
+    const n        = scene.scene_number;
+    const clipPath = path.join(clipsDir, `clip_${n}.mp4`);
     if (!fs.existsSync(clipPath)) {
-      console.warn(`  ⚠️  ไม่พบ clip_${scene.scene_number}.mp4 — ข้าม`);
+      console.warn(`  ⚠️  ไม่พบ clip_${n}.mp4 — ข้าม`);
       continue;
     }
 
-    // 1. subtitle overlay
-    const subPath = path.join(postDir, `sub_${scene.scene_number}.mp4`);
-    console.log(`  [${scene.scene_number}] subtitle: "${scene.subtitle_th}"`);
-    addSubtitle(clipPath, scene.subtitle_th, subPath);
-
-    // 2. TTS voiceover
-    let withAudio = subPath;
+    // 1. เสียงก่อน — รู้ความยาวเพื่อกำหนดความยาว clip (กันเสียงขาด)
+    let baseClip = clipPath, ttsPath = null;
     try {
-      const ttsPath = path.join(postDir, `tts_${scene.scene_number}.mp3`);
-      await generateVoiceover(scene.narration_th || scene.subtitle_th, ttsPath);
-      const mixPath = path.join(postDir, `mix_${scene.scene_number}.mp4`);
+      ttsPath = path.join(postDir, `tts_${n}.mp3`);
+      const { duration: ttsDur } = await buildSceneAudio(scene, ttsPath);
+      const maxSec    = (scene.dialogue && scene.dialogue.length) ? MAX_DIALOG_SEC : MAX_SCENE_SEC;
+      const targetDur = Math.min(Math.max(ttsDur + TTS_PAD_SEC, MIN_SCENE_SEC), maxSec);
+
+      // 2. สร้าง clip ยาวเท่าเสียง — still มี → Ken Burns ใหม่ (motion ต่อเนื่อง), ไม่มี → ค้างเฟรมท้าย
+      baseClip = path.join(postDir, `base_${n}.mp4`);
+      const stillPath = path.join(clipsDir, `still_${n}.png`);
+      if (fs.existsSync(stillPath)) kenBurnsClip(stillPath, baseClip, { durationSec: targetDur, variant: (n - 1) % 4 });
+      else                          extendClipToDuration(clipPath, baseClip, targetDur);
+      console.log(`  [${n}] เสียง ${ttsDur.toFixed(1)}s → clip ${targetDur.toFixed(1)}s`);
+    } catch (e) {
+      console.warn(`     ⚠️  TTS/resize ล้มเหลว (${e.message}) — ใช้ clip เดิม`);
+      baseClip = clipPath; ttsPath = null;
+    }
+
+    // 3. subtitle overlay
+    const subPath = path.join(postDir, `sub_${n}.mp4`);
+    addSubtitle(baseClip, scene.subtitle_th, subPath);
+    if (baseClip !== clipPath) { try { fs.unlinkSync(baseClip); } catch {} }
+
+    // 4. mix เสียงพากย์ (clip ≥ เสียงแล้ว เสียงจึงครบ)
+    let finalC = subPath;
+    if (ttsPath && fs.existsSync(ttsPath)) {
+      const mixPath = path.join(postDir, `mix_${n}.mp4`);
       mixAudioIntoClip(subPath, ttsPath, mixPath);
       try { fs.unlinkSync(subPath); } catch {}
       try { fs.unlinkSync(ttsPath); } catch {}
-      withAudio = mixPath;
+      finalC = mixPath;
       console.log(`     ✅ TTS + audio mix`);
-    } catch (e) {
-      console.warn(`     ⚠️  TTS ล้มเหลว (${e.message}) — ใช้ subtitle เฉยๆ`);
     }
-
-    finalClips.push(withAudio);
+    finalClips.push(finalC);
   }
 
   if (!finalClips.length) throw new Error('ไม่มี clip สำหรับ concat');
