@@ -16,7 +16,7 @@ const { generateAnime } = require('../agents/anime/anime-gen');
 const { renderBalloonOnImage } = require('../agents/anime/balloon-canvas');
 const { postFacebookImage, postInstagramImage } = require('../agents/anime/post-anime');
 
-const PORT                = 3002;
+const PORT                = parseInt(process.env.PORT || '3002', 10);
 const ROOT                = path.join(__dirname, '..');
 const AI_NEWS_DIR         = path.join(ROOT, 'agents', 'manao', 'pipeline');
 const COMFYUI_HOST        = '10.3.17.118';

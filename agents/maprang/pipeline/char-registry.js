@@ -49,8 +49,19 @@ function buildSceneCharPrompt(charIds, chars) {
 /**
  * สร้าง character-specific negative จากทุกตัวละครใน scene
  */
+// เพศของตัวละคร: structured field (gender) มาก่อน → fallback parse จาก description
+function charGender(c) {
+  const g = (c.gender || '').toLowerCase();
+  if (g === 'male' || g === 'female') return g;
+  const d = (c.description || '').toLowerCase();
+  if (/\b(girl|woman|female|lady|she|her|princess|queen)\b/.test(d)) return 'female';
+  if (/\b(boy|man|male|he|his|prince|king)\b/.test(d)) return 'male';
+  return null;
+}
+
 function buildSceneCharNeg(charIds, chars) {
   const negParts = [];
+  let hasMale = false, hasFemale = false;
   for (const id of (charIds || [])) {
     const c = chars[id];
     if (!c) continue;
@@ -58,7 +69,13 @@ function buildSceneCharNeg(charIds, chars) {
     const outfitMatch = c.description.match(/(\w+)\s+(dress|shirt|jacket|uniform|outfit)/i);
     if (hairMatch)   negParts.push(`different hair color from ${c.name || id}`);
     if (outfitMatch) negParts.push(`wrong outfit for ${c.name || id}`);
+    const g = charGender(c);
+    if (g === 'male') hasMale = true;
+    if (g === 'female') hasFemale = true;
   }
+  // เพศ lock ชั้นที่ 2: ถ้าทุกตัวเพศเดียวกัน → ปฏิเสธเพศตรงข้ามใน scene (อาการ still_3 เพศหลุด)
+  if (hasMale && !hasFemale) negParts.push('1girl, woman, female, feminine');
+  if (hasFemale && !hasMale) negParts.push('1boy, man, male, masculine');
   return negParts.length
     ? `character inconsistency, wrong character design, ${negParts.join(', ')}`
     : 'character inconsistency, wrong character design';

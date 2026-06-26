@@ -33,13 +33,15 @@ function getRawBody(req) {
   });
 }
 
-// spawn run.js --action gen-char-image (สร้างรูปตัวละคร async ไม่ block response)
-function spawnGenCharImage(ROOT, charId) {
+// spawn run.js --action <act> สำหรับ character (async ไม่ block response)
+function spawnCharAction(ROOT, action, charId) {
   const proc = spawn(process.execPath,
-    [path.join(ROOT, 'agents', 'maprang', 'run.js'), '--action', 'gen-char-image', '--char-id', charId],
+    [path.join(ROOT, 'agents', 'maprang', 'run.js'), '--action', action, '--char-id', charId],
     { cwd: ROOT, stdio: 'inherit', env: { ...process.env } });
-  proc.on('error', e => console.error(`[maprang] gen-char spawn error: ${e.message}`));
+  proc.on('error', e => console.error(`[maprang] ${action} spawn error: ${e.message}`));
 }
+const spawnGenCharImage = (ROOT, charId) => spawnCharAction(ROOT, 'gen-char-image', charId);
+const spawnGenAnimeRef  = (ROOT, charId) => spawnCharAction(ROOT, 'gen-anime-ref', charId);
 
 function readMeta(ROOT, id) {
   const p = path.join(ROOT, 'agents', 'maprang', 'gallery', id, 'meta.json');
@@ -73,7 +75,9 @@ function register(req, res, url, rawUrl, method, deps) {
   if (url === '/api/maprang/characters' && method === 'POST') {
     return getBody(req).then(body => {
       if (!body.id || !body.description) return reply(res, 400, { ok: false, error: 'id และ description required' });
-      const char = charReg.upsert({ id: body.id, name: body.name || body.id, description: body.description });
+      const fields = { id: body.id, name: body.name || body.id, description: body.description };
+      if (body.gender === 'male' || body.gender === 'female') fields.gender = body.gender;
+      const char = charReg.upsert(fields);
       return reply(res, 200, { ok: true, char });
     }).catch(e => reply(res, 500, { ok: false, error: e.message }));
   }
@@ -100,16 +104,18 @@ function register(req, res, url, rawUrl, method, deps) {
       const outPath = path.join(dir, `${upCharMatch[1]}.png`);
       fs.writeFileSync(outPath, buf);
       charReg.upsert({ id: upCharMatch[1], ref_image: path.relative(ROOT, outPath) });
-      return reply(res, 200, { ok: true });
+      // Stage-0: รูปถ่ายจริง → anime portrait (anime_ref) อัตโนมัติ (async)
+      spawnGenAnimeRef(ROOT, upCharMatch[1]);
+      return reply(res, 200, { ok: true, anime_ref_generating: true });
     }).catch(e => reply(res, 500, { ok: false, error: e.message }));
   }
 
   // ─── Static file serving ────────────────────────────────────────────────────
   const charImgMatch = url.match(/^\/dashboard\/maprang\/charimg\/([\w-]+)$/);
   if (charImgMatch) {
-    const c  = charReg.load()[charImgMatch[1]];
-    const cp = c?.ref_image && path.isAbsolute(c.ref_image) ? c.ref_image
-             : c?.ref_image ? path.join(ROOT, c.ref_image) : null;
+    const c   = charReg.load()[charImgMatch[1]];
+    const rel = c?.anime_ref || c?.ref_image;  // โชว์ anime_ref (anchor จริง) ถ้ามี
+    const cp  = rel && path.isAbsolute(rel) ? rel : rel ? path.join(ROOT, rel) : null;
     if (!cp || !fs.existsSync(cp)) { res.writeHead(404); return res.end(''); }
     res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': fs.statSync(cp).size });
     return fs.createReadStream(cp).pipe(res);
@@ -154,6 +160,14 @@ function register(req, res, url, rawUrl, method, deps) {
     return getBody(req).then(body => {
       const prompt = (body.prompt || '').trim();
       if (!prompt) return reply(res, 400, { ok: false, error: 'ต้องระบุ prompt' });
+      // Guard: ห้ามเริ่ม job ถ้าตัวละครที่เลือกยังไม่มี anime_ref (กัน race → char_refs หาย → fallback T2V)
+      if (body.char_ids) {
+        const chars = charReg.load();
+        const notReady = body.char_ids.split(',').map(s => s.trim()).filter(Boolean)
+          .filter(cid => chars[cid] && !chars[cid].anime_ref && !chars[cid].ref_image);
+        if (notReady.length) return reply(res, 409, { ok: false,
+          error: `ตัวละครยังไม่พร้อม (ยังไม่มีรูป/anime_ref): ${notReady.join(', ')} — รอ Stage-0 เสร็จก่อน` });
+      }
       const id = Date.now().toString();
       reply(res, 200, { ok: true, id });
       const runScript = path.join(ROOT, 'agents', 'maprang', 'run.js');

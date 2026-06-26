@@ -145,7 +145,8 @@ async function submitImageWorkflow(cfg, workflow, outNodeId, outputPath, timeout
  */
 async function generateCharacterImage(cfg, charDesc, outputPath, seed) {
   console.log('  🎨 ComfyUI T2I: สร้าง character reference image...');
-  const { outputPath: out, bytes } = await submitImageWorkflow(cfg, buildCharImageWorkflow(charDesc, seed), '7', outputPath);
+  const imageTimeout = cfg.imageTimeoutMs || cfg.timeoutMs || 300000;
+  const { outputPath: out, bytes } = await submitImageWorkflow(cfg, buildCharImageWorkflow(charDesc, seed), '7', outputPath, imageTimeout);
   console.log(`  ✅ ref image: ${out} (${(bytes / 1024).toFixed(0)} KB)`);
   return out;
 }

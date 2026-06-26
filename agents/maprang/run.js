@@ -10,20 +10,21 @@ const fs    = require('fs');
 const path  = require('path');
 const https = require('https');
 
-const { generateClip, generateClipI2V, checkI2VCapability, generateCharacterImage, checkHealth, checkWan21Model } = require('./pipeline/comfy-client');
+const { generateClip, generateClipI2V, checkI2VCapability, checkHealth, checkWan21Model } = require('./pipeline/comfy-client');
 const { generateSceneStill }    = require('./pipeline/flux-kontext');
 const { resolveSceneRefs }      = require('./pipeline/scene-refs');
-const { detectGenderEn }        = require('./pipeline/scene-gen');
 const { kenBurnsClip }          = require('./pipeline/video-build');
 const { runPreProduction }      = require('./pipeline/pre-production');
 const { runPostProduction }     = require('./pipeline/post-production');
+const charActions               = require('./pipeline/char-actions');
 const charReg = require('./pipeline/char-registry');
 
 const ROOT = path.join(__dirname, '..', '..'), GALLERY = path.join(__dirname, 'gallery'), CHAR_DIR = path.join(__dirname, 'characters');
+const CHAR_CTX = { get COMFY_CFG() { return COMFY_CFG; }, ROOT, CHAR_DIR };
 const COMFY_CFG = {
   host:      process.env.COMFY_HOST     || '10.3.17.118',
   port:      parseInt(process.env.COMFY_PORT || '8188', 10),
-  timeoutMs: parseInt(process.env.COMFY_TIMEOUT_MS || '600000', 10),
+  timeoutMs: parseInt(process.env.COMFY_TIMEOUT_MS || '900000', 10),
   modelName: process.env.WAN21_MODEL    || 'Wan2.1\\wan2.1_t2v_1.3B_bf16.safetensors',
 };
 // animate scene still: 'kenburns' (default, เร็ว) | 'i2v' (motion จริง แต่ 14B ช้า)
@@ -192,18 +193,6 @@ async function actionGenerateScene(id, sceneNum) {
   await tgSendText(`✅ Scene ${sceneNum}/${meta.scenes.length} เสร็จแล้ว\n🎬 "${scene.subtitle_th}"`);
 }
 
-// สร้าง ref image ให้ character ที่ define (จาก description) + เก็บ ref_image/gender ใน registry
-async function actionGenCharImage(charId) {
-  const c = charReg.load()[charId];
-  if (!c) { console.error(`❌ ไม่พบ character ${charId}`); process.exit(1); }
-  fs.mkdirSync(CHAR_DIR, { recursive: true });
-  const outPath = path.join(CHAR_DIR, `${charId}.png`);
-  console.log(`🎨 สร้างรูปตัวละคร ${charId}...`);
-  await generateCharacterImage(COMFY_CFG, c.description, outPath, Math.floor(Math.random() * 1e9));
-  charReg.upsert({ id: charId, ref_image: path.relative(ROOT, outPath), gender: detectGenderEn(c.description) || '' });
-  console.log(`✅ ref image: ${outPath}`);
-}
-
 async function actionSkipScene(id, sceneNum) {
   const meta = readMeta(id);
   if (!meta) { console.error(`❌ ไม่พบ job ${id}`); process.exit(1); }
@@ -295,6 +284,7 @@ process.on('exit', code => {
   else if (action === 'generate-all-scenes') await actionGenerateAllScenes(galleryId);
   else if (action === 'skip-scene')        await actionSkipScene(galleryId, sceneNum);
   else if (action === 'build')             await actionBuild(galleryId);
-  else if (action === 'gen-char-image')    await actionGenCharImage(charIdArg);
+  else if (action === 'gen-char-image')    await charActions.genCharImage(CHAR_CTX, charIdArg);
+  else if (action === 'gen-anime-ref')     await charActions.genAnimeRef(CHAR_CTX, charIdArg);
   else                                     actionStatus(galleryId);
 })().catch(e => { console.error('❌', e.message); _exitError = e.message; process.exit(1); });
