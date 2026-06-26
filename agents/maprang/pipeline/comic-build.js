@@ -21,21 +21,6 @@ function registerFont() {
   return 'Tahoma';
 }
 
-// ตัดบรรทัดไทย (ไม่มีช่องว่าง → wrap ทีละตัวอักษร), อังกฤษ wrap ทีละคำ
-function wrapText(ctx, text, maxWidth) {
-  const lines = [];
-  let cur = '';
-  const hasSpace = /\s/.test(text);
-  const tokens = hasSpace ? text.split(/(\s+)/) : [...text];
-  for (const tk of tokens) {
-    const test = cur + tk;
-    if (ctx.measureText(test).width > maxWidth && cur) { lines.push(cur.trimEnd()); cur = tk.trimStart(); }
-    else cur = test;
-  }
-  if (cur.trim()) lines.push(cur.trimEnd());
-  return lines.length ? lines : [text];
-}
-
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -46,43 +31,55 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-// บอลลูนคำพูด: กล่องโค้งขาว + ขอบดำ + หางชี้ลง + ชื่อผู้พูด
-function drawBubble(ctx, cx, topY, maxW, line, speakerName) {
-  const fontSize = Math.round(PAGE * 0.026);
-  ctx.font = `${fontSize}px Tahoma`;
-  const innerW = maxW - 36;
-  const textLines = wrapText(ctx, line, innerW);
-  const lineH = fontSize * 1.35;
-  const nameH = speakerName ? fontSize * 1.1 : 0;
-  const boxW = Math.min(maxW, Math.max(...textLines.map(l => ctx.measureText(l).width)) + 36);
-  const boxH = textLines.length * lineH + nameH + 24;
-  const x = cx - boxW / 2;
-  const y = topY;
+// caption band (นอกภาพ ใต้ panel) — ไม่บังหน้าตัวละคร
+const BAND_PAD = 16, BAND_BG = '#0f172a';
+const SPEAKER_COLORS = ['#a855f7', '#38bdf8', '#f59e0b', '#34d399', '#f472b6', '#facc15'];
+function colorFor(name, map) {
+  if (!map[name]) map[name] = SPEAKER_COLORS[Object.keys(map).length % SPEAKER_COLORS.length];
+  return map[name];
+}
+function bandFont() { return Math.round(PAGE * 0.024); }
+function bandLineH() { return bandFont() * 1.42; }
 
-  // เงา
-  ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 4;
-  ctx.fillStyle = '#ffffff';
-  roundRect(ctx, x, y, boxW, boxH, 16); ctx.fill();
-  ctx.restore();
-  // ขอบ + หาง
-  ctx.strokeStyle = '#111'; ctx.lineWidth = 3;
-  roundRect(ctx, x, y, boxW, boxH, 16); ctx.stroke();
-  ctx.fillStyle = '#fff'; ctx.beginPath();
-  ctx.moveTo(cx - 12, y + boxH - 1); ctx.lineTo(cx + 12, y + boxH - 1); ctx.lineTo(cx, y + boxH + 18);
-  ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = '#111'; ctx.lineWidth = 3; ctx.beginPath();
-  ctx.moveTo(cx - 12, y + boxH - 1); ctx.lineTo(cx, y + boxH + 18); ctx.lineTo(cx + 12, y + boxH - 1); ctx.stroke();
-
-  let ty = y + 14;
-  if (speakerName) {
-    ctx.font = `${Math.round(fontSize * 0.82)}px TahomaBold, Tahoma`;
-    ctx.fillStyle = '#a855f7'; ctx.textAlign = 'center';
-    ctx.fillText(speakerName, cx, ty + fontSize * 0.7); ty += nameH;
+// wrap ที่บรรทัดแรกกว้าง firstW (หลังชื่อ) ที่เหลือกว้าง restW
+function wrapText2(ctx, text, firstW, restW) {
+  const lines = []; let cur = '', w = firstW;
+  const toks = /\s/.test(text) ? text.split(/(\s+)/) : [...text];
+  for (const tk of toks) {
+    if (ctx.measureText(cur + tk).width > w && cur) { lines.push(cur.trimEnd()); cur = tk.trimStart(); w = restW; }
+    else cur += tk;
   }
-  ctx.font = `${fontSize}px Tahoma`; ctx.fillStyle = '#111'; ctx.textAlign = 'center';
-  for (const l of textLines) { ctx.fillText(l, cx, ty + fontSize); ty += lineH; }
-  return boxH + 18;
+  if (cur.trim() || !lines.length) lines.push(cur.trimEnd());
+  return lines;
+}
+
+// วาด/วัด 1 บทพูด ("ชื่อ: ข้อความ") — คืนจำนวนบรรทัด (draw=false = วัดอย่างเดียว)
+function layoutLine(ctx, x, topY, innerW, d, color, draw) {
+  const fs = bandFont(), lineH = bandLineH();
+  const prefix = d.name ? d.name + ': ' : '';
+  ctx.font = `${fs}px TahomaBold, Tahoma`;
+  const prefixW = prefix ? ctx.measureText(prefix).width : 0;
+  ctx.font = `${fs}px Tahoma`;
+  const segs = wrapText2(ctx, d.line_th, innerW - prefixW, innerW);
+  if (draw) {
+    ctx.textAlign = 'left';
+    for (let i = 0; i < segs.length; i++) {
+      const ly = topY + i * lineH + fs;
+      let lx = x;
+      if (i === 0 && prefix) {
+        ctx.font = `${fs}px TahomaBold, Tahoma`; ctx.fillStyle = color;
+        ctx.fillText(prefix, lx, ly); lx += prefixW;
+      }
+      ctx.font = `${fs}px Tahoma`; ctx.fillStyle = '#e2e8f0';
+      ctx.fillText(segs[i], lx, ly);
+    }
+  }
+  return segs.length;
+}
+
+// จำนวนบรรทัดรวมของแถบ panel (ใช้หาความสูงแถบที่เท่ากันทุกช่อง)
+function bandLines(ctx, dialogue, innerW) {
+  return (dialogue || []).slice(0, 2).reduce((n, d) => n + layoutLine(ctx, 0, 0, innerW, d, '', false), 0);
 }
 
 // วาด panel image ลง cell แบบ cover + กรอบ
@@ -112,10 +109,21 @@ async function drawPanel(ctx, imgPath, cx, cy, cell) {
  */
 async function buildComicPage(panels, imagePaths, outPath, opts = {}) {
   registerFont();
-  const titleH = opts.title ? Math.round(PAGE * 0.06) : 0;
-  const canvas = createCanvas(PAGE, PAGE + titleH);
+  const cell    = (PAGE - 2 * PAD - GUTTER) / 2;        // ภาพสี่เหลี่ยมจัตุรัส
+  const innerW  = cell - 2 * BAND_PAD;
+  const titleH  = opts.title ? Math.round(PAGE * 0.06) : 0;
+
+  // วัดความสูงแถบที่เท่ากันทุกช่อง (= ช่องที่ข้อความมากสุด)
+  const measure = createCanvas(10, 10).getContext('2d');
+  let maxLines = 1;
+  for (const p of panels.slice(0, 4)) maxLines = Math.max(maxLines, bandLines(measure, p.dialogue, innerW) || 1);
+  const bandH   = 2 * BAND_PAD + maxLines * bandLineH();
+  const rowH    = cell + 6 + bandH;                     // ภาพ + gap + แถบ
+  const pageH   = 2 * PAD + titleH + 2 * rowH + GUTTER;
+
+  const canvas = createCanvas(PAGE, pageH);
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, PAGE, PAGE + titleH);
+  ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, PAGE, pageH);
 
   if (opts.title) {
     ctx.font = `${Math.round(titleH * 0.6)}px TahomaBold, Tahoma`;
@@ -123,20 +131,20 @@ async function buildComicPage(panels, imagePaths, outPath, opts = {}) {
     ctx.fillText(opts.title, PAGE / 2, titleH * 0.72);
   }
 
-  const cell = (PAGE - 2 * PAD - GUTTER) / 2;
-  const cells = [
-    [PAD, PAD + titleH], [PAD + cell + GUTTER, PAD + titleH],
-    [PAD, PAD + cell + GUTTER + titleH], [PAD + cell + GUTTER, PAD + cell + GUTTER + titleH],
-  ];
-
+  const colorMap = {};
+  const cols = [PAD, PAD + cell + GUTTER];
+  const rows = [PAD + titleH, PAD + titleH + rowH + GUTTER];
   for (let i = 0; i < Math.min(4, panels.length); i++) {
-    const [cx, cy] = cells[i];
+    const cx = cols[i % 2], cy = rows[Math.floor(i / 2)];
     await drawPanel(ctx, imagePaths[i], cx, cy, cell);
-    // บอลลูน: stack จากบนลงล่างในช่อง
-    let by = cy + 14;
+    // caption band ใต้ภาพ (นอกรูป → ไม่บังหน้า)
+    const by = cy + cell + 6;
+    ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 2; ctx.fillStyle = BAND_BG;
+    roundRect(ctx, cx, by, cell, bandH, 8); ctx.fill(); ctx.stroke();
+    let ty = by + BAND_PAD;
     for (const d of (panels[i].dialogue || []).slice(0, 2)) {
-      const consumed = drawBubble(ctx, cx + cell / 2, by, cell - 28, d.line_th, d.name);
-      by += consumed + 10;
+      const n = layoutLine(ctx, cx + BAND_PAD, ty, innerW, d, colorFor(d.name || '?', colorMap), true);
+      ty += n * bandLineH();
     }
   }
 
@@ -144,4 +152,4 @@ async function buildComicPage(panels, imagePaths, outPath, opts = {}) {
   return outPath;
 }
 
-module.exports = { buildComicPage, wrapText };
+module.exports = { buildComicPage };
