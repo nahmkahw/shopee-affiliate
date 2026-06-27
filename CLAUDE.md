@@ -434,6 +434,7 @@ tracking.xlsx           ← sort ตาม post_date | status: scraped → draft
 | `Cannot find module` | `npm install` |
 | TikTok video TTS error | `make-tiktok-video.js` ใช้ `msedge-tts` npm — รัน `npm install msedge-tts` ถ้าพัง |
 | ข่าว makrut/manao ค้างใน Telegram | รัน `--resend` (ดู Node.js Scripts) |
+| กด Approve ข่าวแล้ว Telegram บอก "✅ สำเร็จ" แต่ FB ไม่มีโพสต์ | เดิม: `post.js` โหลด `.env` จาก cwd แต่ bot spawn ด้วย cwd=`manao/pipeline` (ไม่มี .env) → ไม่มี FB creds → error ถูกกลืน + exit 0 → bot รายงานสำเร็จหลอก. **แก้แล้ว:** post.js โหลด root `.env` ด้วย absolute path + exit non-zero เมื่อโพสต์ fail (bot จะโชว์ error จริง). post.js spawn ใหม่ทุกครั้ง → fix มีผลทันทีไม่ต้อง restart bot |
 | มะปราง dashboard โชว์ "Pre-production กำลังทำงาน" ค้าง | job orphaned (process ตายไม่อัปเดต status) — `run.js` เขียน `status='error'` ตอน exit ผิดปกติแล้ว (ทั้ง throw + process.exit) แต่ถ้าถูก `kill -9` ต้องล้าง meta status เอง |
 | Ollama output เป็น `??????` | ตรวจว่าใช้ model Typhoon2 (`OLLAMA_MODEL` ใน `.env`) — `llama3.2` ไม่รองรับไทย |
 

@@ -11,6 +11,9 @@ const fs   = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
+// โหลด root .env เพื่อให้ bot + child process ที่ spawn มี FB/IG creds (defense-in-depth)
+require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
+
 const { tgRequest, sendMsg, sendMenu } = require('../../lib/namkhao-bot-tg');
 const { loadQueue, handleNewsCallback }  = require('../../lib/namkhao-bot-news');
 const { buildStatusMessage, checkBotConnections } = require('../../lib/namkhao-bot-status');

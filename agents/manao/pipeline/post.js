@@ -9,9 +9,10 @@
  *   node post.js --pending --schedule           โพสต์ทุกข่าวที่ status=draft แบบ schedule
  */
 
-require('dotenv').config();
-const fs    = require('fs');
 const path  = require('path');
+// โหลด root .env แบบ absolute — ไม่พึ่ง cwd (ถูก spawn จาก bot ด้วย cwd=manao/pipeline ที่ไม่มี .env)
+require('dotenv').config({ path: path.join(__dirname, '..', '..', '..', '.env') });
+const fs    = require('fs');
 const https = require('https');
 const { sleep } = require('../../../lib/utils');
 
@@ -109,27 +110,6 @@ function getLastScheduledTime() {
 function readContent(slug, platform) {
   const p = path.join(NEWS_DIR, slug, 'content', platform + '.md');
   return fs.existsSync(p) ? fs.readFileSync(p, 'utf8').trim() : null;
-}
-
-// ─── Facebook ─────────────────────────────────────────────────────────────────
-
-async function postFacebook(slug, scheduledUnix) {
-  const { FB_PAGE_ID, FB_ACCESS_TOKEN } = process.env;
-  if (!FB_PAGE_ID || !FB_ACCESS_TOKEN) throw new Error('ขาด FB_PAGE_ID หรือ FB_ACCESS_TOKEN ใน .env');
-
-  const text = readContent(slug, 'facebook');
-  if (!text) throw new Error(`ไม่พบ news/${slug}/content/facebook.md`);
-
-  const payload = { message: text, access_token: FB_ACCESS_TOKEN };
-
-  if (scheduledUnix) {
-    payload.published = false;
-    payload.scheduled_publish_time = scheduledUnix;
-  }
-
-  const res = await httpsPost('graph.facebook.com', `/v19.0/${FB_PAGE_ID}/feed`, payload);
-  if (res.error) throw new Error(res.error.message);
-  return res.id;
 }
 
 // ─── imgBB upload (shared helper) ────────────────────────────────────────────
@@ -344,6 +324,7 @@ function findItems() {
   }
 
   const results = {};
+  let anyFail = false;  // ≥1 การโพสต์ที่ลองแล้วล้มเหลว → exit non-zero (bot จะได้รู้ว่าไม่สำเร็จ)
 
   for (let i = 0; i < items.length; i++) {
     const { slug, data } = items[i];
@@ -366,6 +347,7 @@ function findItems() {
       } catch (e) {
         console.log(`  ❌ Facebook — ${e.message}`);
         results[slug].fb = '❌';
+        anyFail = true;
       }
     }
 
@@ -377,6 +359,7 @@ function findItems() {
       } catch (e) {
         console.log(`  ❌ Instagram — ${e.message}`);
         results[slug].ig = '❌';
+        anyFail = true;
       }
     }
 
@@ -402,4 +385,7 @@ function findItems() {
   for (const [slug, r] of Object.entries(results)) {
     console.log(slug.padEnd(40) + ' | ' + (r.fb || '—').padEnd(2) + ' | ' + (r.ig || '—'));
   }
+
+  // มีการโพสต์ที่ล้มเหลว → exit non-zero (caller/bot จะรายงาน fail แทน false success)
+  if (anyFail) { console.error('\n❌ มีการโพสต์ที่ล้มเหลว'); process.exitCode = 1; }
 })();
