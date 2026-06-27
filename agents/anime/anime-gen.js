@@ -132,7 +132,11 @@ function buildWorkflow({ refImageName, positive, seed, width, height, faceWeight
 
 // ─── Main generator ─────────────────────────────────────────────────────────────
 
+const { withGpuLock } = require('../../lib/gpu-lock');  // serialize ComfyUI submit ข้าม agent
 async function generateAnime(refImagePath, options = {}) {
+  return withGpuLock('anime', () => generateAnimeInner(refImagePath, options));
+}
+async function generateAnimeInner(refImagePath, options = {}) {
   const {
     prompt       = '1girl, solo, upper body, looking at viewer',
     outPath      = path.join(__dirname, 'gallery', `out_${Date.now()}.png`),

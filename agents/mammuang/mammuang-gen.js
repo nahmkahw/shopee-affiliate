@@ -24,10 +24,15 @@ const DEFAULT_NEG = [
   'adult', 'nsfw', 'mature',
 ].join(', ');
 
+// รายละเอียดตัวละครที่ต้อง lock ทุกครั้งใน flux-kontext mode
+// "nk" บนโบว์ baked เข้า ref-character.png แล้ว → ReferenceLatent copy ให้ (เสถียรกว่าสั่ง model วาด text)
+// เหลือแค่หูเรียวที่ ref ยังไม่มี → บังคับผ่าน prompt
+const KONTEXT_CHAR_LOCK = 'very slender thin elongated bunny ears, pink ribbon bow on the ear';
+
 const POSITIVE_PREFIX = [
-  'masterpiece', 'best quality', 'anime style', 'highly detailed',
-  'chibi', 'kawaii', 'cute',
-  'pastel color palette',
+  'masterpiece', 'best quality', 'chibi kawaii illustration', 'cute character design',
+  'pastel color palette', 'sharp lineart', 'highly detailed lineart', 'crisp clean lines',
+  'flat colors', 'clean art',
 ].join(', ');
 
 function comfyPost(path_, body) {
@@ -86,25 +91,34 @@ function comfyUploadImage(imagePath) {
 
 const REF_CHARACTER_PATH = path.join(__dirname, 'ref-character.png');
 
-// Flux Kontext — img2img: ref เป็น starting latent, prompt เปลี่ยน scene
-// denoise 0.92 = เปลี่ยน scene ได้มาก แต่ Flux Kontext ยังคง structure ตัวละครจาก ref
+// Flux Kontext — canonical ReferenceLatent workflow:
+// ref ถูก inject ผ่าน conditioning (ReferenceLatent) ไม่ใช่ noise latent → ตัวละครคงที่ทุกครั้ง
+// sampling จาก EmptySD3LatentImage ที่ denoise 1.0 → generate ฉากใหม่เต็มที่ → คมชัดกว่า img2img
 function buildWorkflowFluxKontext({ refImageName, positive, seed, width, height }) {
   return {
-    '1': { class_type: 'UNETLoader',      inputs: { unet_name: 'flux1-dev-kontext_fp8_scaled.safetensors', weight_dtype: 'fp8_e4m3fn' } },
-    '2': { class_type: 'DualCLIPLoader',  inputs: { clip_name1: 't5xxl_fp8_e4m3fn.safetensors', clip_name2: 'clip_l.safetensors', type: 'flux' } },
-    '3': { class_type: 'CLIPTextEncodeFlux', inputs: { clip: ['2', 0], clip_l: positive, t5xxl: positive, guidance: 3.5 } },
-    '4': { class_type: 'VAELoader',       inputs: { vae_name: 'ae.safetensors' } },
-    '5': { class_type: 'LoadImage',       inputs: { image: refImageName } },
-    '6': { class_type: 'VAEEncode',       inputs: { pixels: ['5', 0], vae: ['4', 0] } },
-    '7': { class_type: 'FluxGuidance',    inputs: { conditioning: ['3', 0], guidance: 3.5 } },
-    '8': { class_type: 'ModelSamplingFlux', inputs: { model: ['1', 0], max_shift: 1.15, base_shift: 0.5, width, height } },
-    '9': { class_type: 'KSampler',        inputs: {
-      model: ['8', 0], positive: ['7', 0], negative: ['7', 0],
-      latent_image: ['6', 0], seed, steps: 25, cfg: 1.0,
-      sampler_name: 'euler', scheduler: 'simple', denoise: 0.92,
+    // _fp8_scaled มี scale factor ฝังมาแล้ว → ใช้ 'default' (re-cast เป็น fp8_e4m3fn ทำให้ NaN → ภาพ noise สีชมพู)
+    '1':  { class_type: 'UNETLoader',         inputs: { unet_name: 'flux1-dev-kontext_fp8_scaled.safetensors', weight_dtype: 'default' } },
+    '2':  { class_type: 'DualCLIPLoader',     inputs: { clip_name1: 't5xxl_fp8_e4m3fn.safetensors', clip_name2: 'clip_l.safetensors', type: 'flux' } },
+    '3':  { class_type: 'CLIPTextEncode',     inputs: { clip: ['2', 0], text: positive } },
+    '4':  { class_type: 'VAELoader',          inputs: { vae_name: 'ae.safetensors' } },
+    '5':  { class_type: 'LoadImage',          inputs: { image: refImageName } },
+    // FluxKontextImageScale ปรับ ref เป็น resolution ที่ Kontext รองรับ (ป้องกัน latent distortion)
+    '6':  { class_type: 'FluxKontextImageScale', inputs: { image: ['5', 0] } },
+    '7':  { class_type: 'VAEEncode',          inputs: { pixels: ['6', 0], vae: ['4', 0] } },
+    // ReferenceLatent: ฝังตัวละครจาก ref เข้า conditioning
+    '8':  { class_type: 'ReferenceLatent',    inputs: { conditioning: ['3', 0], latent: ['7', 0] } },
+    '9':  { class_type: 'FluxGuidance',       inputs: { conditioning: ['8', 0], guidance: 2.5 } },
+    '10': { class_type: 'EmptySD3LatentImage', inputs: { width, height, batch_size: 1 } },
+    '11': { class_type: 'ModelSamplingFlux',  inputs: { model: ['1', 0], max_shift: 1.15, base_shift: 0.5, width, height } },
+    '12': { class_type: 'KSampler',           inputs: {
+      model: ['11', 0], positive: ['9', 0], negative: ['3', 0],
+      latent_image: ['10', 0], seed, steps: 30, cfg: 1.0,
+      sampler_name: 'euler', scheduler: 'simple', denoise: 1.0,
     } },
-    '10': { class_type: 'VAEDecode',      inputs: { samples: ['9', 0], vae: ['4', 0] } },
-    '11': { class_type: 'SaveImage',      inputs: { images: ['10', 0], filename_prefix: 'mammuang_kontext' } },
+    '13': { class_type: 'VAEDecode',          inputs: { samples: ['12', 0], vae: ['4', 0] } },
+    // sharpen เบาๆ เพิ่มความคม ไม่ให้เกิด halo
+    '14': { class_type: 'ImageSharpen',       inputs: { image: ['13', 0], sharpen_radius: 1, sigma: 1.0, alpha: 0.6 } },
+    '15': { class_type: 'SaveImage',          inputs: { images: ['14', 0], filename_prefix: 'mammuang_kontext' } },
   };
 }
 
@@ -153,22 +167,26 @@ function buildWorkflowWithRef({ refImageName, positive, negative, seed, width, h
   };
 }
 
+const { withGpuLock } = require('../../lib/gpu-lock');  // serialize ComfyUI submit ข้าม agent
 async function generateMammuang(options = {}) {
+  return withGpuLock('mammuang', () => generateMammuangInner(options));
+}
+async function generateMammuangInner(options = {}) {
   const {
     prompt_en    = '1girl, bunny ears, sitting, holding flower, pink dress, cream background, soft smile',
     neg_prompt,
     model,                  // 'flux-kontext' → ใช้ Flux Kontext local inference
     refImagePath,           // ถ้ามี → ใช้ IPAdapter FaceID (SDXL mode)
     outPath,
-    width        = 832,
-    height       = 1216,
+    width        = 1024,
+    height       = 1152,
     timeoutMs    = 7 * 60 * 1000,
     pollInterval = 3000,
     onProgress   = () => {},
   } = options;
 
-  // flux-kontext: ใช้ natural language ตรงๆ ไม่ prepend SDXL tags
-  const positive = model === 'flux-kontext' ? prompt_en
+  const positive = model === 'flux-kontext'
+    ? 'masterpiece, best quality, ' + prompt_en + ', ' + KONTEXT_CHAR_LOCK
     : prompt_en.startsWith('masterpiece') ? prompt_en
     : POSITIVE_PREFIX + ', ' + prompt_en;
   const negative = (neg_prompt && neg_prompt.trim()) ? neg_prompt.trim() : DEFAULT_NEG;
@@ -184,7 +202,7 @@ async function generateMammuang(options = {}) {
     onProgress('upload ref-character เข้า ComfyUI...');
     const refImageName = await comfyUploadImage(REF_CHARACTER_PATH);
     workflow   = buildWorkflowFluxKontext({ refImageName, positive, seed, width, height });
-    saveNodeId = '11';
+    saveNodeId = '15';
   } else if (refImagePath && fs.existsSync(refImagePath)) {
     onProgress('upload รูปต้นแบบเข้า ComfyUI...');
     const refImageName = await comfyUploadImage(refImagePath);

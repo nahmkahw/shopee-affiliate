@@ -42,6 +42,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ห้าม `require('../agent-hub.js')` หรือ `require('./agent-hub.js')` โดยตรง — entry point คือ `agent-hub/index.js` เท่านั้น
 - เวลาต่ออายุ `FB_ACCESS_TOKEN` อัปเดตที่ **root `.env` ไฟล์เดียว** — ทุก Agent โหลดจากที่เดียวกัน
 - ห้าม commit `.env` ไม่ว่ากรณีใด
+- **ComfyUI submit จุดใหม่ทุกจุดต้อง wrap ด้วย `withGpuLock(label, fn)`** ([lib/gpu-lock.js](lib/gpu-lock.js)) — ไม่งั้น bypass mutex แล้ว submit ชนกัน → client timeout ตอนรอคิว (ดู [ADR](docs/ADR-comfyui-gpu-queue.md))
 
 **Test gotchas:**
 - ห้ามใช้ `jest.resetModules()` ใน `beforeEach` — ทำให้ mock ของ `child_process`/`fs` หลุดออกจาก module ที่โหลดแล้ว, crash แบบ silent ที่ไม่มี stack trace ชัดเจน
@@ -130,6 +131,8 @@ shopee-affiliate/
 ├── lib/                   ← shared helpers ใช้ข้าม agents
 │   ├── namkhao-bot-news.js      ← approval callbacks (ใช้ทั้ง manao + makrut)
 │   ├── namkhao-bot-scheduler.js ← schedule loop + trigger logic
+│   ├── gpu-lock.js              ← ComfyUI mutex ข้าม agent (withGpuLock — กัน timeout ตอนรอคิว)
+│   ├── bot-lock.js              ← single-instance PID lock (Telegram bots — กัน 409)
 │   └── tiktok-*.js / telegram.js / fb-post.js / approval-flow.js / …
 ├── agents/
 │   ├── mali/run.js        ← Agent มะลิ (Shopee Affiliate)

@@ -9,6 +9,7 @@ const fs        = require('fs');
 const path      = require('path');
 const crypto    = require('crypto');
 const WebSocket = require('ws');
+const { withGpuLock } = require('../../../lib/gpu-lock');  // serialize ComfyUI submit ข้าม agent
 
 const NEG_BASE = 'low quality, blurry, watermark, text overlay, nsfw, worst quality';
 
@@ -119,24 +120,26 @@ function buildCharImageWorkflow(charDesc, seed) {
  * @returns {Promise<{outputPath, bytes}>}
  */
 async function submitImageWorkflow(cfg, workflow, outNodeId, outputPath, timeoutMs = 180000) {
-  const clientId = crypto.randomUUID();
-  const { prompt_id } = await _request(cfg, 'POST', '/prompt', { client_id: clientId, prompt: workflow });
-  if (!prompt_id) throw new Error('ComfyUI ไม่ตอบ prompt_id (image)');
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    await new Promise(r => setTimeout(r, 3000));
-    const history = await _request(cfg, 'GET', `/history/${prompt_id}`);
-    const job     = history[prompt_id];
-    if (!job) { process.stdout.write('.'); continue; }
-    if (job.status?.status_str === 'error') throw new Error('ComfyUI image job error');
-    const imgOut  = job.outputs?.[outNodeId]?.images?.[0];
-    if (!imgOut) continue;
-    const url = `/view?filename=${encodeURIComponent(imgOut.filename)}&subfolder=${encodeURIComponent(imgOut.subfolder || '')}&type=${encodeURIComponent(imgOut.type || 'output')}`;
-    const buf = await _getBinary(cfg, url, 60000);
-    fs.writeFileSync(outputPath, buf);
-    return { outputPath, bytes: buf.length };
-  }
-  throw new Error('ComfyUI timeout (image)');
+  return withGpuLock('maprang-img', async () => {
+    const clientId = crypto.randomUUID();
+    const { prompt_id } = await _request(cfg, 'POST', '/prompt', { client_id: clientId, prompt: workflow });
+    if (!prompt_id) throw new Error('ComfyUI ไม่ตอบ prompt_id (image)');
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      await new Promise(r => setTimeout(r, 3000));
+      const history = await _request(cfg, 'GET', `/history/${prompt_id}`);
+      const job     = history[prompt_id];
+      if (!job) { process.stdout.write('.'); continue; }
+      if (job.status?.status_str === 'error') throw new Error('ComfyUI image job error');
+      const imgOut  = job.outputs?.[outNodeId]?.images?.[0];
+      if (!imgOut) continue;
+      const url = `/view?filename=${encodeURIComponent(imgOut.filename)}&subfolder=${encodeURIComponent(imgOut.subfolder || '')}&type=${encodeURIComponent(imgOut.type || 'output')}`;
+      const buf = await _getBinary(cfg, url, 60000);
+      fs.writeFileSync(outputPath, buf);
+      return { outputPath, bytes: buf.length };
+    }
+    throw new Error('ComfyUI timeout (image)');
+  });
 }
 
 /**
@@ -156,6 +159,9 @@ async function generateCharacterImage(cfg, charDesc, outputPath, seed) {
  * Used by both T2V and I2V paths
  */
 async function _runClipWorkflow(cfg, workflow, outputPath) {
+  return withGpuLock('maprang-clip', () => _runClipWorkflowInner(cfg, workflow, outputPath));
+}
+async function _runClipWorkflowInner(cfg, workflow, outputPath) {
   const clientId = crypto.randomUUID();
   const progM    = outputPath.match(/clip_(\d+)\.mp4$/);
   const progFile = progM ? outputPath.replace(/clip_(\d+)\.mp4$/, 'progress_$1.json') : null;
