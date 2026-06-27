@@ -209,7 +209,7 @@ node agents\manao\pipeline\agents\formatter-agent.js --resend
 node agents\makrut\pipeline\makrut.js --resend
 ```
 
-> ⚠️ ห้ามรัน `start-all-agents.bat` ขณะบอทกำลัง Approve — จะ kill mid-execution
+> ✅ `start-all-agents.bat` รันซ้ำได้ปลอดภัย (idempotent) — bot มี **PID-liveness lock** ([lib/bot-lock.js](lib/bot-lock.js)): ถ้ารันอยู่แล้ว lock ปฏิเสธตัวใหม่ (ไม่ kill ตัวที่ทำงาน, กัน 409), ถ้าตาย/lock ค้าง → ล้าง+start ใหม่อัตโนมัติ. ใช้ร่วม namkhao/anime/mammuang bot. (manao/pipeline telegram-bot.js = legacy, retire แล้ว — ไม่ start)
 
 ### Agent มะม่วง — Flux Kontext mode (`agents/mammuang/mammuang-gen.js`)
 

@@ -229,12 +229,7 @@ async function poll() {
   }
 }
 
-// ── single instance lock ──
-try {
-  if (fs.existsSync(LOCK)) { const pid = parseInt(fs.readFileSync(LOCK, 'utf8')); try { process.kill(pid, 0); console.error('❌ บอทรันอยู่แล้ว (PID ' + pid + ')'); process.exit(1); } catch {} }
-  fs.writeFileSync(LOCK, String(process.pid));
-  process.on('exit', () => { try { fs.unlinkSync(LOCK); } catch {} });
-  process.on('SIGINT', () => process.exit(0));
-} catch {}
+// ── single instance lock (PID-liveness, shared lib/bot-lock) ──
+require('../../lib/bot-lock').acquireBotLock(LOCK, 'anime bot');
 
 poll();
