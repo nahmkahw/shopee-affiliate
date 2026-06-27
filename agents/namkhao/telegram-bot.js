@@ -59,11 +59,9 @@ if (!TOKEN || !CHAT_ID) {
   process.exit(1);
 }
 
-// ─── PID + process lifecycle ──────────────────────────────────────────────────
-fs.writeFileSync(PID_FILE, String(process.pid), 'utf8');
-process.on('exit',   () => { try { fs.unlinkSync(PID_FILE); } catch {} });
-process.on('SIGINT', () => process.exit(0));
-process.on('SIGTERM',() => process.exit(0));
+// ─── Single-instance lock (PID-liveness) + lifecycle ──────────────────────────
+// กัน 2 namkhao bot รันพร้อมกัน → 409 Conflict ตอน poll NAMKHAO token (เดิมเขียน PID ทับเฉย ๆ ไม่เช็ค)
+require('../../lib/bot-lock').acquireBotLock(PID_FILE, 'namkhao bot');
 process.on('unhandledRejection', r => log(`⚠️ unhandledRejection: ${r?.message || r}`));
 process.on('uncaughtException',  e => log(`⚠️ uncaughtException: ${e.message}`));
 

@@ -275,15 +275,7 @@ async function poll() {
   }
 }
 
-// ─── Single instance lock ─────────────────────────────────────────────────────
-try {
-  if (fs.existsSync(LOCK)) {
-    const pid = parseInt(fs.readFileSync(LOCK, 'utf8'));
-    try { process.kill(pid, 0); console.error('❌ bot รันอยู่แล้ว (PID ' + pid + ')'); process.exit(1); } catch {}
-  }
-  fs.writeFileSync(LOCK, String(process.pid));
-  process.on('exit', () => { try { fs.unlinkSync(LOCK); } catch {} });
-  process.on('SIGINT', () => process.exit(0));
-} catch {}
+// ─── Single instance lock (PID-liveness, shared lib/bot-lock) ─────────────────
+require('../../lib/bot-lock').acquireBotLock(LOCK, 'mammuang bot');
 
 poll();

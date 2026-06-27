@@ -1,6 +1,10 @@
 /**
  * telegram-bot.js — Telegram Approval Bot
  *
+ * ⚠️ DEPRECATED / RETIRED — อย่า start ตัวนี้
+ *   poll ด้วย MANAO token (คนละ bot กับ namkhao) → approval callback จะชนกับ namkhao bot
+ *   ปัจจุบัน approval ข่าวทั้งหมดจัดการที่ namkhao telegram-bot.js (central) ดู docs/telegram-tokens.md
+ *
  * รันเป็น background process — รอรับ approve/reject content ก่อนโพสต์ Facebook
  *
  * ใช้งาน:
