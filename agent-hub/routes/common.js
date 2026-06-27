@@ -182,6 +182,15 @@ async function register(req, res, url, rawUrl, method, deps) {
       res.end(JSON.stringify(readStatus()));
       return;
     }
+
+    // ── API: GET ComfyUI GPU queue (holder + waiters) ────────────────────────────
+    if (url === '/api/gpu-queue' && method === 'GET') {
+      let q = { holder: null, waiters: [] };
+      try { q = require('../../lib/gpu-lock').readQueueStatus(); } catch {}
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(q));
+      return;
+    }
   
     // ── API: GET logs ───────────────────────────────────────────────────────────
     const logsMatch = url.match(/^\/api\/agent\/(\w+)\/logs$/);
