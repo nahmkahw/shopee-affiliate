@@ -138,6 +138,15 @@ function register(req, res, url, rawUrl, method, deps) {
     return fs.createReadStream(cp).pipe(res);
   }
 
+  // การ์ตูน 4 ช่อง (mode comic) — รูปนิ่ง
+  const comicMatch = url.match(/^\/dashboard\/maprang\/comic\/([\w]+)$/);
+  if (comicMatch) {
+    const cp = path.join(ROOT, 'agents', 'maprang', 'gallery', comicMatch[1], 'comic.png');
+    if (!fs.existsSync(cp)) { res.writeHead(404); return res.end('ไม่พบการ์ตูน'); }
+    res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-cache', 'Content-Length': fs.statSync(cp).size });
+    return fs.createReadStream(cp).pipe(res);
+  }
+
   const videoMatch = url.match(/^\/dashboard\/maprang\/video\/([\w]+)$/);
   if (videoMatch) {
     const vp = path.join(ROOT, 'agents', 'maprang', 'gallery', videoMatch[1], 'story.mp4');
@@ -171,8 +180,10 @@ function register(req, res, url, rawUrl, method, deps) {
       const id = Date.now().toString();
       reply(res, 200, { ok: true, id });
       const runScript = path.join(ROOT, 'agents', 'maprang', 'run.js');
+      // mode comic → action comic (end-to-end รูปนิ่ง), อื่น ๆ → pre-production (วิดีโอ)
+      const action = body.mode === 'comic' ? 'comic' : 'pre-production';
       try {
-        const spawnArgs = [runScript, '--action', 'pre-production', '--id', id, '--prompt', prompt];
+        const spawnArgs = [runScript, '--action', action, '--id', id, '--prompt', prompt];
         if (body.char_description) spawnArgs.push('--char-desc', body.char_description);
         if (body.char_ids)         spawnArgs.push('--chars', body.char_ids);
         const proc = spawn(process.execPath, spawnArgs, {

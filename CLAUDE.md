@@ -223,6 +223,15 @@ node agents\makrut\pipeline\makrut.js --resend
 
 3-stage: pre-production (storyboard + char_ref) → generate-scene → build (TTS + subtitle + concat).
 
+**3 โหมด output:** (เลือกจาก dashboard dropdown `gen-mode` → route แตก action)
+| โหมด | output | กลไก | เวลา |
+|---|---|---|---|
+| **narration** (เดิม) | วิดีโอ | Flux still → Ken Burns + เสียงพากย์ (`MAPRANG_ANIMATE=kenburns`) | ~18 นาที |
+| **dialogue** ([ADR-002](agents/maprang/docs/ADR-002-dialogue-i2v-mode.md), ออกแบบไว้ ยังไม่ build) | วิดีโอ | shot-list → Wan I2V motion | ~1.5-2 ชม. |
+| **comic** ([ADR-003](agents/maprang/docs/ADR-003-comic-mode.md)) | รูป .png | 4 panel Flux still + บอลลูนคำพูด | **~10 นาที** |
+
+> **Comic mode (`--action comic`):** การ์ตูน 4 ช่อง — ตัด I2V (วัดจริง 7.8 นาที/shot บน 3060 = คอขวด) ออก เหลือ Flux Kontext still ต่อช่อง. modules: [comic-gen.js](agents/maprang/pipeline/comic-gen.js) (Typhoon2 gen **ทีละ panel** + validation/dedup — โมเดล 8B ทำ multi-item JSON ไม่ครบ), [comic-build.js](agents/maprang/pipeline/comic-build.js) (`@napi-rs/canvas` grid 2×2 + บอลลูนไทย), [comic.js](agents/maprang/pipeline/comic.js) (orchestrator). output `gallery/{id}/comic.png`, meta `mode:'comic'`. env: `MAPRANG_COMIC_PANELS`(4)/`MAPRANG_COMIC_SIZE`(1080)/`MAPRANG_COMIC_MAXLINE`(40)
+
 **2-stage anime_ref (สำคัญ — แก้ ref รูปถ่ายจริง → anime แล้ว identity/เพศ/อายุหลุด):** ดู [ADR-001](agents/maprang/docs/ADR-001-anime-ref-2stage.md)
 - ปัญหา: ref ที่อัปโหลดเป็น**รูปถ่ายจริง** (photoreal) แต่ output เป็น anime → Flux Kontext แปลง+คงอัตลักษณ์พร้อมกันไม่ไหว (domain gap) → หน้า/เพศ/อายุ collapse
 - **Stage-0** ([anime-portrait.js](agents/maprang/pipeline/anime-portrait.js)): รูปถ่าย → canonical anime portrait (`anime_ref`) ครั้งเดียวต่อตัวละคร ด้วย **IPAdapterFaceID (FACEID PLUS V2) + AnythingXL** — InsightFace ครอป+align หน้าให้ในตัว. Stage-1/2 เดิมใช้ `anime_ref` เป็น anchor (domain เดียวกับ output → identity คงตัว)

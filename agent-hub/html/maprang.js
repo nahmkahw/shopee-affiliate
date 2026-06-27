@@ -180,11 +180,23 @@ ${genProgress}${narEl}${videoEl}</div>`;
 </div></div>${autoStartPoll ? `<script>${autoStartPoll}</script>` : ''}`;
 }
 
+// comic job กำลังรัน — แยกจาก stage card วิดีโอ (comic ไม่มี scenes/ขั้น approve)
+function renderComicCard(job) {
+  return `<div class="card">
+<div style="color:#a855f7;font-weight:700;font-size:15px;margin-bottom:8px">🎴 กำลังสร้างการ์ตูน 4 ช่อง...</div>
+<div class="prog-wrap"><div class="prog-fill" style="width:100%;background:linear-gradient(90deg,#581c87,#a855f7);animation:pulse 1.5s infinite"></div></div>
+<div id="timeline" style="background:#0f172a;border-radius:6px;padding:10px;margin-top:10px;min-height:52px;font-family:monospace">${timelineHtml(job.logs)}</div>
+<div style="color:#475569;font-size:12px;margin-top:8px">${job.prompt || ''}</div>
+</div>`;
+}
+
 function renderDashboard(ROOT, { gallery, allChars, active }) {
   const activeStatus = active?.status;
+  const isComic = active?.mode === 'comic';
   let stageCard = '';
   if (active) {
-    if (activeStatus === 'pre_production') stageCard = renderPreCard(active);
+    if (isComic)                            stageCard = renderComicCard(active);
+    else if (activeStatus === 'pre_production') stageCard = renderPreCard(active);
     else if (activeStatus === 'producing')  stageCard = renderProdCard(active);
     else if (activeStatus === 'building')
       stageCard = `<div class="card"><span style="color:#86efac;font-weight:700">🎞️ Post-production กำลังสร้าง story.mp4...</span></div>`;
@@ -195,14 +207,17 @@ function renderDashboard(ROOT, { gallery, allChars, active }) {
     `<input type="checkbox" class="char-check" value="${c.id}" checked> ${c.name || c.id}</label>`
   ).join('');
 
-  // Gallery: เฉพาะ completed jobs (pending_approval / posted)
-  const recentDone = gallery.filter(m => ['pending_approval','posted','error'].includes(m.status)).slice(0, 5);
+  // Gallery: completed jobs (video: pending_approval/posted | comic: done)
+  const recentDone = gallery.filter(m => ['pending_approval','posted','error','done'].includes(m.status)).slice(0, 5);
   const doneCards  = recentDone.map(m => {
+    const isComic  = m.mode === 'comic';
     const hasVideo = fs.existsSync(path.join(ROOT, 'agents', 'maprang', 'gallery', m.id, 'story.mp4'));
-    const emoji    = m.status === 'posted' ? '✅' : m.status === 'error' ? '❌' : '📱';
+    const hasComic = fs.existsSync(path.join(ROOT, 'agents', 'maprang', 'gallery', m.id, 'comic.png'));
+    const emoji    = m.status === 'posted' ? '✅' : m.status === 'error' ? '❌' : isComic ? '🎴' : '📱';
     return `<div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:10px;font-size:12px">
-  ${emoji} <span style="color:#94a3b8">${m.id}</span>
+  ${emoji} <span style="color:#94a3b8">${m.id}</span>${isComic ? ' <span style="color:#a855f7">การ์ตูน</span>' : ''}
   <div style="color:#e2e8f0;margin:4px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px">${m.prompt || ''}</div>
+  ${hasComic ? `<a href="/dashboard/maprang/comic/${m.id}" target="_blank"><img src="/dashboard/maprang/comic/${m.id}?t=${Date.now()}" style="width:100%;max-width:220px;border-radius:6px;margin-top:4px"></a>` : ''}
   ${hasVideo ? `<a href="/dashboard/maprang/video/${m.id}" target="_blank" class="btn btn-ghost btn-sm" style="display:inline-block;margin-top:4px">▶ ดูวิดีโอ</a>` : ''}
 </div>`;
   }).join('');
@@ -214,15 +229,20 @@ function renderDashboard(ROOT, { gallery, allChars, active }) {
   <div class="sub">Anime Story Video Generator — Movie Workflow</div>
 </div>
 
-${active ? `<div class="stage-bar">${stagePill(activeStatus)}</div>${stageCard}` : ''}
+${active ? `${isComic ? '' : `<div class="stage-bar">${stagePill(activeStatus)}</div>`}${stageCard}` : ''}
 
 <div class="card">
   <div style="font-weight:600;margin-bottom:12px;color:#94a3b8">สร้างวิดีโอใหม่</div>
   <textarea id="prompt" rows="3" style="width:100%;margin-bottom:8px" placeholder="ใส่ story prompt ภาษาไทย..."></textarea>
   ${charCheckboxes ? `<div style="font-size:11px;color:#64748b;margin-bottom:4px">ตัวละครในซีรีส์</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${charCheckboxes}</div>` : ''}
   <textarea id="char-desc" rows="1" style="width:100%;font-size:12px;margin-bottom:8px" placeholder="คำอธิบายตัวละคร (ไม่บังคับ)"></textarea>
+  <div style="font-size:11px;color:#64748b;margin-bottom:4px">โหมด</div>
+  <select id="gen-mode" onchange="onModeChange()" style="width:100%;margin-bottom:8px;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:4px;padding:6px;font-size:12px">
+    <option value="video">🎬 วิดีโอ (นิทาน Ken Burns) — ~18 นาที</option>
+    <option value="comic">🎴 การ์ตูน 4 ช่อง (รูป + บทพูด) — ~10 นาที ⚡</option>
+  </select>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
-    <button class="btn btn-purple" id="btn-gen" onclick="generate()">📋 เริ่ม Pre-production</button>
+    <button class="btn btn-purple" id="btn-gen" onclick="generate()">📋 เริ่มสร้าง</button>
     <button class="btn btn-ghost" onclick="checkComfy()">🔍 ComfyUI</button>
   </div>
   <div id="msg"></div>
@@ -250,8 +270,10 @@ ${recentDone.length ? `<div class="card">
 const ACTIVE_ID=${active ? `'${active.id}'` : 'null'};
 const ACTIVE_STATUS=${active ? `'${active.status}'` : 'null'};
 const ACTIVE_SCENES=${active ? (active.scenes || []).length : 0};
+const ACTIVE_MODE=${active ? `'${active.mode || 'video'}'` : 'null'};
 
-async function generate(){const p=document.getElementById('prompt').value.trim();if(!p){alert('กรุณาใส่ story prompt');return;}const btn=document.getElementById('btn-gen'),msg=document.getElementById('msg');btn.disabled=true;msg.textContent='⏳ กำลังสร้าง storyboard...';try{const cd=document.getElementById('char-desc').value.trim();const ci=[...document.querySelectorAll('.char-check:checked')].map(e=>e.value).join(',');const r=await fetch('/api/maprang/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p,char_description:cd,char_ids:ci||undefined})});const j=await r.json();if(j.ok){msg.textContent='✅ Pre-production เริ่มแล้ว! รอสักครู่...';setTimeout(()=>location.reload(),4000);}else{msg.textContent='❌ '+j.error;btn.disabled=false;}}catch(e){msg.textContent='❌ '+e.message;btn.disabled=false;}}
+async function generate(){const p=document.getElementById('prompt').value.trim();if(!p){alert('กรุณาใส่ story prompt');return;}const btn=document.getElementById('btn-gen'),msg=document.getElementById('msg');btn.disabled=true;msg.textContent='⏳ กำลังสร้าง storyboard...';try{const cd=document.getElementById('char-desc').value.trim();const ci=[...document.querySelectorAll('.char-check:checked')].map(e=>e.value).join(',');const mode=document.getElementById('gen-mode').value;const r=await fetch('/api/maprang/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p,char_description:cd,char_ids:ci||undefined,mode})});const j=await r.json();if(j.ok){msg.textContent=mode==='comic'?'✅ เริ่มสร้างการ์ตูน! (~10 นาที)':'✅ Pre-production เริ่มแล้ว! รอสักครู่...';setTimeout(()=>location.reload(),4000);}else{msg.textContent='❌ '+j.error;btn.disabled=false;}}catch(e){msg.textContent='❌ '+e.message;btn.disabled=false;}}
+function onModeChange(){const m=document.getElementById('gen-mode').value;document.getElementById('prompt').placeholder=m==='comic'?'ป้อนข้อมูล/concept ที่อยากให้ตัวละครสรุป (ข่าว บทความ ข้อมูล)...':'ใส่ story prompt ภาษาไทย...';}
 async function checkComfy(){const msg=document.getElementById('msg');msg.textContent='⏳';const j=await fetch('/api/maprang/check').then(r=>r.json());msg.textContent=j.online?'✅ ComfyUI online'+(j.wan21?' | Wan2.1 ✅':' | Wan2.1 ❌'):'❌ ComfyUI offline';}
 async function approvePreProduction(id){const mood=document.getElementById('bgm-mood').value;const msg=document.getElementById('approve-msg');msg.textContent='⏳';const j=await fetch('/api/maprang/'+id+'/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bgm_mood:mood})}).then(r=>r.json());if(j.ok){msg.textContent='✅ Production เริ่มแล้ว!';setTimeout(()=>location.reload(),2000);}else msg.textContent='❌ '+j.error;}
 async function updateSub(id,n,v){await fetch('/api/maprang/'+id+'/scenes/'+n+'/update-subtitle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subtitle:v})});}
@@ -265,7 +287,8 @@ function fmtE(s){return s>=60?Math.floor(s/60)+'m'+(s%60)+'s':s+'s';}
 function startScenePoll(id,n,startAt){const t0=new Date(startAt).getTime();setInterval(async()=>{const el=document.getElementById('sp-el-'+n);if(el)el.textContent=fmtE(Math.round((Date.now()-t0)/1000));try{const p=await fetch('/api/maprang/'+id+'/scene-progress/'+n).then(r=>r.json());if(p&&p.step){const f=document.getElementById('sp-fill-'+n),s=document.getElementById('sp-step-'+n);if(f)f.style.width=(p.pct||0)+'%';if(s)s.textContent='step '+p.step+'/'+p.total;if(p.has_preview){const i=document.getElementById('sp-prev-'+n);if(i){i.src='/api/maprang/'+id+'/scene-preview/'+n+'?t='+Date.now();i.style.display='block';}}}}catch{}},5000);}
 function renderTL(logs){if(!logs||!logs.length)return'<span style="color:#475569;font-size:11px">รอเริ่ม...</span>';return logs.map(l=>'<div style="display:flex;gap:8px;padding:2px 0;border-bottom:1px solid #0f172a"><span style="color:#475569;min-width:38px;flex-shrink:0;font-size:10px">+'+fmtE(l.elapsed||0)+'</span><span style="font-size:11px">'+l.msg+'</span></div>').join('');}
 if(ACTIVE_STATUS==='pre_production'&&ACTIVE_SCENES===0){setInterval(async()=>{try{const j=await fetch('/api/maprang/status/'+ACTIVE_ID).then(r=>r.json());if(!j.ok)return;const tl=document.getElementById('timeline');if(tl)tl.innerHTML=renderTL(j.logs);if(j.scenes&&j.scenes.length>0)setTimeout(()=>location.reload(),800);else if(j.status!=='pre_production')setTimeout(()=>location.reload(),800);}catch{}},5000);}
-if(ACTIVE_STATUS==='producing'){setInterval(async()=>{try{const j=await fetch('/api/maprang/status/'+ACTIVE_ID).then(r=>r.json());if(!j.ok)return;const fill=document.getElementById('prod-fill');const done=j.scenes.filter(s=>s.status==='done').length;const total=j.scenes.filter(s=>!s.skipped).length;if(fill)fill.style.width=(total?Math.round(done/total*100):0)+'%';const tl=document.getElementById('timeline');if(tl)tl.innerHTML=renderTL(j.logs);if(['building','pending_approval'].includes(j.status))setTimeout(()=>location.reload(),1500);}catch{}},5000);}
+if(ACTIVE_STATUS==='producing'&&ACTIVE_MODE!=='comic'){setInterval(async()=>{try{const j=await fetch('/api/maprang/status/'+ACTIVE_ID).then(r=>r.json());if(!j.ok)return;const fill=document.getElementById('prod-fill');const done=j.scenes.filter(s=>s.status==='done').length;const total=j.scenes.filter(s=>!s.skipped).length;if(fill)fill.style.width=(total?Math.round(done/total*100):0)+'%';const tl=document.getElementById('timeline');if(tl)tl.innerHTML=renderTL(j.logs);if(['building','pending_approval'].includes(j.status))setTimeout(()=>location.reload(),1500);}catch{}},5000);}
+if(ACTIVE_MODE==='comic'&&ACTIVE_STATUS==='producing'){setInterval(async()=>{try{const j=await fetch('/api/maprang/status/'+ACTIVE_ID).then(r=>r.json());if(!j.ok)return;const tl=document.getElementById('timeline');if(tl)tl.innerHTML=renderTL(j.logs);if(['done','error'].includes(j.status))setTimeout(()=>location.reload(),1500);}catch{}},5000);}
 async function loadChars(){const j=await fetch('/api/maprang/characters').then(r=>r.json());const el=document.getElementById('char-list');const chars=j.characters||{};if(!Object.keys(chars).length){el.innerHTML='<span style="color:#475569;font-size:12px">ยังไม่มีตัวละคร</span>';return;}el.innerHTML=Object.values(chars).map(c=>'<div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:8px;font-size:12px;width:168px;flex:0 0 auto">'+(c.ref_image?'<img src="/dashboard/maprang/charimg/'+c.id+'?t='+Date.now()+'" style="width:152px;height:228px;object-fit:cover;object-position:center top;border-radius:4px;margin-bottom:4px;display:block">':'<div style="width:152px;height:228px;background:#1e293b;border-radius:4px;margin-bottom:4px;display:flex;align-items:center;justify-content:center;color:#475569;font-size:11px;text-align:center">ยังไม่มีรูป</div>')+'<div style="font-weight:600">'+(c.name||c.id)+'</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px"><button class="btn btn-purple btn-sm" data-id="'+c.id+'" onclick="genCharImg(this.dataset.id)" title="สร้างรูปด้วย AI">🎨</button><button class="btn btn-ghost btn-sm" data-id="'+c.id+'" onclick="uploadCharImg(this.dataset.id)" title="อัปโหลดรูปเอง">⬆</button><button class="btn btn-ghost btn-sm" data-id="'+c.id+'" onclick="editChar(this.dataset.id)">แก้</button><button class="btn btn-red btn-sm" data-id="'+c.id+'" onclick="delChar(this.dataset.id)">ลบ</button></div></div>').join('');}
 async function genCharImg(id){const m=document.getElementById('char-msg');m.textContent='🎨 กำลังสร้างรูป '+id+' (~30s)... refresh อัตโนมัติ';const j=await fetch('/api/maprang/characters/'+id+'/generate',{method:'POST'}).then(r=>r.json());if(j.ok){setTimeout(loadChars,35000);}else m.textContent='❌ '+j.error;}
 function uploadCharImg(id){const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.onchange=async()=>{const f=inp.files[0];if(!f)return;const m=document.getElementById('char-msg');m.textContent='⬆ อัปโหลด...';const buf=await f.arrayBuffer();const j=await fetch('/api/maprang/characters/'+id+'/image',{method:'POST',headers:{'Content-Type':'image/png'},body:buf}).then(r=>r.json());m.textContent=j.ok?'✅ อัปโหลดแล้ว':'❌ '+j.error;if(j.ok)loadChars();};inp.click();}

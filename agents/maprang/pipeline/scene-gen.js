@@ -292,4 +292,4 @@ format:
   }));
 }
 
-module.exports = { generateScenes, generateScenesWithCharacters, generateCharacterDescription, buildCharacterNegative, describeCharacterImage, detectGender, enforceGender, capNarration };
+module.exports = { generateScenes, generateScenesWithCharacters, generateCharacterDescription, buildCharacterNegative, describeCharacterImage, detectGender, detectGenderEn, enforceGender, capNarration, ollamaChat };
