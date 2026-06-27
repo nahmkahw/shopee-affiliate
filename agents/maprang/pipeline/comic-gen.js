@@ -64,17 +64,45 @@ function normPanel(p, idx, characters, charIds) {
   };
 }
 
-// derive ฉากร่วม (location+เวลา+บรรยากาศ) ครั้งเดียว → ใช้เป็น background เดียวกันทุกช่อง
-async function deriveSharedSetting(storyPromptTh) {
-  const sys = `คุณกำหนดฉากการ์ตูน ตอบภาษาอังกฤษบรรทัดเดียว ไม่มีอย่างอื่น ไม่มีวงเล็บ
-บรรยายสถานที่+เวลา+บรรยากาศที่เรื่องเกิดขึ้น แบบละเอียดเจาะจง 10-18 คำ (ใช้เป็นฉากหลังเดียวกันทุกช่อง)
-ตัวอย่าง: a cozy noodle restaurant with red paper lanterns, wooden tables and a steaming food counter at night`;
+// สรุป input ดิบ → concept โครงสร้าง {title, points[]} (1 LLM call) — บทพูดสร้างจาก concept นี้
+async function summarizeConcept(inputTh) {
+  const sys = `คุณสรุปข้อมูล/ข่าว/บทความ เป็น concept การ์ตูนอธิบาย ตอบ JSON เดียวเท่านั้น ไม่มีอย่างอื่น ไม่มี markdown
+{"title":"หัวข้อสั้นภาษาไทย","points":["ประเด็นสำคัญ 1","ประเด็น 2","ประเด็น 3"]}
+สรุปใจความสำคัญ 3-4 ประเด็นจากข้อมูล เป็นภาษาไทยกระชับ family-friendly`;
   try {
-    const raw = await ollamaChat(`story: ${storyPromptTh}\nสถานที่หลักของเรื่องนี้คือที่ไหน`, sys);
+    const raw = await ollamaChat(`ข้อมูล:\n${inputTh}\n\nสรุปเป็น title + 3-4 points`, sys);
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (m) {
+      const o = JSON.parse(m[0]);
+      const points = (Array.isArray(o.points) ? o.points : []).map(p => String(p).trim()).filter(Boolean).slice(0, 4);
+      if (o.title && points.length) return { title: String(o.title).trim(), points };
+    }
+  } catch {}
+  return { title: inputTh.slice(0, 60).trim(), points: [inputTh.slice(0, 80).trim()] }; // fallback
+}
+
+// หน้าที่+ใจความที่แต่ละช่องต้องสื่อ: P1 hook → P2-3 points → P4 takeaway
+function panelBrief(i, concept) {
+  const pts = concept.points;
+  switch (i) {
+    case 0:  return { role: 'เปิดประเด็น เกริ่น/ตั้งคำถามเกี่ยวกับหัวข้อ', focus: concept.title };
+    case 1:  return { role: 'อธิบายประเด็นสำคัญ', focus: pts[0] || concept.title };
+    case 2:  return { role: 'ขยายประเด็นถัดไป', focus: pts[1] || pts[0] || concept.title };
+    default: return { role: 'สรุป takeaway/ข้อคิด', focus: pts.slice(2).join(' ') || pts[pts.length - 1] || concept.title };
+  }
+}
+
+// derive ฉากร่วม — สถานที่ที่ตัวละครนั่งสนทนาเรื่องนี้ (explainer) ใช้เป็น background เดียวทุกช่อง
+async function deriveSharedSetting(conceptTitle) {
+  const sys = `คุณกำหนดฉากการ์ตูน ตอบภาษาอังกฤษบรรทัดเดียว ไม่มีอย่างอื่น ไม่มีวงเล็บ
+บรรยาย "สถานที่ที่ตัวละครนั่งสนทนาเรื่องนี้" + บรรยากาศ ละเอียด 10-18 คำ (ถ้าเป็นเรื่องนามธรรม ให้เป็นมุมนั่งคุยสบาย ๆ เช่นร้านกาแฟ)
+ตัวอย่าง: a cozy coffee shop with warm lighting, wooden tables and large windows in the afternoon`;
+  try {
+    const raw = await ollamaChat(`หัวข้อ: ${conceptTitle}\nตัวละครนั่งคุยเรื่องนี้ที่ไหน`, sys);
     let s = (raw || '').trim().split('\n')[0].replace(/^["']|["']$/g, '').replace(/^anime style,\s*/i, '').trim();
     if (s && !/[\[\]]|อังกฤษ|ตัวอักษร/.test(s) && s.length >= 8) return s;
   } catch {}
-  return 'a warmly lit indoor scene with simple background';
+  return 'a cozy coffee shop with warm lighting and wooden tables';
 }
 
 /**
@@ -88,8 +116,10 @@ async function generateComicPanels(storyPromptTh, characters) {
   const charIds  = Object.keys(characters);
   const charList = charIds.map(id => `${id}(${characters[id].name || id})`).join(', ') || '(ไม่ระบุ)';
   const exId = charIds[0] || 'Teng';
-  // ตัวอย่างจริง (ไม่ใช่ placeholder ในวงเล็บ) — ลดอาการโมเดลลอก template
-  const sharedSetting = await deriveSharedSetting(storyPromptTh);
+  // 1) สรุป input → concept  2) ฉากร่วมจาก concept  3) บทพูดต่อช่องจาก concept
+  const concept = await summarizeConcept(storyPromptTh);
+  console.log(`  💡 Concept: ${concept.title} (${concept.points.length} points)`);
+  const sharedSetting = await deriveSharedSetting(concept.title);
   console.log(`  📍 ฉากร่วม: ${sharedSetting}`);
 
   // scene_setting_en ของ LLM = "action ในช่อง" เท่านั้น (ไม่ใช่ทั้งฉาก) — location คงที่จาก sharedSetting
@@ -114,7 +144,8 @@ async function generateComicPanels(storyPromptTh, characters) {
   for (let i = 0; i < N_PANELS; i++) {
     const allowed = template[i] || charIds;                       // ตัวละครที่โชว์/พูดได้ในช่องนี้
     const speakerNames = allowed.map(id => characters[id]?.name || id).join(', ');
-    const user = `story: ${storyPromptTh}\n${recap ? 'เนื้อหาช่องก่อน (ห้ามซ้ำ): ' + recap + '\n' : ''}เขียนช่องที่ ${i + 1}/${N_PANELS} แบบ ${beatFor(i, N_PANELS)} ต่อเนื่องและแตกต่างจากช่องก่อน\nช่องนี้มีเฉพาะตัวละคร: ${speakerNames} (บทพูดต้องเป็นของตัวละครเหล่านี้เท่านั้น)`;
+    const brief = panelBrief(i, concept);                         // หน้าที่+ใจความที่ช่องนี้ต้องสื่อ
+    const user = `หัวข้อ: ${concept.title}\n${recap ? 'เนื้อหาช่องก่อน (ห้ามซ้ำ): ' + recap + '\n' : ''}เขียนช่องที่ ${i + 1}/${N_PANELS} — หน้าที่: ${brief.role}\nใจความที่บทพูดต้องสื่อ: ${brief.focus}\nช่องนี้มีเฉพาะตัวละคร: ${speakerNames} (บทพูดต้องเป็นของตัวละครเหล่านี้ และสื่อใจความข้างต้นแบบบทสนทนา)`;
     let np = null;
     for (let attempt = 0; attempt < 3 && !np; attempt++) {
       try { const cand = normPanel(parseJsonArrayLenient(await ollamaChat(user, system))[0], i, characters, charIds);
@@ -133,7 +164,7 @@ async function generateComicPanels(storyPromptTh, characters) {
     recap = np.dialogue.map(d => `${d.name}:${d.line_th}`).join(' ');
     console.log(`  ✅ ช่อง ${i + 1}: ${np.dialogue.map(d => d.name + ':' + d.line_th).join(' / ')}`);
   }
-  return { sharedSetting, panels };
+  return { concept, sharedSetting, panels };
 }
 
 module.exports = { generateComicPanels };

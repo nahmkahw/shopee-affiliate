@@ -60,10 +60,12 @@ async function runComic(ctx, { prompt, id, charIds }) {
   const charRefs = {};
   for (const cid of useCharIds) { const p = refPath(ctx.ROOT, useChars[cid]); if (p) charRefs[cid] = p; }
 
-  log(`🤖 แตกเป็น panel...`);
-  const { sharedSetting, panels } = await generateComicPanels(prompt, useChars);
+  log(`🤖 สรุป concept + แตกเป็น panel...`);
+  const { concept, sharedSetting, panels } = await generateComicPanels(prompt, useChars);
+  meta.concept = concept;
   meta.shared_setting = sharedSetting;
   meta.panels = panels;
+  log(`💡 Concept: ${concept.title} (${concept.points.length} ประเด็น)`);
   log(`📍 ฉากร่วมทุกช่อง: ${sharedSetting}`);
   ctx.saveMeta(meta);
 
