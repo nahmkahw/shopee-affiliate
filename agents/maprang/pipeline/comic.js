@@ -14,6 +14,16 @@ const { generateSceneStill }  = require('./flux-kontext');
 const { buildComicPage }      = require('./comic-build');
 const charReg = require('./char-registry');
 
+// composition directive ต่อช่อง (P1-2 หันหน้าคุยกัน, P3-4 เห็นหน้าทุกตัว) — ผนวกเข้า scene_setting
+function composition(panelIdx, names) {
+  switch (panelIdx) {
+    case 1: return `${names[0] || 'the character'} on the left, facing right in three-quarter view as if talking to someone, face clearly visible, upper body shot`;
+    case 2: return `${names[0] || 'the character'} facing left, replying as if in conversation, face clearly visible, upper body shot`;
+    case 3: return `the two characters facing each other in conversation, both faces fully visible to the viewer, medium shot`;
+    default: return `all ${names.length} characters together facing the viewer, every face fully visible, group shot`;
+  }
+}
+
 // abs path ของ anime_ref (anchor) → fallback ref_image
 function refPath(ROOT, c) {
   const rel = c && (c.anime_ref || c.ref_image);
@@ -60,9 +70,10 @@ async function runComic(ctx, { prompt, id, charIds }) {
     const refs  = (p.characters || []).map(cid => charRefs[cid]).filter(Boolean);
     const names = (p.characters || []).filter(cid => charRefs[cid]).map(cid => useChars[cid]?.name || cid);
     const out   = path.join(dir, `panel_${p.panel}.png`);
-    log(`🎨 ช่อง ${p.panel}/${panels.length}: "${p.scene_setting_en.slice(0, 40)}..."`);
+    const setting = `${p.scene_setting_en}. ${composition(p.panel, names)}`;
+    log(`🎨 ช่อง ${p.panel}/${panels.length} (${names.length} ตัว): "${p.scene_setting_en.slice(0, 35)}..."`);
     if (refs.length) {
-      await generateSceneStill(ctx.COMFY_CFG, refs, p.scene_setting_en, out, { seed: seed + p.panel, names });
+      await generateSceneStill(ctx.COMFY_CFG, refs, setting, out, { seed: seed + p.panel, names });
     } else {
       // ไม่มี ref — Flux Kontext ต้องมี ref; ข้ามด้วยภาพเปล่า (build จะวาด placeholder)
       log(`⚠️ ช่อง ${p.panel} ไม่มี ref ตัวละคร — ช่องว่าง`);

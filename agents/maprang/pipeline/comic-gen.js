@@ -21,6 +21,34 @@ function capLine(text) {
 const BEATS = ['เปิดเรื่อง ตั้งสถานการณ์', 'พัฒนาเหตุการณ์', 'จุดหักมุม/เกิดเรื่องไม่คาดคิด', 'มุกจบ/บทสรุปขำขัน'];
 function beatFor(i, n) { return n === 4 ? BEATS[i] : i === 0 ? BEATS[0] : i === n - 1 ? BEATS[3] : BEATS[1]; }
 
+// composition template ตายตัว: P1=c0, P2=c1(มิเรอร์), P3=[c0,c1], P4=ทุกตัวที่เลือก
+function panelCharTemplate(charIds) {
+  const c0 = charIds[0], c1 = charIds[1] || charIds[0];
+  const uniq = a => a.filter((v, i, arr) => arr.indexOf(v) === i);
+  return [[c0], [c1], uniq([c0, c1]), charIds.slice()];
+}
+
+// ตัด prefix ชื่อผู้พูดที่ LLM เผลอใส่ในบทพูด ("โหน่ง: ข้อความ" → "ข้อความ")
+function stripSpeakerPrefix(line, name, id) {
+  let t = (line || '').trim();
+  for (const tag of [name, id].filter(Boolean)) {
+    const re = new RegExp('^' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*[:：]\\s*', 'i');
+    t = t.replace(re, '').trim();
+  }
+  return t;
+}
+
+// บังคับตัวละครในช่อง = template + remap ผู้พูดให้อยู่ในตัวที่โชว์ (P1 พูดโดย c0, P2 โดย c1)
+function forcePanelChars(np, allowed, characters) {
+  np.characters = allowed.slice();
+  np.dialogue = np.dialogue.map(d => {
+    const sp = allowed.includes(d.speaker) ? d.speaker : allowed[0];
+    const name = characters[sp]?.name || sp;
+    return { speaker: sp, line_th: stripSpeakerPrefix(d.line_th, name, sp), name };
+  });
+  return np;
+}
+
 // normalize 1 panel object → schema มาตรฐาน
 function normPanel(p, idx, characters, charIds) {
   const chars = (Array.isArray(p?.characters) ? p.characters.filter(id => characters[id]) : []);
@@ -60,11 +88,14 @@ async function generateComicPanels(storyPromptTh, characters) {
     np.dialogue.length >= 1 && np.dialogue.every(d => !bad(d.line_th)) &&
     dlgKey(np) !== prevKey;
 
+  const template = panelCharTemplate(charIds);
   console.log(`🤖 Typhoon2 comic (${N_PANELS} panels ทีละช่อง, ${charIds.length} chars)...`);
   const panels = [];
   let recap = '', prevKey = '';
   for (let i = 0; i < N_PANELS; i++) {
-    const user = `story: ${storyPromptTh}\n${recap ? 'เนื้อหาช่องก่อน (ห้ามซ้ำ): ' + recap + '\n' : ''}เขียนช่องที่ ${i + 1}/${N_PANELS} แบบ ${beatFor(i, N_PANELS)} ต่อเนื่องและแตกต่างจากช่องก่อน`;
+    const allowed = template[i] || charIds;                       // ตัวละครที่โชว์/พูดได้ในช่องนี้
+    const speakerNames = allowed.map(id => characters[id]?.name || id).join(', ');
+    const user = `story: ${storyPromptTh}\n${recap ? 'เนื้อหาช่องก่อน (ห้ามซ้ำ): ' + recap + '\n' : ''}เขียนช่องที่ ${i + 1}/${N_PANELS} แบบ ${beatFor(i, N_PANELS)} ต่อเนื่องและแตกต่างจากช่องก่อน\nช่องนี้มีเฉพาะตัวละคร: ${speakerNames} (บทพูดต้องเป็นของตัวละครเหล่านี้เท่านั้น)`;
     let np = null;
     for (let attempt = 0; attempt < 3 && !np; attempt++) {
       try { const cand = normPanel(parseJsonArrayLenient(await ollamaChat(user, system))[0], i, characters, charIds);
@@ -72,9 +103,10 @@ async function generateComicPanels(storyPromptTh, characters) {
     }
     if (!np) {  // ทุก attempt ล้มเหลว → fallback ไม่ให้ panel ว่าง/ซ้ำ
       np = normPanel({ scene_setting_en: `the characters reacting in a scene about ${storyPromptTh}` }, i, characters, charIds);
-      np.dialogue = [{ speaker: charIds[0], line_th: i === N_PANELS - 1 ? 'จบแบบนี้เลยเหรอ!' : 'เอ๊ะ เกิดอะไรขึ้น',
-                       name: characters[charIds[0]]?.name || charIds[0] || '' }];
+      np.dialogue = [{ speaker: allowed[0], line_th: i === N_PANELS - 1 ? 'จบแบบนี้เลยเหรอ!' : 'เอ๊ะ เกิดอะไรขึ้น',
+                       name: characters[allowed[0]]?.name || allowed[0] || '' }];
     }
+    forcePanelChars(np, allowed, characters);                     // บังคับ layout ตาม template
     panels.push(np);
     prevKey = dlgKey(np);
     recap = np.dialogue.map(d => `${d.name}:${d.line_th}`).join(' ');
