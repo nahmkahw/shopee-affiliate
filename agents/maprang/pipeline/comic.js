@@ -61,8 +61,10 @@ async function runComic(ctx, { prompt, id, charIds }) {
   for (const cid of useCharIds) { const p = refPath(ctx.ROOT, useChars[cid]); if (p) charRefs[cid] = p; }
 
   log(`🤖 แตกเป็น panel...`);
-  const panels = await generateComicPanels(prompt, useChars);
+  const { sharedSetting, panels } = await generateComicPanels(prompt, useChars);
+  meta.shared_setting = sharedSetting;
   meta.panels = panels;
+  log(`📍 ฉากร่วมทุกช่อง: ${sharedSetting}`);
   ctx.saveMeta(meta);
 
   const imagePaths = [];

@@ -64,21 +64,40 @@ function normPanel(p, idx, characters, charIds) {
   };
 }
 
+// derive ฉากร่วม (location+เวลา+บรรยากาศ) ครั้งเดียว → ใช้เป็น background เดียวกันทุกช่อง
+async function deriveSharedSetting(storyPromptTh) {
+  const sys = `คุณกำหนดฉากการ์ตูน ตอบภาษาอังกฤษบรรทัดเดียว ไม่มีอย่างอื่น ไม่มีวงเล็บ
+บรรยายสถานที่+เวลา+บรรยากาศที่เรื่องเกิดขึ้น แบบละเอียดเจาะจง 10-18 คำ (ใช้เป็นฉากหลังเดียวกันทุกช่อง)
+ตัวอย่าง: a cozy noodle restaurant with red paper lanterns, wooden tables and a steaming food counter at night`;
+  try {
+    const raw = await ollamaChat(`story: ${storyPromptTh}\nสถานที่หลักของเรื่องนี้คือที่ไหน`, sys);
+    let s = (raw || '').trim().split('\n')[0].replace(/^["']|["']$/g, '').replace(/^anime style,\s*/i, '').trim();
+    if (s && !/[\[\]]|อังกฤษ|ตัวอักษร/.test(s) && s.length >= 8) return s;
+  } catch {}
+  return 'a warmly lit indoor scene with simple background';
+}
+
 /**
  * gen ทีละ panel (โมเดล 8B ทำ multi-item JSON ไม่ครบ → ขอทีละช่องเชื่อถือได้กว่า)
+ * background ทุกช่อง = ฉากร่วม (shared_setting) + action เฉพาะช่องตามบทพูด
  * @param {string} storyPromptTh
  * @param {object} characters  registry { id: {name, description} }
- * @returns {Promise<Array>}
+ * @returns {Promise<{sharedSetting:string, panels:Array}>}
  */
 async function generateComicPanels(storyPromptTh, characters) {
   const charIds  = Object.keys(characters);
   const charList = charIds.map(id => `${id}(${characters[id].name || id})`).join(', ') || '(ไม่ระบุ)';
   const exId = charIds[0] || 'Teng';
   // ตัวอย่างจริง (ไม่ใช่ placeholder ในวงเล็บ) — ลดอาการโมเดลลอก template
+  const sharedSetting = await deriveSharedSetting(storyPromptTh);
+  console.log(`  📍 ฉากร่วม: ${sharedSetting}`);
+
+  // scene_setting_en ของ LLM = "action ในช่อง" เท่านั้น (ไม่ใช่ทั้งฉาก) — location คงที่จาก sharedSetting
   const system = `คุณเป็นนักเขียนการ์ตูน 4 ช่อง ภาษาไทย ตัวละคร: ${charList}
+ทุกช่องอยู่ที่เดียวกัน: ${sharedSetting}
 ตอบเป็น JSON array ที่มี object เดียวเท่านั้น ไม่มีข้อความอื่น ไม่มี markdown ไม่มีวงเล็บเหลี่ยมในเนื้อหา
-ตัวอย่าง: [{"scene_setting_en":"three friends laughing together at a sunny park bench","characters":["${exId}"],"dialogue":[{"speaker":"${exId}","line_th":"วันนี้สนุกจริง ๆ เลย"}]}]
-กฎ: scene_setting_en เป็นภาษาอังกฤษบรรยายฉากจริง, line_th เป็นบทพูดไทยจริงสั้น ≤${MAX_LINE} ตัวอักษร, speaker = id ตัวละครจริง, family-friendly`;
+ตัวอย่าง: [{"scene_setting_en":"the friends pointing at the menu and laughing","characters":["${exId}"],"dialogue":[{"speaker":"${exId}","line_th":"วันนี้สนุกจริง ๆ เลย"}]}]
+กฎ: scene_setting_en = ภาษาอังกฤษบรรยายแค่ "สิ่งที่ตัวละครกำลังทำ" ในช่องนี้ให้เข้ากับบทพูด (อย่าเปลี่ยนสถานที่), line_th บทพูดไทยสั้น ≤${MAX_LINE} ตัวอักษร, speaker = id ตัวละครจริง, family-friendly`;
 
   // panel ใช้ไม่ได้ถ้า: placeholder / ฉากว่าง-default / ไม่มีบทพูด / ซ้ำช่องก่อน
   const bad = s => !s || /[\[\]]|อังกฤษ|ตัวอักษร|≤|scene_setting/i.test(s) || s.trim().length < 6;
@@ -107,12 +126,14 @@ async function generateComicPanels(storyPromptTh, characters) {
                        name: characters[allowed[0]]?.name || allowed[0] || '' }];
     }
     forcePanelChars(np, allowed, characters);                     // บังคับ layout ตาม template
+    np.action_en = np.scene_setting_en;                           // เก็บ action ดิบ
+    np.scene_setting_en = `${sharedSetting}. ${np.action_en}`;    // background ร่วม + action ตามบท
     panels.push(np);
     prevKey = dlgKey(np);
     recap = np.dialogue.map(d => `${d.name}:${d.line_th}`).join(' ');
     console.log(`  ✅ ช่อง ${i + 1}: ${np.dialogue.map(d => d.name + ':' + d.line_th).join(' / ')}`);
   }
-  return panels;
+  return { sharedSetting, panels };
 }
 
 module.exports = { generateComicPanels };
