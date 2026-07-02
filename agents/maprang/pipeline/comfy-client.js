@@ -10,6 +10,7 @@ const path      = require('path');
 const crypto    = require('crypto');
 const WebSocket = require('ws');
 const { withGpuLock } = require('../../../lib/gpu-lock');  // serialize ComfyUI submit ข้าม agent
+const { checkHealth, submitImageWorkflow, uploadImageToComfy } = require('../../../lib/comfy-client-core');
 
 const NEG_BASE = 'low quality, blurry, watermark, text overlay, nsfw, worst quality';
 
@@ -55,13 +56,6 @@ function _getBinary(cfg, path_, timeoutMs = 300000) {
     req.setTimeout(timeoutMs, () => { req.destroy(); reject(new Error('download timeout')); });
     req.on('error', reject);
   });
-}
-
-async function checkHealth(cfg) {
-  try {
-    const r = await _request(cfg, 'GET', '/system_stats');
-    return !!(r && r.system);
-  } catch { return false; }
 }
 
 async function checkWan21Model(cfg) {
@@ -116,40 +110,13 @@ function buildCharImageWorkflow(charDesc, seed) {
 }
 
 /**
- * Shared: submit image workflow → poll → download. ใช้ทั้ง T2I และ Flux Kontext
- * @returns {Promise<{outputPath, bytes}>}
- */
-async function submitImageWorkflow(cfg, workflow, outNodeId, outputPath, timeoutMs = 180000) {
-  return withGpuLock('maprang-img', async () => {
-    const clientId = crypto.randomUUID();
-    const { prompt_id } = await _request(cfg, 'POST', '/prompt', { client_id: clientId, prompt: workflow });
-    if (!prompt_id) throw new Error('ComfyUI ไม่ตอบ prompt_id (image)');
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-      await new Promise(r => setTimeout(r, 3000));
-      const history = await _request(cfg, 'GET', `/history/${prompt_id}`);
-      const job     = history[prompt_id];
-      if (!job) { process.stdout.write('.'); continue; }
-      if (job.status?.status_str === 'error') throw new Error('ComfyUI image job error');
-      const imgOut  = job.outputs?.[outNodeId]?.images?.[0];
-      if (!imgOut) continue;
-      const url = `/view?filename=${encodeURIComponent(imgOut.filename)}&subfolder=${encodeURIComponent(imgOut.subfolder || '')}&type=${encodeURIComponent(imgOut.type || 'output')}`;
-      const buf = await _getBinary(cfg, url, 60000);
-      fs.writeFileSync(outputPath, buf);
-      return { outputPath, bytes: buf.length };
-    }
-    throw new Error('ComfyUI timeout (image)');
-  });
-}
-
-/**
  * สร้างรูปตัวละคร reference (AnythingXL T2I) — ใช้ anchor ทุก scene
  * @returns {Promise<string>} outputPath
  */
 async function generateCharacterImage(cfg, charDesc, outputPath, seed) {
   console.log('  🎨 ComfyUI T2I: สร้าง character reference image...');
   const imageTimeout = cfg.imageTimeoutMs || cfg.timeoutMs || 300000;
-  const { outputPath: out, bytes } = await submitImageWorkflow(cfg, buildCharImageWorkflow(charDesc, seed), '7', outputPath, imageTimeout);
+  const { outputPath: out, bytes } = await submitImageWorkflow(cfg, buildCharImageWorkflow(charDesc, seed), '7', outputPath, imageTimeout, 'maprang-img');
   console.log(`  ✅ ref image: ${out} (${(bytes / 1024).toFixed(0)} KB)`);
   return out;
 }
@@ -259,28 +226,6 @@ function buildWan21I2VWorkflow(prompt, i2vModel, clipVisionModel, imageFilename,
                                                         filename_prefix: 'maprang_i2v', format: 'video/h264-mp4',
                                                         pingpong: false, save_output: true } },
   };
-}
-
-function uploadImageToComfy(cfg, imagePath) {
-  return new Promise((resolve, reject) => {
-    const boundary = '----CF' + Math.random().toString(36).slice(2);
-    const imgBuf   = fs.readFileSync(imagePath);
-    const fname    = path.basename(imagePath);
-    const head     = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="${fname}"\r\nContent-Type: image/jpeg\r\n\r\n`);
-    const body     = Buffer.concat([head, imgBuf, Buffer.from(`\r\n--${boundary}--\r\n`)]);
-    const req      = http.request({
-      hostname: cfg.host||'10.3.17.118', port: cfg.port||8188,
-      path: '/upload/image', method: 'POST',
-      headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': body.length },
-    }, res => {
-      let buf = '';
-      res.on('data', d => buf += d);
-      res.on('end', () => { try { resolve(JSON.parse(buf).name || fname); } catch { resolve(fname); } });
-    });
-    req.setTimeout(30000, () => { req.destroy(); reject(new Error('upload timeout')); });
-    req.on('error', reject);
-    req.write(body); req.end();
-  });
 }
 
 async function generateClipI2V(cfg, prompt, refImagePath, outputPath, seed, charNeg = '') {

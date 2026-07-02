@@ -29,6 +29,7 @@ const MANAO_RUN     = path.join(AI_NEWS_DIR, 'manao.js');
 const MAKRUT_DIR    = path.join(ROOT, 'agents', 'makrut', 'pipeline');
 const MAKRUT_RUN    = path.join(MAKRUT_DIR, 'makrut.js');
 const MAKRUT_LOCK   = path.join(ROOT, 'agents', 'makrut', '.pipeline.lock');
+const MAPRAO_DIR    = path.join(ROOT, 'agents', 'maprao', 'pipeline');
 
 // ─── .env reader ──────────────────────────────────────────────────────────────
 function readEnv() {
@@ -190,6 +191,7 @@ async function poll() {
         const mergedQueue = {
           ...loadQueue(path.join(AI_NEWS_DIR, '_tg_queue.json')),
           ...loadQueue(path.join(MAKRUT_DIR, '_tg_queue.json')),
+          ...loadQueue(path.join(MAPRAO_DIR, '_tg_queue.json')),
         };
         const newsDone = await handleNewsCallback(cbData, cbq, cbChat, {
           tgRequest: tg, sendMsg: send,

@@ -12,7 +12,7 @@
  * ดู ADR: agents/maprang/docs/ADR-001-anime-ref-2stage.md
  */
 
-const { submitImageWorkflow, uploadImageToComfy } = require('./comfy-client');
+const { submitImageWorkflow, uploadImageToComfy } = require('../../../lib/comfy-client-core');
 const { detectGenderEn } = require('./scene-gen');
 
 const CHECKPOINT  = 'AnythingXL_xl.safetensors';

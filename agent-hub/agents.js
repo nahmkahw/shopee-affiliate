@@ -70,6 +70,11 @@ const AGENTS = {
       { id: 'status',   label: '📊 ดูสถานะ',          icon: '📊' },
     ],
   },
+  maprao: {
+    label: 'มะพร้าว', role: 'B&W Manga Comic Strip', color: '#8B5E3C', colorLight: '#F5EBDD', emoji: '🥥',
+    hasDashboard: true,
+    actions: [],
+  },
 };
 
 const pipelineProcs = {

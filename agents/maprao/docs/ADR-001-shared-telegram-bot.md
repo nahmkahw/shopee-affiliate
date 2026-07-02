@@ -1,0 +1,3 @@
+# Share มะปราง's Telegram bot instead of a dedicated one
+
+CLAUDE.md recommends a dedicated Telegram bot token per agent (`MALI_TELEGRAM_BOT_TOKEN`, `MANAO_TELEGRAM_BOT_TOKEN`, etc.) to avoid webhook conflicts. มะพร้าว deliberately skips this: it reuses มะปราง's existing bot token rather than registering a new bot via BotFather. This was chosen to avoid the manual bot-creation step during setup, at the cost of both agents' approval messages sharing one bot identity and one conflict surface. If this causes confusion or webhook contention in practice, split it out into its own `MAPRAO_TELEGRAM_BOT_TOKEN` following the standard pattern.

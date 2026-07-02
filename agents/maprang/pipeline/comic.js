@@ -10,7 +10,7 @@ const fs   = require('fs');
 const path = require('path');
 
 const { generateComicPanels } = require('./comic-gen');
-const { generateSceneStill }  = require('./flux-kontext');
+const { generateSceneStill }  = require('../../../lib/flux-kontext');
 const { buildComicPage }      = require('./comic-build');
 const charReg = require('./char-registry');
 
