@@ -11,7 +11,7 @@ const path  = require('path');
 const https = require('https');
 
 const { generateClip, generateClipI2V, checkI2VCapability, checkHealth, checkWan21Model } = require('./pipeline/comfy-client');
-const { generateSceneStill }    = require('./pipeline/flux-kontext');
+const { generateSceneStill }    = require('../../lib/flux-kontext');
 const { resolveSceneRefs }      = require('./pipeline/scene-refs');
 const { kenBurnsClip }          = require('./pipeline/video-build');
 const { runPreProduction }      = require('./pipeline/pre-production');

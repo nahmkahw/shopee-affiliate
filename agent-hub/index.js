@@ -75,6 +75,7 @@ const namkhaoRoute = require('./routes/namkhao');
 const animeRoute     = require('./routes/anime');
 const mammuangRoute  = require('./routes/mammuang');
 const maprangRoute   = require('./routes/maprang');
+const mapraoRoute    = require('./routes/maprao');
 const commonRoute  = require('./routes/common');
 
 // ─── Shared deps object passed to all route handlers ─────────────────────────
@@ -253,6 +254,8 @@ const server = http.createServer(async (req, res) => {
   await mammuangRoute.register(req, res, url, rawUrl, method, deps);
   if (done()) return;
   await maprangRoute.register(req, res, url, rawUrl, method, deps);
+  if (done()) return;
+  await mapraoRoute.register(req, res, url, rawUrl, method, deps);
   if (done()) return;
   await commonRoute.register(req, res, url, rawUrl, method, deps);
   if (done()) return;

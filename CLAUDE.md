@@ -129,9 +129,13 @@ shopee-affiliate/
 │   ├── routes/            ← mali.js | manao.js+manao/ | namkhao.js+namkhao/ | anime.js | common.js
 │   └── html/              ← dashboard HTML builders
 ├── lib/                   ← shared helpers ใช้ข้าม agents
-│   ├── namkhao-bot-news.js      ← approval callbacks (ใช้ทั้ง manao + makrut)
+│   ├── namkhao-bot-news.js      ← approval callbacks (ใช้ทั้ง manao + makrut + maprao — schedulePost/postNow)
 │   ├── namkhao-bot-scheduler.js ← schedule loop + trigger logic
+│   ├── tg-approval.js           ← ส่ง Telegram preview + inline Approve (ใช้ NAMKHAO bot token เสมอ)
 │   ├── gpu-lock.js              ← ComfyUI mutex ข้าม agent (withGpuLock — กัน timeout ตอนรอคิว)
+│   ├── comfy-client-core.js     ← generic ComfyUI HTTP client (checkHealth/submitImageWorkflow/uploadImageToComfy)
+│   ├── flux-kontext.js          ← Character-consistent scene stills (ใช้ทั้ง maprang + maprao)
+│   ├── ollama-chat.js           ← generic Ollama /api/chat client (Typhoon2)
 │   ├── bot-lock.js              ← single-instance PID lock (Telegram bots — กัน 409)
 │   └── tiktok-*.js / telegram.js / fb-post.js / approval-flow.js / …
 ├── agents/
@@ -140,6 +144,8 @@ shopee-affiliate/
 │   │                        post.js ใช้ PIPELINE_ROOT env รองรับหลาย pipeline
 │   ├── makrut/pipeline/   ← Agent มะกรูด (FIFA World Cup) — ใช้ post.js ของ manao ร่วม
 │   ├── namkhao/           ← Agent น้ำข้าว (Supervisor + Telegram bot + scheduler)
+│   ├── maprang/pipeline/  ← Agent มะปราง (Anime Story Video/Comic)
+│   ├── maprao/pipeline/   ← Agent มะพร้าว (B&W Manga Comic Strip) — reuse post.js ของ manao ร่วม
 │   └── anime/             ← Anime image generator
 ├── input/urls.txt         ← รายการสินค้า (format: URL | affiliate_link | YYYY-MM-DD)
 ├── products/{item_id}/    ← ข้อมูล + content ต่อสินค้า
@@ -275,6 +281,18 @@ node agents\makrut\pipeline\makrut.js --resend
 - `pre-production.js` `collectCharRefs()` → multi-char job เก็บ `meta.char_refs{id:absPath}` + `char_names` (gen รูปให้ถ้ายังไม่มี)
 - `run.js` `resolveSceneRefs` ([scene-refs.js](agents/maprang/pipeline/scene-refs.js)) → เลือก refs ตาม `scene.characters` → `actionGenerateScene` ใช้ multi-ref; เสียงแยกตัว auto ตามเพศ (`detectGenderEn`)
 - ⚠️ หลายตัว interact กัน (ท่าทาง) ยังไม่เป๊ะ 100% — ปรับด้วย instruction; ~2.5 นาที/ฉาก (Flux Kontext)
+
+### Agent มะพร้าว (`agents/maprao/`) — B&W Manga Comic Strip
+
+สร้างการ์ตูนช่อง 4 ช่อง (2×2 grid) ลายเส้นขาวดำแบบ manga ink จาก Story Prompt ที่ user พิมพ์ — ตัวเอกเป็น **Mascot** กระต่าย chibi ตัวเดียวคงที่ (ไม่มี character registry แบบมะปราง) ดู domain glossary เต็มที่ [agents/maprao/docs/CONTEXT.md](agents/maprao/docs/CONTEXT.md)
+
+- **Architecture:** agent แยกจากมะปรางทั้งหมด แต่ share logic ที่เป็น generic ผ่าน `lib/` — ดึง `lib/comfy-client-core.js`, `lib/flux-kontext.js`, `lib/ollama-chat.js` ออกมาจากของมะปรางเดิม (Gate 2) ให้ทั้งสอง agent require ร่วมกัน
+- **Mascot Ref:** สร้างครั้งเดียวผ่าน `--action gen-mascot-ref` (AnythingXL T2I, prompt B&W manga ink) → `agents/maprao/mascot-ref.png` + `mascot.json` — ใช้เป็น anchor ทุก Panel ผ่าน `lib/flux-kontext.js` `generateSceneStill()` (เหมือนมะปราง แต่ ref เดียวไม่ต้อง registry)
+- **B&W style:** ควบคุมผ่าน prompt เท่านั้น (`STYLE_SUFFIX` ใน `pipeline/comic.js`) — **ไม่บังคับ grayscale post-process** (deliberate trade-off, ดู [CONTEXT.md](agents/maprao/docs/CONTEXT.md))
+- **Bubble:** พูด/คิดในช่อง (ไม่ใช่ caption band แบบมะปราง) — 0-1 Bubble/Panel, fixed-corner position ไม่คำนวณหลบตัวละคร ([ADR-002](agents/maprao/docs/ADR-002-fixed-corner-bubble-placement.md)) + Footer Caption ปิดท้ายเรื่อง
+- **Approval + Post:** reuse namkhao bot approval infra ทั้งหมด (**ไม่ใช่บอทของมะปรางเอง** — มะปรางไม่มี callback handler, ดู [ADR-001](agents/maprao/docs/ADR-001-shared-telegram-bot.md)) — เขียน `agents/maprao/pipeline/news/{id}/` (data.json + content/facebook.md + image.jpg) ให้ตรง shape ที่ `post.js` คาดหวัง แล้วเรียก `lib/tg-approval.js` `sendApprovalNotification(..., { mode: 'immediate' })` → namkhao bot callback → `lib/namkhao-bot-news.js` `postNow()` (ฟังก์ชันใหม่ คู่กับ `schedulePost()` เดิม — โพสต์ทันทีไม่มี `--schedule`)
+- **Trigger:** on-demand เท่านั้นผ่าน dashboard (`/dashboard/maprao`, `/api/maprao/generate`) — ไม่มี scheduler/cron ประจำวัน
+- env: `MAPRAO_COMIC_SIZE` (default 1080), `MAPRAO_COMIC_MAXLINE` (default 40)
 
 ### Agent มะกรูด (`agents/makrut/`)
 
