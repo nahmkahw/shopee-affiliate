@@ -254,8 +254,17 @@ function buildMainPage(status, AGENTS, ROOT) {
   </div>
 </div>
 
+<!-- ComfyUI GPU Queue -->
+<div style="position:relative;z-index:10;max-width:1000px;margin:24px auto 0;padding:0 28px">
+  <div style="background:rgba(15,23,42,0.7);border:1px solid rgba(255,255,255,0.08);border-radius:14px;
+              padding:13px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:13px">
+    <span style="font-weight:800;color:#e2e8f0">🎮 ComfyUI GPU</span>
+    <span id="gpu-queue-body" style="color:#64748B">กำลังโหลด...</span>
+  </div>
+</div>
+
 <!-- Cards -->
-<div style="position:relative;z-index:10;max-width:1000px;margin:44px auto;padding:0 28px">
+<div style="position:relative;z-index:10;max-width:1000px;margin:28px auto 44px;padding:0 28px">
   <div style="text-align:center;margin-bottom:36px">
     <h2 style="font-size:15px;font-weight:600;color:#475569;letter-spacing:.08em;text-transform:uppercase">
       เลือก Agent ที่ต้องการควบคุม
@@ -562,6 +571,20 @@ function hubShowToast(msg, err=false) {
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 2800);
 }
+
+// ── ComfyUI GPU queue poll (ทุก 4s) ──
+function fmtAgo(since){const s=Math.max(0,Math.round((Date.now()-since)/1000));return s>=60?Math.floor(s/60)+' นาที':s+' วิ';}
+async function pollGpuQueue(){
+  try{
+    const q=await fetch('/api/gpu-queue').then(r=>r.json());
+    const el=document.getElementById('gpu-queue-body');if(!el)return;
+    if(!q.holder){el.innerHTML='<span style="color:#22c55e">● ว่าง</span>';return;}
+    let h='<span style="color:#fbbf24">● รัน:</span> <b style="color:#e2e8f0">'+q.holder.agent+'</b> <span style="color:#64748B">('+fmtAgo(q.holder.since)+')</span>';
+    if(q.waiters&&q.waiters.length){h+=' &nbsp;<span style="color:#64748B">รอ ('+q.waiters.length+'):</span> '+q.waiters.map(w=>'<span style="color:#a855f7">'+w.agent+'</span>').join(', ');}
+    el.innerHTML=h;
+  }catch{}
+}
+pollGpuQueue();setInterval(pollGpuQueue,4000);
 </script>
 </body>
 </html>`;
