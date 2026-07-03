@@ -60,6 +60,17 @@ function selectActive(id) {
   return m.items[id];
 }
 
+// ลบรูปในคลัง (ทั้ง entry + ไฟล์จริง) — ห้ามลบตัวที่ active อยู่ (ต้องเลือกตัวอื่นก่อน)
+function remove(id) {
+  const m = load();
+  if (!m.items[id]) throw new Error(`ไม่พบ Mascot Ref id=${id}`);
+  if (m.activeId === id) throw new Error('ลบ Mascot Ref ที่ใช้งานอยู่ไม่ได้ — เลือกตัวอื่นเป็น active ก่อน');
+  const p = path.join(ROOT_DIR, m.items[id].file);
+  try { fs.unlinkSync(p); } catch {}
+  delete m.items[id];
+  save(m);
+}
+
 // base style prompt ล็อกไว้เสมอ (ไม่ให้ user แก้) — Mascot Detail (ถ้ามี) ต่อท้ายเป็นรายละเอียดเสริม
 function buildMascotWorkflow(seed, detail) {
   const base = 'masterpiece, best quality, black and white manga ink drawing, chibi bunny character, ' +
@@ -108,4 +119,4 @@ async function generateMascotRef(comfyCfg, seed, detail = '') {
   return { id, outputPath };
 }
 
-module.exports = { load, save, list, lastDetail, refPath, selectActive, generateMascotRef };
+module.exports = { load, save, list, lastDetail, refPath, selectActive, remove, generateMascotRef };

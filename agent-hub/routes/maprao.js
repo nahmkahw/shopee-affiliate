@@ -71,6 +71,12 @@ function register(req, res, url, rawUrl, method, deps) {
     catch (e) { return reply(res, 404, { ok: false, error: e.message }); }
   }
 
+  const deleteMatch = url.match(/^\/api\/maprao\/mascot\/([\w-]+)$/);
+  if (deleteMatch && method === 'DELETE') {
+    try { mascot.remove(deleteMatch[1]); return reply(res, 200, { ok: true }); }
+    catch (e) { return reply(res, 400, { ok: false, error: e.message }); }
+  }
+
   const mascotImgMatch = url.match(/^\/dashboard\/maprao\/mascot\/([\w-]+)$/);
   if (mascotImgMatch) {
     const item = mascot.list().find(it => it.id === mascotImgMatch[1]);

@@ -29,6 +29,8 @@ textarea:focus{border-color:#8B5E3C}
 .mcard img{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;background:#eee;cursor:pointer}
 .mcard .active-tag{position:absolute;top:6px;left:6px;background:#8B5E3C;color:#fff;font-size:10px;padding:2px 6px;border-radius:8px}
 .mcard .meta{padding:6px 8px;font-size:11px;color:#8B5E3C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mcard .del-btn{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:13px;line-height:22px;text-align:center;cursor:pointer;padding:0}
+.mcard .del-btn:hover{background:#b91c1c}
 `;
 
 function esc(s) {
@@ -49,7 +51,8 @@ function galleryCard(ROOT, job) {
 function mascotCard(item) {
   const title = item.detail ? `${esc(item.detail)} — คลิกเพื่อเลือกใช้` : 'คลิกเพื่อเลือกใช้';
   return `<div class="mcard ${item.active ? 'active' : ''}">
-    ${item.active ? '<span class="active-tag">✓ ใช้อยู่</span>' : ''}
+    ${item.active ? '<span class="active-tag">✓ ใช้อยู่</span>'
+      : `<button class="del-btn" onclick="event.stopPropagation();deleteMascot('${item.id}')" title="ลบรูปนี้">×</button>`}
     <img src="/dashboard/maprao/mascot/${item.id}" onclick="selectMascot('${item.id}')" title="${title}">
     ${item.detail ? `<div class="meta">${esc(item.detail)}</div>` : ''}
   </div>`;
@@ -115,6 +118,16 @@ async function selectMascot(id) {
     const r = await fetch('/api/maprao/mascot/' + id + '/select', { method: 'POST' });
     const j = await r.json();
     document.getElementById('mascot-msg').textContent = j.ok ? '✅ เลือกแล้ว' : '❌ ' + (j.error || 'error');
+    if (j.ok) location.reload();
+  } catch (e) { document.getElementById('mascot-msg').textContent = '❌ ' + e.message; }
+}
+async function deleteMascot(id) {
+  if (!confirm('ลบ Mascot Ref รูปนี้ถาวร? กู้คืนไม่ได้')) return;
+  document.getElementById('mascot-msg').textContent = '⏳ กำลังลบ...';
+  try {
+    const r = await fetch('/api/maprao/mascot/' + id, { method: 'DELETE' });
+    const j = await r.json();
+    document.getElementById('mascot-msg').textContent = j.ok ? '✅ ลบแล้ว' : '❌ ' + (j.error || 'error');
     if (j.ok) location.reload();
   } catch (e) { document.getElementById('mascot-msg').textContent = '❌ ' + e.message; }
 }
