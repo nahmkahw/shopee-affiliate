@@ -9,6 +9,8 @@ const path = require('path');
 const { spawn } = require('child_process');
 const mascot = require('../../agents/maprao/pipeline/mascot');
 const { renderDashboard } = require('../html/maprao');
+const { postNow } = require('../../lib/namkhao-bot-news');
+const { sendApprovalNotification } = require('../../lib/tg-approval');
 
 function reply(res, code, obj) {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -27,6 +29,33 @@ function readMeta(ROOT, id) {
   const p = path.join(ROOT, 'agents', 'maprao', 'gallery', id, 'meta.json');
   if (!fs.existsSync(p)) return null;
   try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; }
+}
+
+function pipelineRoot(ROOT) { return path.join(ROOT, 'agents', 'maprao', 'pipeline'); }
+function newsDir(ROOT) { return path.join(pipelineRoot(ROOT), 'news'); }
+
+function readNewsData(ROOT, id) {
+  const p = path.join(newsDir(ROOT), id, 'data.json');
+  if (!fs.existsSync(p)) return null;
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; }
+}
+
+function readFbCaption(ROOT, id) {
+  const p = path.join(newsDir(ROOT), id, 'content', 'facebook.md');
+  return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+}
+
+// ลบ _tg_queue.json entry ของ id นี้ (ถ้ามี) — กัน queue ค้าง shortId ที่ชี้ไปยังรายการที่ลบแล้ว
+function removeFromQueue(ROOT, id) {
+  const qFile = path.join(pipelineRoot(ROOT), '_tg_queue.json');
+  if (!fs.existsSync(qFile)) return;
+  try {
+    const q = JSON.parse(fs.readFileSync(qFile, 'utf8'));
+    for (const [shortId, entry] of Object.entries(q)) {
+      if ((typeof entry === 'object' ? entry.slug : entry) === id) delete q[shortId];
+    }
+    fs.writeFileSync(qFile, JSON.stringify(q, null, 2));
+  } catch {}
 }
 
 function getGallery(ROOT) {
@@ -95,6 +124,43 @@ function register(req, res, url, rawUrl, method, deps) {
       reply(res, 200, { ok: true, id });
       spawnRun(ROOT, ['--action', 'comic', '--id', id, '--prompt', prompt]);
     }).catch(e => { if (!res.headersSent) reply(res, 500, { ok: false, error: e.message }); });
+  }
+
+  // โพสต์ FB ตรงจาก dashboard (bypass Telegram approval — คนกดปุ่มคือคนอนุมัติ)
+  const postMatch = url.match(/^\/api\/maprao\/gallery\/([\w]+)\/post$/);
+  if (postMatch && method === 'POST') {
+    const id = postMatch[1];
+    if (!readNewsData(ROOT, id)) return reply(res, 404, { ok: false, error: 'ไม่พบรายการนี้' });
+    return postNow(pipelineRoot(ROOT), id, 'fb', {}).then(({ code, output }) => {
+      if (code === 0) return reply(res, 200, { ok: true });
+      return reply(res, 500, { ok: false, error: output.slice(-300) });
+    }).catch(e => reply(res, 500, { ok: false, error: e.message }));
+  }
+
+  // ส่ง Telegram approval ซ้ำด้วยข้อมูลเดิม (resend — ไม่ generate ใหม่)
+  const resendMatch = url.match(/^\/api\/maprao\/gallery\/([\w]+)\/resend$/);
+  if (resendMatch && method === 'POST') {
+    const id = resendMatch[1];
+    const data = readNewsData(ROOT, id);
+    if (!data) return reply(res, 404, { ok: false, error: 'ไม่พบรายการนี้' });
+    const fbCaption = readFbCaption(ROOT, id);
+    return sendApprovalNotification(id, data, fbCaption, {
+      pipelineRoot: pipelineRoot(ROOT), newsDir: newsDir(ROOT),
+      mode: 'immediate', emoji: '🥥', kind: 'การ์ตูนใหม่',
+    }).then(() => reply(res, 200, { ok: true })).catch(e => reply(res, 500, { ok: false, error: e.message }));
+  }
+
+  // ลบรายการ Gallery (gallery/{id}/ + pipeline/news/{id}/ + queue entry) — ห้ามลบตอนกำลังสร้าง
+  const galleryDeleteMatch = url.match(/^\/api\/maprao\/gallery\/([\w]+)$/);
+  if (galleryDeleteMatch && method === 'DELETE') {
+    const id = galleryDeleteMatch[1];
+    const meta = readMeta(ROOT, id);
+    if (!meta) return reply(res, 404, { ok: false, error: 'ไม่พบรายการนี้' });
+    if (meta.status === 'producing') return reply(res, 409, { ok: false, error: 'กำลังสร้างอยู่ — ลบตอนนี้ไม่ได้' });
+    fs.rmSync(path.join(ROOT, 'agents', 'maprao', 'gallery', id), { recursive: true, force: true });
+    fs.rmSync(path.join(newsDir(ROOT), id), { recursive: true, force: true });
+    removeFromQueue(ROOT, id);
+    return reply(res, 200, { ok: true });
   }
 
   const comicMatch = url.match(/^\/dashboard\/maprao\/comic\/([\w]+)$/);

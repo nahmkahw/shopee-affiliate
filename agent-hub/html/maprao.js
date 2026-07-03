@@ -20,9 +20,14 @@ textarea:focus{border-color:#8B5E3C}
 .gcard{background:#fff;border:1px solid #e5d5bd;border-radius:10px;overflow:hidden}
 .gcard img{width:100%;display:block;background:#eee}
 .gcard .meta{padding:8px 10px;font-size:12px}
+.gcard .actions{display:flex;gap:4px;padding:0 10px 10px}
+.gcard .actions button{flex:1;border:none;border-radius:6px;padding:5px 4px;font-size:11px;font-weight:600;cursor:pointer;background:#eee1cc;color:#8B5E3C}
+.gcard .actions button:hover{opacity:.85}
+.gcard .actions button.danger{background:#fecaca;color:#7f1d1d}
 .badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
 .b-producing{background:#fde68a;color:#78350f}
 .b-pending_approval{background:#bfdbfe;color:#1e3a8a}
+.b-posted{background:#bbf7d0;color:#14532d}
 .b-error{background:#fecaca;color:#7f1d1d}
 .mcard{position:relative;border-radius:10px;overflow:hidden;border:2px solid #e5d5bd;background:#fff}
 .mcard.active{border-color:#8B5E3C}
@@ -43,7 +48,12 @@ function galleryCard(ROOT, job) {
     <img src="/dashboard/maprao/comic/${job.id}" onerror="this.style.display='none'">
     <div class="meta">
       <span class="badge b-${status}">${status}</span>
-      <div style="margin-top:4px">${(job.prompt || '').substring(0, 60)}</div>
+      <div style="margin-top:4px">${esc((job.prompt || '').substring(0, 60))}</div>
+    </div>
+    <div class="actions">
+      <button onclick="postGallery('${job.id}')" title="โพสต์ Facebook ทันที">📤 โพสต์</button>
+      <button onclick="resendGallery('${job.id}')" title="ส่ง Telegram approval ซ้ำ">✈️ ส่ง TG</button>
+      <button class="danger" onclick="deleteGallery('${job.id}')" title="ลบรายการนี้">🗑️</button>
     </div>
   </div>`;
 }
@@ -93,6 +103,7 @@ function renderDashboard(ROOT, { gallery, mascotList, lastDetail }) {
 <div class="card">
   <h2 style="font-size:15px;margin-bottom:10px">Gallery</h2>
   <div class="grid" id="gallery">${cards}</div>
+  <div id="gallery-msg" style="font-size:12px;color:#8B5E3C;margin-top:10px;min-height:16px"></div>
 </div>
 
 <script>
@@ -130,6 +141,34 @@ async function deleteMascot(id) {
     document.getElementById('mascot-msg').textContent = j.ok ? '✅ ลบแล้ว' : '❌ ' + (j.error || 'error');
     if (j.ok) location.reload();
   } catch (e) { document.getElementById('mascot-msg').textContent = '❌ ' + e.message; }
+}
+async function postGallery(id) {
+  if (!confirm('โพสต์การ์ตูนนี้ขึ้น Facebook Page ทันทีเลย? (ไม่ผ่าน Telegram approval)')) return;
+  document.getElementById('gallery-msg').textContent = '⏳ กำลังโพสต์...';
+  try {
+    const r = await fetch('/api/maprao/gallery/' + id + '/post', { method: 'POST' });
+    const j = await r.json();
+    document.getElementById('gallery-msg').textContent = j.ok ? '✅ โพสต์แล้ว' : '❌ ' + (j.error || 'error');
+    if (j.ok) setTimeout(() => location.reload(), 1500);
+  } catch (e) { document.getElementById('gallery-msg').textContent = '❌ ' + e.message; }
+}
+async function resendGallery(id) {
+  document.getElementById('gallery-msg').textContent = '⏳ กำลังส่งเข้า Telegram...';
+  try {
+    const r = await fetch('/api/maprao/gallery/' + id + '/resend', { method: 'POST' });
+    const j = await r.json();
+    document.getElementById('gallery-msg').textContent = j.ok ? '✅ ส่งแล้ว ดูที่ Telegram' : '❌ ' + (j.error || 'error');
+  } catch (e) { document.getElementById('gallery-msg').textContent = '❌ ' + e.message; }
+}
+async function deleteGallery(id) {
+  if (!confirm('ลบรายการนี้ถาวร? กู้คืนไม่ได้')) return;
+  document.getElementById('gallery-msg').textContent = '⏳ กำลังลบ...';
+  try {
+    const r = await fetch('/api/maprao/gallery/' + id, { method: 'DELETE' });
+    const j = await r.json();
+    document.getElementById('gallery-msg').textContent = j.ok ? '✅ ลบแล้ว' : '❌ ' + (j.error || 'error');
+    if (j.ok) location.reload();
+  } catch (e) { document.getElementById('gallery-msg').textContent = '❌ ' + e.message; }
 }
 async function genComic() {
   const prompt = document.getElementById('prompt').value.trim();
