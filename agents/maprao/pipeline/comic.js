@@ -10,7 +10,6 @@
 
 const fs   = require('fs');
 const path = require('path');
-const { createCanvas, loadImage } = require('@napi-rs/canvas');
 
 const { generateComicPanels, generateFbCaption } = require('./comic-gen');
 const { generateSceneStill } = require('../../../lib/flux-kontext');
@@ -22,14 +21,11 @@ const mascot = require('./mascot');
 const STYLE_SUFFIX = 'Black and white manga ink drawing style, clean simple lineart, minimal shading, ' +
   'no color, monochrome, screentone shading, full body visible, detailed background.';
 
-// png → jpg (post.js/tg-approval คาดหวัง image.jpg)
-async function writeJpgCopy(pngPath, jpgPath) {
-  const img = await loadImage(pngPath);
-  const canvas = createCanvas(img.width, img.height);
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, img.width, img.height);
-  ctx.drawImage(img, 0, 0);
-  fs.writeFileSync(jpgPath, canvas.toBuffer('image/jpeg', 0.9));
+// copy ไฟล์ PNG ต้นฉบับตรงๆ ไปที่ path image.jpg (post.js/tg-approval คาดหวังชื่อไฟล์นี้)
+// — ไม่ re-encode เป็น JPEG จริง เพราะ @napi-rs/canvas ไม่ implement quality param
+// (ลอง 0.5-1.0 ได้ byte size เท่ากันทุกค่า) imgBB/FB ตรวจ format จาก magic bytes ไม่ใช่นามสกุล จึงรับ PNG ได้ปกติ
+function writeJpgCopy(pngPath, jpgPath) {
+  fs.copyFileSync(pngPath, jpgPath);
 }
 
 /**
