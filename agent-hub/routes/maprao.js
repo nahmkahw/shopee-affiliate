@@ -50,12 +50,15 @@ function register(req, res, url, rawUrl, method, deps) {
   if (url === '/dashboard/maprao') {
     const gallery = getGallery(ROOT);
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    return res.end(renderDashboard(ROOT, { gallery, mascotList: mascot.list() }));
+    return res.end(renderDashboard(ROOT, { gallery, mascotList: mascot.list(), lastDetail: mascot.lastDetail() }));
   }
 
   if (url === '/api/maprao/mascot/generate' && method === 'POST') {
-    spawnRun(ROOT, ['--action', 'gen-mascot-ref']);
-    return reply(res, 200, { ok: true, generating: true });
+    return getBody(req).then(body => {
+      const detail = (body.detail || '').trim();
+      spawnRun(ROOT, ['--action', 'gen-mascot-ref', ...(detail ? ['--detail', detail] : [])]);
+      return reply(res, 200, { ok: true, generating: true });
+    }).catch(e => { if (!res.headersSent) reply(res, 500, { ok: false, error: e.message }); });
   }
 
   if (url === '/api/maprao/mascot/list' && method === 'GET') {

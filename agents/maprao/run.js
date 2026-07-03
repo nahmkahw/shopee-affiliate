@@ -40,8 +40,8 @@ async function actionComic(prompt, id) {
   await require('./pipeline/comic').runComic(ctx, { prompt, id: actualId });
 }
 
-async function actionGenMascotRef() {
-  await mascot.generateMascotRef(COMFY_CFG, Math.floor(Math.random() * 1e9));
+async function actionGenMascotRef(detail) {
+  await mascot.generateMascotRef(COMFY_CFG, Math.floor(Math.random() * 1e9), detail || '');
 }
 
 function actionStatus(galleryId) {
@@ -61,6 +61,7 @@ const arg       = f => { const i = args.indexOf(f); return i !== -1 ? args[i + 1
 const action    = arg('--action') || 'status';
 const prompt    = arg('--prompt');
 const galleryId = arg('--id');
+const detail    = arg('--detail');
 
 // เขียน status='error' ตอน exit ผิดปกติ — กัน job ค้าง active (pattern เดียวกับมะปราง)
 let _exitError = null;
@@ -80,6 +81,6 @@ process.on('exit', code => {
 
 (async () => {
   if (action === 'comic')             await actionComic(prompt, galleryId);
-  else if (action === 'gen-mascot-ref') await actionGenMascotRef();
+  else if (action === 'gen-mascot-ref') await actionGenMascotRef(detail);
   else                                 actionStatus(galleryId);
 })().catch(e => { console.error('❌', e.message); _exitError = e.message; process.exit(1); });
