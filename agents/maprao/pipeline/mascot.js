@@ -1,30 +1,55 @@
 'use strict';
 /**
- * mascot.js — the single fixed chibi-bunny Mascot (no character registry, unlike มะปราง)
- * Storage: agents/maprao/mascot.json { ref_image, updated_at }
- * Mascot Ref generated once via AnythingXL T2I (B&W manga ink prompt), reused for every Comic Strip.
+ * mascot.js — คลัง Mascot Ref ของมะพร้าว (กระต่าย chibi) — เก็บได้หลายรูป เลือก 1 รูปเป็น "active"
+ * Storage: agents/maprao/mascot.json { activeId, items: { id: { file, created_at } } }
+ *          agents/maprao/mascot/{id}.png
+ * Mascot Ref ที่ active คือ anchor ที่ใช้กับทุก Comic Strip (แม้จะมีหลายรูปในคลัง ใช้ทีละรูปเดียว)
  */
 
 const fs   = require('fs');
 const path = require('path');
 const { submitImageWorkflow } = require('../../../lib/comfy-client-core');
 
-const MASCOT_JSON = path.join(__dirname, '..', 'mascot.json');
-const MASCOT_PNG  = path.join(__dirname, '..', 'mascot-ref.png');
+const ROOT_DIR     = path.join(__dirname, '..', '..', '..');
+const MASCOT_JSON  = path.join(__dirname, '..', 'mascot.json');
+const MASCOT_DIR   = path.join(__dirname, '..', 'mascot');
 
 function load() {
-  if (!fs.existsSync(MASCOT_JSON)) return {};
-  try { return JSON.parse(fs.readFileSync(MASCOT_JSON, 'utf8')); } catch { return {}; }
+  if (!fs.existsSync(MASCOT_JSON)) return { activeId: null, items: {} };
+  try {
+    const m = JSON.parse(fs.readFileSync(MASCOT_JSON, 'utf8'));
+    return { activeId: m.activeId || null, items: m.items || {} };
+  } catch { return { activeId: null, items: {} }; }
 }
 
-function save(mascot) {
-  fs.writeFileSync(MASCOT_JSON, JSON.stringify(mascot, null, 2));
+function save(m) {
+  fs.writeFileSync(MASCOT_JSON, JSON.stringify(m, null, 2));
 }
 
+// รายการ Mascot Ref ทั้งหมดในคลัง เรียงใหม่→เก่า พร้อม flag active
+function list() {
+  const { activeId, items } = load();
+  return Object.entries(items)
+    .map(([id, it]) => ({ id, file: it.file, created_at: it.created_at, active: id === activeId }))
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+}
+
+// path เต็มของ Mascot Ref ที่ active อยู่ (null ถ้ายังไม่มี/ไฟล์หาย)
 function refPath() {
-  const m = load();
-  const p = m.ref_image ? path.join(__dirname, '..', '..', '..', m.ref_image) : MASCOT_PNG;
+  const { activeId, items } = load();
+  const it = activeId && items[activeId];
+  if (!it) return null;
+  const p = path.join(ROOT_DIR, it.file);
   return fs.existsSync(p) ? p : null;
+}
+
+// เลือกรูปในคลังให้เป็น active Mascot Ref
+function selectActive(id) {
+  const m = load();
+  if (!m.items[id]) throw new Error(`ไม่พบ Mascot Ref id=${id}`);
+  m.activeId = id;
+  save(m);
+  return m.items[id];
 }
 
 function buildMascotWorkflow(seed) {
@@ -48,17 +73,25 @@ function buildMascotWorkflow(seed) {
 }
 
 /**
- * สร้าง Mascot Ref ใหม่ (AnythingXL T2I, B&W manga ink) — เขียนทับ mascot-ref.png เดิม
- * @returns {Promise<string>} outputPath
+ * สร้าง Mascot Ref ใหม่ (AnythingXL T2I, B&W manga ink) — เพิ่มเข้าคลังเป็นรูปใหม่ แล้วตั้งเป็น active ทันที
+ * @returns {Promise<{id, outputPath}>}
  */
 async function generateMascotRef(comfyCfg, seed) {
-  console.log('  🎨 ComfyUI T2I: สร้าง Mascot Ref (B&W manga ink)...');
+  console.log('  🎨 ComfyUI T2I: สร้าง Mascot Ref ใหม่ (B&W manga ink)...');
+  fs.mkdirSync(MASCOT_DIR, { recursive: true });
+  const id = Date.now().toString();
+  const outputPath = path.join(MASCOT_DIR, `${id}.png`);
   const timeout = comfyCfg.imageTimeoutMs || comfyCfg.timeoutMs || 300000;
-  const { outputPath, bytes } = await submitImageWorkflow(
-    comfyCfg, buildMascotWorkflow(seed), '7', MASCOT_PNG, timeout, 'maprao-img');
-  save({ ref_image: path.relative(path.join(__dirname, '..', '..', '..'), outputPath), updated_at: new Date().toISOString() });
-  console.log(`  ✅ Mascot Ref: ${outputPath} (${(bytes / 1024).toFixed(0)} KB)`);
-  return outputPath;
+  const { bytes } = await submitImageWorkflow(
+    comfyCfg, buildMascotWorkflow(seed), '7', outputPath, timeout, 'maprao-img');
+
+  const m = load();
+  m.items[id] = { file: path.relative(ROOT_DIR, outputPath), created_at: new Date().toISOString() };
+  m.activeId = id; // มาสคอตใหม่ล่าสุด = active โดย default (เลือกเปลี่ยนทีหลังได้จากคลัง)
+  save(m);
+
+  console.log(`  ✅ Mascot Ref ใหม่: ${outputPath} (${(bytes / 1024).toFixed(0)} KB)`);
+  return { id, outputPath };
 }
 
-module.exports = { load, save, refPath, generateMascotRef, MASCOT_PNG };
+module.exports = { load, save, list, refPath, selectActive, generateMascotRef };

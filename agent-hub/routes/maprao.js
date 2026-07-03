@@ -50,12 +50,31 @@ function register(req, res, url, rawUrl, method, deps) {
   if (url === '/dashboard/maprao') {
     const gallery = getGallery(ROOT);
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    return res.end(renderDashboard(ROOT, { gallery, mascotReady: !!mascot.refPath() }));
+    return res.end(renderDashboard(ROOT, { gallery, mascotList: mascot.list() }));
   }
 
   if (url === '/api/maprao/mascot/generate' && method === 'POST') {
     spawnRun(ROOT, ['--action', 'gen-mascot-ref']);
     return reply(res, 200, { ok: true, generating: true });
+  }
+
+  if (url === '/api/maprao/mascot/list' && method === 'GET') {
+    return reply(res, 200, { ok: true, items: mascot.list() });
+  }
+
+  const selectMatch = url.match(/^\/api\/maprao\/mascot\/([\w-]+)\/select$/);
+  if (selectMatch && method === 'POST') {
+    try { mascot.selectActive(selectMatch[1]); return reply(res, 200, { ok: true }); }
+    catch (e) { return reply(res, 404, { ok: false, error: e.message }); }
+  }
+
+  const mascotImgMatch = url.match(/^\/dashboard\/maprao\/mascot\/([\w-]+)$/);
+  if (mascotImgMatch) {
+    const item = mascot.list().find(it => it.id === mascotImgMatch[1]);
+    const ip = item && path.join(ROOT, item.file);
+    if (!ip || !fs.existsSync(ip)) { res.writeHead(404); return res.end(''); }
+    res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': fs.statSync(ip).size });
+    return fs.createReadStream(ip).pipe(res);
   }
 
   if (url === '/api/maprao/generate' && method === 'POST') {
