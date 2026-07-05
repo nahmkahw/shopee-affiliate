@@ -20,7 +20,8 @@ type: "speech"|"thought"|"shout"|"whisper"
 corner: "top-left"|"top-right"|"bottom-left"|"bottom-right"
 
 กฎ:
-- text_th = ภาษาไทยล้วน ≤${MAX_CHARS} ตัวอักษร เหมือนบทพูด/ความคิดของตัวละครต่อเหตุการณ์
+- รับ input ภาษาอะไรก็ได้ (ไทย/อังกฤษ/อื่น) แต่ text_th และ footer ต้องเป็น**ภาษาไทยเสมอ**
+- text_th = ภาษาไทยกระชับ ≤${MAX_CHARS} ตัวอักษร เหมือนบทพูด/ความคิดของตัวละครต่อเหตุการณ์
 - footer = ภาษาไทย สรุปเนื้อหาหรือบริบทสำคัญ 1-3 ประโยค ≤${FOOTER_MAX} ตัวอักษร (ยาวกว่า text_th ได้)
 - ถ้า input สั้น → text_th rephrase ให้น่ารัก/punchy; footer ขยายบริบทเล็กน้อย
 - ถ้า input ยาว/เป็นข่าว → text_th = reaction 1 ประโยค; footer = สรุปใจความสำคัญ
@@ -38,8 +39,6 @@ function normFooter(text) {
 function isValidBubble(text, type) {
   if (!text || text.length < 2) return false;
   if (!VALID_TYPES.includes(type)) return false;
-  const thaiCount = (text.match(/[฀-๿]/g) || []).length;
-  if (text.length > 4 && thaiCount < 3) return false;
   if (/[຀-໿]/.test(text)) return false;
   if (text.split(/\s+/).filter(Boolean).length > 20) return false;
   return true;
