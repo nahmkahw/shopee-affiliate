@@ -16,9 +16,10 @@
   .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px}
   .card h2{font-size:15px;margin-bottom:16px}
   label{display:block;font-size:12px;color:var(--dim);margin:14px 0 6px;font-weight:600}
-  input[type=text],textarea{width:100%;background:#0f1117;border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px}
-  textarea{min-height:60px;resize:vertical}
-  input:focus,textarea:focus{outline:none;border-color:var(--accent)}
+  input[type=text],textarea,select{width:100%;background:#0f1117;border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px}
+  textarea{min-height:120px;resize:vertical}
+  select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238892a4' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
   .drop{border:2px dashed var(--border);border-radius:10px;padding:24px;text-align:center;cursor:pointer;transition:all .15s;color:var(--dim)}
   .drop:hover,.drop.over{border-color:var(--accent);color:var(--text);background:rgba(168,85,247,.05)}
   .drop img{max-width:100%;max-height:180px;border-radius:8px;margin-top:10px}
@@ -34,6 +35,10 @@
   .item img{width:100%;aspect-ratio:1;object-fit:cover;display:block;cursor:pointer}
   .item .meta{padding:8px 10px;font-size:11px;color:var(--dim)}
   .item .meta .t{color:var(--text);font-size:12px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item .btns{display:flex;gap:4px;padding:6px 8px;border-top:1px solid var(--border)}
+  .item .btns button{flex:1;border:none;border-radius:6px;padding:5px 3px;font-size:11px;font-weight:600;cursor:pointer;background:#1e2130;color:var(--text)}
+  .item .btns button:hover{opacity:.8}.item .btns button.danger{background:#3b0f0f;color:var(--red)}
+  #gallery-msg{font-size:12px;color:var(--dim);margin-top:10px;min-height:16px}
   .empty{color:var(--dim);text-align:center;padding:40px}
   .toast{position:fixed;bottom:24px;right:24px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 18px;font-size:13px;opacity:0;transform:translateY(10px);transition:all .3s;pointer-events:none;z-index:99}
   .toast.show{opacity:1;transform:translateY(0)}
@@ -67,8 +72,13 @@
     <input type="range" id="faceWeight" min="0.6" max="1.6" step="0.1" value="1.1" style="width:100%;accent-color:var(--accent)"
            oninput="document.getElementById('fw-val').textContent=this.value">
 
+    <label>เลือกข่าว (ไม่บังคับ — เป็นเนื้อหาให้ AI สรุป)</label>
+    <select id="news-select" onchange="fillNewsText(this.value)">
+      <option value="">— เลือกข่าว หรือพิมพ์เองด้านล่าง —</option>
+    </select>
+
     <label>ข้อความในลูกโป่งคำพูด (ภาษาไทย)</label>
-    <textarea id="balloontext" placeholder="พิมพ์สิ่งที่ตัวละครพูด…" oninput="updateCounter();drawPreview()">กินข้าวแล้วบ่</textarea>
+    <textarea id="balloontext" placeholder="พิมพ์บทพูด หรือวางข่าวยาวแล้ว AI จะสรุปเป็น bubble text ให้อัตโนมัติ…" oninput="updateCounter();drawPreview()">กินข้าวแล้วบ่</textarea>
     <div class="counter ok" id="counter">ใส่ได้อีก — ตัว</div>
 
     <div id="preview-wrap">
@@ -83,6 +93,7 @@
   <div class="card">
     <h2>🖼️ รูปที่สร้างแล้ว <span id="count" style="color:var(--dim);font-weight:400"></span></h2>
     <div class="gallery" id="gallery"><div class="empty">กำลังโหลด...</div></div>
+    <div id="gallery-msg"></div>
   </div>
 </div>
 
@@ -349,6 +360,11 @@
         <div class="item">
           <img src="${API.replace('/api','')}/image/${it.id}/final.jpg?t=${it.created}" onclick="openItem('${it.id}')">
           <div class="meta"><div class="t" title="${esc(it.text||it.prompt)}">${badges} ${esc(it.text||it.prompt||'—')}</div>${fmtDate(it.created)}</div>
+          <div class="btns">
+            <button onclick="postGalleryItem('${it.id}')" title="โพสต์ Facebook ทันที">📤 โพสต์</button>
+            <button onclick="resendGalleryItem('${it.id}')" title="ส่ง Telegram approval ซ้ำ">✈️ TG</button>
+            <button class="danger" onclick="deleteGalleryItem('${it.id}')" title="ลบรายการนี้">🗑️</button>
+          </div>
         </div>`; }).join('');
     } catch { document.getElementById('gallery').innerHTML = '<div class="empty">โหลดแกลเลอรีไม่ได้</div>'; }
   }
@@ -365,6 +381,36 @@
     document.getElementById('v-fb').disabled = false;
     document.getElementById('v-ig').disabled = false;
     document.getElementById('viewer').classList.add('open');
+  }
+
+  // ── Gallery per-item actions ─────────────────────────────────────────────────
+  function setGalleryMsg(m) { document.getElementById('gallery-msg').textContent = m; }
+
+  async function postGalleryItem(id) {
+    setGalleryMsg('⏳ กำลังโพสต์ Facebook...');
+    try {
+      const j = await (await fetch(`${API}/gallery/${id}/post`, { method: 'POST' })).json();
+      setGalleryMsg(j.ok ? '✅ โพสต์ Facebook สำเร็จ' : '❌ ' + (j.error || 'error'));
+      if (j.ok) { toast('✅ โพสต์ FB สำเร็จ'); loadGallery(); }
+    } catch (e) { setGalleryMsg('❌ ' + e.message); }
+  }
+
+  async function resendGalleryItem(id) {
+    setGalleryMsg('⏳ กำลังส่งเข้า Telegram...');
+    try {
+      const j = await (await fetch(`${API}/gallery/${id}/resend`, { method: 'POST' })).json();
+      setGalleryMsg(j.ok ? '✅ ส่ง Telegram แล้ว — รอ Approve ใน chat' : '❌ ' + (j.error || 'error'));
+    } catch (e) { setGalleryMsg('❌ ' + e.message); }
+  }
+
+  async function deleteGalleryItem(id) {
+    if (!confirm('ลบรายการนี้ออกจาก Gallery?')) return;
+    setGalleryMsg('⏳ กำลังลบ...');
+    try {
+      const j = await (await fetch(`${API}/gallery/${id}`, { method: 'DELETE' })).json();
+      setGalleryMsg(j.ok ? '✅ ลบแล้ว' : '❌ ' + (j.error || 'error'));
+      if (j.ok) loadGallery();
+    } catch (e) { setGalleryMsg('❌ ' + e.message); }
   }
 
   async function postItem(platform) {
@@ -410,6 +456,32 @@
   function fmtDate(ts){ try{ return new Date(+ts).toLocaleString('th-TH',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch{return '';} }
   let tt; function toast(m){ const e=document.getElementById('toast'); e.textContent=m; e.classList.add('show'); clearTimeout(tt); tt=setTimeout(()=>e.classList.remove('show'),3000); }
 
+  // ════════════ News dropdown ════════════
+  let newsItems = [];
+  async function loadNews() {
+    try {
+      newsItems = await (await fetch(API + '/news')).json();
+      const sel = document.getElementById('news-select');
+      if (!newsItems.length) return;
+      const srcLabel = { manao: '📰 มะนาว', makrut: '⚽ มะกรูด' };
+      sel.innerHTML = '<option value="">— เลือกข่าว หรือพิมพ์เองด้านล่าง —</option>' +
+        newsItems.map((n, i) => {
+          const label = srcLabel[n.source] || n.source;
+          const date = n.published_at ? new Date(n.published_at).toLocaleDateString('th-TH', { month:'short', day:'numeric' }) : '';
+          return `<option value="${i}">${label} ${date} · ${esc(n.title).slice(0, 60)}</option>`;
+        }).join('');
+    } catch {}
+  }
+
+  function fillNewsText(idxStr) {
+    if (idxStr === '') return;
+    const n = newsItems[parseInt(idxStr, 10)];
+    if (!n) return;
+    const combined = n.title + (n.body ? '\n\n' + n.body : '');
+    document.getElementById('balloontext').value = combined;
+    updateCounter(); drawPreview();
+  }
+
   // โหลด active template → prefill (template = default, อัปโหลดเพื่อ override)
   async function loadTemplate() {
     try {
@@ -437,6 +509,7 @@
     await loadTemplate(); updateCounter(); drawPreview();
   });
   loadGallery();
+  loadNews();
 </script>
 </body>
 </html>

@@ -6,9 +6,11 @@
 
 const fs   = require('fs');
 const path = require('path');
-const { generateAnime }                      = require('../../agents/anime/anime-gen');
-const { renderBalloonOnImage }               = require('../../agents/anime/balloon-canvas');
+const { generateAnime }                         = require('../../agents/anime/anime-gen');
+const { renderBalloonOnImage }                  = require('../../agents/anime/balloon-canvas');
 const { postFacebookImage, postInstagramImage } = require('../../agents/anime/post-anime');
+const { sendAnimeApproval }                     = require('../../agents/anime/anime-tg');
+const { summarizeBubble }                       = require('../../agents/anime/bubble-gen');
 
 function parseMultipart(buffer, contentType) {
   const m = /boundary=(.+)$/.exec(contentType || '');
@@ -42,6 +44,8 @@ function parseMultipart(buffer, contentType) {
   }
   return { fields, file };
 }
+
+const jsonReply = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); };
 
 function handleAnimeGenerate(req, res, ROOT) {
   const chunks = [];
@@ -127,13 +131,9 @@ function register(req, res, url, rawUrl, method, deps) {
     if (url === '/dashboard/anime/api/list' && method === 'GET') {
       const galDir = path.join(ROOT, 'agents', 'anime', 'gallery');
       let items = [];
-      try {
-        items = fs.readdirSync(galDir)
-          .filter(d => fs.existsSync(path.join(galDir, d, 'meta.json')))
-          .map(id => { try { return { id, ...JSON.parse(fs.readFileSync(path.join(galDir, id, 'meta.json'), 'utf8')) }; } catch { return null; } })
-          .filter(Boolean)
-          .sort((a, b) => (b.created || 0) - (a.created || 0));
-      } catch {}
+      try { items = fs.readdirSync(galDir).filter(d => fs.existsSync(path.join(galDir, d, 'meta.json')))
+        .map(id => { try { return { id, ...JSON.parse(fs.readFileSync(path.join(galDir, id, 'meta.json'), 'utf8')) }; } catch { return null; } })
+        .filter(Boolean).sort((a, b) => (b.created || 0) - (a.created || 0)); } catch {}
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       return res.end(JSON.stringify(items));
     }
@@ -162,28 +162,23 @@ function register(req, res, url, rawUrl, method, deps) {
       res._claimed = true;
       req.on('data', d => { body += d; if (body.length > 256 * 1024) req.destroy(); });
       req.on('end', async () => {
-        const reply = (c, o) => { res.writeHead(c, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(o)); };
         try {
-          // วาดลูกโป่งฝั่ง server (balloon-canvas.js) — ชุดเดียวกับ Telegram bot
           const { id, text = '', balloon } = JSON.parse(body || '{}');
-          if (!id) return reply(400, { ok: false, error: 'missing id' });
+          if (!id) return jsonReply(res, 400, { ok: false, error: 'missing id' });
           const dir = path.join(ROOT, 'agents', 'anime', 'gallery', String(id).replace(/[^\d]/g, ''));
           const animePath = path.join(dir, 'anime.png');
-          if (!fs.existsSync(animePath)) return reply(404, { ok: false, error: 'ไม่พบรูป id นี้' });
-  
+          if (!fs.existsSync(animePath)) return jsonReply(res, 404, { ok: false, error: 'ไม่พบรูป id นี้' });
           const tailFrac = (balloon && balloon.tailFrac) || { x: 0.46, y: 0.46 };
-          await renderBalloonOnImage(animePath, text, tailFrac, path.join(dir, 'final.jpg'));
-  
+          const { text: bubbleText, type: bubbleType } = await summarizeBubble(text);
+          await renderBalloonOnImage(animePath, bubbleText, tailFrac, path.join(dir, 'final.jpg'), { template: bubbleType });
           try {
             const metaPath = path.join(dir, 'meta.json');
             const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8').replace(/^﻿/, ''));
-            meta.text = text;
-            meta.balloon = { tailFrac };
+            meta.text = text; meta.bubbleText = bubbleText; meta.bubbleType = bubbleType; meta.balloon = { tailFrac };
             fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf8');
           } catch {}
-  
-          reply(200, { ok: true });
-        } catch (e) { reply(200, { ok: false, error: e.message.substring(0, 200) }); }
+          jsonReply(res, 200, { ok: true });
+        } catch (e) { jsonReply(res, 200, { ok: false, error: e.message.substring(0, 200) }); }
       });
       return;
     }
@@ -194,13 +189,11 @@ function register(req, res, url, rawUrl, method, deps) {
       res._claimed = true;
       req.on('data', d => { body += d; if (body.length > 1024 * 1024) req.destroy(); });
       req.on('end', async () => {
-        const reply = (c, o) => { res.writeHead(c, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(o)); };
         try {
           const { id, platforms = [], caption = '' } = JSON.parse(body || '{}');
           const cleanId = String(id).replace(/[^\d]/g, '');
           const imgPath = path.join(ROOT, 'agents', 'anime', 'gallery', cleanId, 'final.jpg');
-          if (!cleanId || !fs.existsSync(imgPath)) return reply(404, { ok: false, error: 'ไม่พบรูป' });
-  
+          if (!cleanId || !fs.existsSync(imgPath)) return jsonReply(res, 404, { ok: false, error: 'ไม่พบรูป' });
           const results = {};
           if (platforms.includes('fb')) {
             try { const pid = await postFacebookImage(imgPath, caption); results.fb = { ok: true, id: pid }; console.log(`[Hub] 🎨→FB ${cleanId}: ${pid}`); }
@@ -210,39 +203,58 @@ function register(req, res, url, rawUrl, method, deps) {
             try { const pid = await postInstagramImage(imgPath, caption); results.ig = { ok: true, id: pid }; console.log(`[Hub] 🎨→IG ${cleanId}: ${pid}`); }
             catch (e) { results.ig = { ok: false, error: e.message }; console.log(`[Hub] ❌ IG: ${e.message}`); }
           }
-  
-          // อัปเดต meta: posted platforms
-          try {
-            const mp = path.join(ROOT, 'agents', 'anime', 'gallery', cleanId, 'meta.json');
-            const meta = JSON.parse(fs.readFileSync(mp, 'utf8').replace(/^﻿/, ''));
-            meta.posted = meta.posted || {};
-            for (const p of ['fb', 'ig']) if (results[p] && results[p].ok) meta.posted[p] = Date.now();
-            if (caption) meta.caption = caption;
-            fs.writeFileSync(mp, JSON.stringify(meta, null, 2), 'utf8');
-          } catch {}
-  
-          reply(200, { ok: true, results });
-        } catch (e) { reply(200, { ok: false, error: e.message.substring(0, 200) }); }
+          try { const mp = path.join(ROOT,'agents','anime','gallery',cleanId,'meta.json'), meta = JSON.parse(fs.readFileSync(mp,'utf8').replace(/^﻿/,'')); meta.posted=meta.posted||{}; for (const p of ['fb','ig']) if (results[p]&&results[p].ok) meta.posted[p]=Date.now(); if (caption) meta.caption=caption; fs.writeFileSync(mp,JSON.stringify(meta,null,2),'utf8'); } catch {}
+          jsonReply(res, 200, { ok: true, results });
+        } catch (e) { jsonReply(res, 200, { ok: false, error: e.message.substring(0, 200) }); }
       });
       return;
     }
   
+    // ── Gallery per-item actions ─────────────────────────────────────────────────
+    const galDel = url.match(/^\/dashboard\/anime\/api\/gallery\/([\w]+)$/);
+    if (galDel && method === 'DELETE') {
+      const dir = path.join(ROOT, 'agents', 'anime', 'gallery', galDel[1].replace(/[^\d]/g, ''));
+      if (!fs.existsSync(dir)) return jsonReply(res, 404, { ok: false, error: 'ไม่พบรายการนี้' });
+      fs.rmSync(dir, { recursive: true, force: true }); return jsonReply(res, 200, { ok: true });
+    }
+    const galPost = url.match(/^\/dashboard\/anime\/api\/gallery\/([\w]+)\/post$/);
+    if (galPost && method === 'POST') {
+      res._claimed = true;
+      const cleanId = galPost[1].replace(/[^\d]/g, ''), dir = path.join(ROOT, 'agents', 'anime', 'gallery', cleanId), final = path.join(dir, 'final.jpg');
+      if (!fs.existsSync(final)) return jsonReply(res, 404, { ok: false, error: 'ไม่พบรูป' });
+      let cap = ''; try { const m = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8').replace(/^﻿/, '')); cap = m.bubbleText || m.text || ''; } catch {}
+      postFacebookImage(final, cap).then(pid => {
+        try { const mp = path.join(dir, 'meta.json'), meta = JSON.parse(fs.readFileSync(mp, 'utf8').replace(/^﻿/, '')); meta.posted = meta.posted || {}; meta.posted.fb = Date.now(); fs.writeFileSync(mp, JSON.stringify(meta, null, 2), 'utf8'); } catch {}
+        jsonReply(res, 200, { ok: true, id: pid });
+      }).catch(e => jsonReply(res, 500, { ok: false, error: e.message.substring(0, 200) }));
+      return;
+    }
+    const galResend = url.match(/^\/dashboard\/anime\/api\/gallery\/([\w]+)\/resend$/);
+    if (galResend && method === 'POST') {
+      res._claimed = true;
+      const cleanId = galResend[1].replace(/[^\d]/g, ''), dir = path.join(ROOT, 'agents', 'anime', 'gallery', cleanId), final = path.join(dir, 'final.jpg');
+      if (!fs.existsSync(final)) return jsonReply(res, 404, { ok: false, error: 'ไม่พบรูป' });
+      let meta = {}; try { meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8').replace(/^﻿/, '')); } catch {}
+      sendAnimeApproval(cleanId, meta, final)
+        .then(() => jsonReply(res, 200, { ok: true }))
+        .catch(e => jsonReply(res, 500, { ok: false, error: e.message.substring(0, 200) }));
+      return;
+    }
+
     // ตั้ง active template สำหรับ Telegram bot: { id, time }
     if (url === '/dashboard/anime/api/schedule' && method === 'POST') {
       let body = '';
       res._claimed = true;
       req.on('data', d => { body += d; if (body.length > 64 * 1024) req.destroy(); });
       req.on('end', () => {
-        const reply = (c, o) => { res.writeHead(c, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(o)); };
         try {
           const { id, time } = JSON.parse(body || '{}');
           const cleanId = String(id).replace(/[^\d]/g, '');
           const dir = path.join(ROOT, 'agents', 'anime', 'gallery', cleanId);
-          const metaPath = path.join(dir, 'meta.json');
-          const srcPath  = path.join(dir, 'source.jpg');
+          const metaPath = path.join(dir, 'meta.json'), srcPath = path.join(dir, 'source.jpg');
           if (!cleanId || !fs.existsSync(srcPath) || !fs.existsSync(metaPath))
-            return reply(404, { ok: false, error: 'ไม่พบรูป/ต้นแบบ' });
-          if (time && !/^\d{1,2}:\d{2}$/.test(time)) return reply(400, { ok: false, error: 'เวลาต้องเป็น HH:MM' });
+            return jsonReply(res, 404, { ok: false, error: 'ไม่พบรูป/ต้นแบบ' });
+          if (time && !/^\d{1,2}:\d{2}$/.test(time)) return jsonReply(res, 400, { ok: false, error: 'เวลาต้องเป็น HH:MM' });
   
           const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8').replace(/^﻿/, ''));
           const template = {
@@ -257,12 +269,24 @@ function register(req, res, url, rawUrl, method, deps) {
           fs.writeFileSync(path.join(ROOT, 'agents', 'anime', 'active-template.json'),
             JSON.stringify(template, null, 2), 'utf8');
           console.log(`[Hub] 📌 anime active template = ${cleanId}${time ? ' @ ' + time : ''}`);
-          reply(200, { ok: true });
-        } catch (e) { reply(200, { ok: false, error: e.message.substring(0, 200) }); }
+          jsonReply(res, 200, { ok: true });
+        } catch (e) { jsonReply(res, 200, { ok: false, error: e.message.substring(0, 200) }); }
       });
       return;
     }
   
+  if (url === '/dashboard/anime/api/news' && method === 'GET') {
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000, news = [];
+    for (const [src, nd] of [['manao', path.join(ROOT,'agents','manao','pipeline','news')],['makrut', path.join(ROOT,'agents','makrut','pipeline','news')]]) {
+      if (!fs.existsSync(nd)) continue;
+      for (const slug of fs.readdirSync(nd)) { const dp = path.join(nd, slug, 'data.json'); if (!fs.existsSync(dp)) continue;
+        try { const d = JSON.parse(fs.readFileSync(dp,'utf8')); if (new Date(d.scraped_at||d.published_at||0).getTime() < cutoff) continue;
+          news.push({ source: src, slug, title: d.title, body: d.body||'', published_at: d.published_at, scraped_at: d.scraped_at }); } catch {} }
+    }
+    news.sort((a,b) => new Date(b.scraped_at||b.published_at) - new Date(a.scraped_at||a.published_at));
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
+    return res.end(JSON.stringify(news.slice(0, 50)));
+  }
 
   return false;
 }
