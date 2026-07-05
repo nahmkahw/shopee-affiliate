@@ -303,7 +303,8 @@ node agents\makrut\pipeline\makrut.js --resend
 
 สร้างรูปตัวละครอนิเมะจากรูปคนต้นแบบ + ลูกโป่งคำพูด ผ่าน Dashboard + Telegram Bot
 
-- **Bubble AI (`agents/anime/bubble-gen.js`):** `summarizeBubble(rawText)` → Typhoon2 สรุป/rephrase ข้อความเป็น bubble text + type (speech/thought/shout/whisper) — pattern เดียวกับ maprao: isValid + normBubble + retry 3 ครั้ง → fallback raw text; ทั้ง bot และ dashboard ผ่าน `renderBalloonOnImage` ชุดเดียวกัน
+- **Bubble AI (`agents/anime/bubble-gen.js`):** `summarizeBubble(rawText)` → Typhoon2 สรุป/rephrase ข้อความเป็น bubble text + type (speech/thought) + corner — pattern เดียวกับ maprao: isValid + normBubble + retry 3 ครั้ง → fallback raw text; ทั้ง bot และ dashboard ผ่าน `renderBalloonOnImage` ชุดเดียวกัน
+- **Bubble style (maprao-compatible):** ใช้ `lib/manga-bubble.js` `drawBubble()` ร่วมกับ maprao — compact fixed-corner bubble (AI เลือก corner อัตโนมัติ), ไม่มี drag-tail preview; `balloon-canvas.js` เป็น thin wrapper ของ `lib/manga-bubble`
 - **News Dropdown:** `GET /dashboard/anime/api/news` ดึงข่าว 7 วันล่าสุดจาก manao + makrut รวมกัน (sort by date) → dropdown ใน dashboard เลือกแล้ว populate textarea ด้วย `title + body` → `summarizeBubble` จะสรุปเป็น bubble text อัตโนมัติตอน generate
 - env: `ANIME_TELEGRAM_BOT_TOKEN`, `ANIME_TELEGRAM_CHAT_ID`, `ANIME_BUBBLE_MAXCHARS` (default 60)
 

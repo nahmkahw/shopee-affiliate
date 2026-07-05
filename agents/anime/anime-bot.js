@@ -127,13 +127,13 @@ async function handleText(text, overrideSource) {
     });
 
     await send('💬 AI กำลังสรุปบทพูด...');
-    const { text: bubbleText, type: bubbleType } = await summarizeBubble(text);
-    console.log(`  [bot ${id}] bubble: [${bubbleType}] "${bubbleText}"`);
-    await renderBalloonOnImage(animePath, bubbleText, tailFrac, finalPath, { template: bubbleType });
+    const { text: bubbleText, type: bubbleType, corner: bubbleCorner } = await summarizeBubble(text);
+    console.log(`  [bot ${id}] bubble: [${bubbleType}@${bubbleCorner}] "${bubbleText}"`);
+    await renderBalloonOnImage(animePath, bubbleText, bubbleCorner, finalPath, { type: bubbleType });
 
     try { fs.copyFileSync(src, path.join(dir, 'source.jpg')); } catch {}
     fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({
-      prompt, text, bubbleText, bubbleType, faceWeight, balloon: { tailFrac },
+      prompt, text, bubbleText, bubbleType, bubbleCorner, faceWeight,
       fromTemplate: tpl ? tpl.templateId : null, created: Number(id),
     }, null, 2), 'utf8');
 

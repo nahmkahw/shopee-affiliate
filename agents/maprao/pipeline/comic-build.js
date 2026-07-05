@@ -31,16 +31,7 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function wrapText(ctx, text, maxW) {
-  const lines = []; let cur = '';
-  const toks = /\s/.test(text) ? text.split(/(\s+)/) : [...text];
-  for (const tk of toks) {
-    if (ctx.measureText(cur + tk).width > maxW && cur) { lines.push(cur.trimEnd()); cur = tk.trimStart(); }
-    else cur += tk;
-  }
-  if (cur.trim() || !lines.length) lines.push(cur.trimEnd());
-  return lines.slice(0, 2); // ≤2 บรรทัด/บอลลูน
-}
+const { drawBubble, wrapText } = require('../../../lib/manga-bubble');
 
 // วาด panel image ลง cell แบบ cover + กรอบ + เลขช่อง
 async function drawPanel(ctx, imgPath, cx, cy, cell, panelNum) {
@@ -68,64 +59,6 @@ async function drawPanel(ctx, imgPath, cx, cy, cell, panelNum) {
   ctx.textBaseline = 'alphabetic';
 }
 
-// มุม cell → พิกัดกรอบ bubble (เว้นระยะจากขอบ panel)
-function bubbleBox(corner, cx, cy, cell, w, h) {
-  const m = Math.round(cell * 0.06);
-  const left = corner.includes('left') ? cx + m : cx + cell - m - w;
-  const top  = corner.includes('top')  ? cy + m : cy + cell - m - h;
-  return { left, top };
-}
-
-// speech bubble: rounded rect เล็ก + หางแหลมชี้เข้ากลาง panel
-function drawSpeechBubble(ctx, box, w, h, corner) {
-  roundRect(ctx, box.left, box.top, w, h, 14);
-  ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.stroke();
-  const tailX = corner.includes('left') ? box.left + w * 0.28 : box.left + w * 0.72;
-  const tailY = corner.includes('top') ? box.top + h : box.top;
-  const dy = corner.includes('top') ? 16 : -16;
-  ctx.beginPath();
-  ctx.moveTo(tailX - 10, tailY);
-  ctx.lineTo(tailX + 10, tailY);
-  ctx.lineTo(tailX, tailY + dy);
-  ctx.closePath();
-  ctx.fill(); ctx.stroke();
-}
-
-// thought bubble: รูปทรงมนกว่า (near-oval) + วงกลมเล็กไล่ระดับชี้เข้ากลาง panel
-function drawThoughtBubble(ctx, box, w, h, corner) {
-  roundRect(ctx, box.left, box.top, w, h, h / 2);
-  ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.stroke();
-  const baseX = corner.includes('left') ? box.left + w * 0.22 : box.left + w * 0.78;
-  const baseY = corner.includes('top') ? box.top + h : box.top;
-  const dir = corner.includes('top') ? 1 : -1;
-  const sizes = [11, 7, 4];
-  sizes.forEach((r, i) => {
-    ctx.beginPath();
-    ctx.arc(baseX + i * dir * 4, baseY + dir * (14 + i * 14), r, 0, Math.PI * 2);
-    ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.stroke();
-  });
-}
-
-// วาด Bubble (speech/thought) ในมุมที่กำหนด — คืนไม่มีค่า (สั่งวาดเท่านั้น)
-function drawBubble(ctx, bubble, cx, cy, cell) {
-  if (!bubble) return;
-  const fontSize = Math.round(cell * 0.05);
-  ctx.font = `${fontSize}px Tahoma`;
-  const maxW = cell * 0.5;
-  const lines = wrapText(ctx, bubble.text_th, maxW);
-  const textW = Math.max(...lines.map(l => ctx.measureText(l).width));
-  const w = Math.min(cell * 0.62, textW + 28);
-  const h = lines.length * (fontSize * 1.3) + 20;
-  const box = bubbleBox(bubble.corner, cx, cy, cell, w, h);
-
-  if (bubble.type === 'thought') drawThoughtBubble(ctx, box, w, h, bubble.corner);
-  else drawSpeechBubble(ctx, box, w, h, bubble.corner);
-
-  ctx.fillStyle = '#000'; ctx.textAlign = 'center';
-  lines.forEach((l, i) => {
-    ctx.fillText(l, box.left + w / 2, box.top + 10 + fontSize * 0.9 + i * fontSize * 1.3);
-  });
-}
 
 /**
  * ประกอบหน้าการ์ตูน 2×2
@@ -137,10 +70,26 @@ function drawBubble(ctx, bubble, cx, cy, cell) {
  */
 async function buildComicPage(panels, imagePaths, outPath, opts = {}) {
   registerFont();
-  const cell   = (PAGE - 2 * PAD - GUTTER) / 2;
-  const footerH = opts.footerCaption ? Math.round(PAGE * 0.05) : 0;
-  const pageH  = 2 * PAD + 2 * cell + GUTTER + footerH;
+  const cell = (PAGE - 2 * PAD - GUTTER) / 2;
 
+  // pre-compute footer layout (temp canvas สำหรับวัดข้อความก่อนสร้าง canvas จริง)
+  let footerH = 0, footerLines = [], footerFontSize = 0;
+  if (opts.storyPrompt) {
+    const tmpCtx = createCanvas(PAGE, 100).getContext('2d');
+    tmpCtx.font = '16px Tahoma';
+    const maxW          = PAGE - 2 * PAD;
+    const MAX_FOOTER_F  = Math.round(PAGE * 0.022);
+    const MIN_FOOTER_F  = Math.round(PAGE * 0.014);
+    footerFontSize = MAX_FOOTER_F;
+    for (; footerFontSize >= MIN_FOOTER_F; footerFontSize--) {
+      tmpCtx.font = `${footerFontSize}px Tahoma`;
+      footerLines = wrapText(tmpCtx, opts.storyPrompt, maxW, 6);
+      if (footerLines.length <= 4) break;
+    }
+    footerH = footerLines.length * footerFontSize * 1.5 + PAD * 2;
+  }
+
+  const pageH = 2 * PAD + 2 * cell + GUTTER + Math.round(footerH);
   const canvas = createCanvas(PAGE, pageH);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, PAGE, pageH);
@@ -153,10 +102,21 @@ async function buildComicPage(panels, imagePaths, outPath, opts = {}) {
     drawBubble(ctx, panels[i].bubble, cx, cy, cell);
   }
 
-  if (opts.footerCaption) {
-    ctx.font = `italic ${Math.round(footerH * 0.55)}px Tahoma`;
-    ctx.fillStyle = '#000'; ctx.textAlign = 'center';
-    ctx.fillText(opts.footerCaption, PAGE / 2, PAD + 2 * cell + GUTTER + footerH * 0.68);
+  if (opts.storyPrompt && footerLines.length) {
+    const footerY = 2 * PAD + 2 * cell + GUTTER;
+    const lineH   = footerFontSize * 1.5;
+    // เส้นแบ่ง
+    ctx.strokeStyle = '#bbb'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(PAD, footerY + PAD * 0.5);
+    ctx.lineTo(PAGE - PAD, footerY + PAD * 0.5);
+    ctx.stroke();
+    // ข้อความเนื้อเรื่อง
+    ctx.font = `${footerFontSize}px Tahoma`;
+    ctx.fillStyle = '#222'; ctx.textAlign = 'center';
+    footerLines.forEach((l, i) => {
+      ctx.fillText(l, PAGE / 2, footerY + PAD + footerFontSize * 0.9 + i * lineH);
+    });
   }
 
   fs.writeFileSync(outPath, canvas.toBuffer('image/png'));

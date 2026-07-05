@@ -172,15 +172,13 @@ function register(req, res, url, rawUrl, method, deps) {
           const animePath = path.join(dir, 'anime.png');
           if (!fs.existsSync(animePath)) return reply(404, { ok: false, error: 'ไม่พบรูป id นี้' });
   
-          const tailFrac = (balloon && balloon.tailFrac) || { x: 0.46, y: 0.46 };
-          const { text: bubbleText, type: bubbleType } = await summarizeBubble(text);
-          await renderBalloonOnImage(animePath, bubbleText, tailFrac, path.join(dir, 'final.jpg'), { template: bubbleType });
+          const { text: bubbleText, type: bubbleType, corner: bubbleCorner } = await summarizeBubble(text);
+          await renderBalloonOnImage(animePath, bubbleText, bubbleCorner, path.join(dir, 'final.jpg'), { type: bubbleType });
 
           try {
             const metaPath = path.join(dir, 'meta.json');
             const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8').replace(/^﻿/, ''));
-            meta.text = text; meta.bubbleText = bubbleText; meta.bubbleType = bubbleType;
-            meta.balloon = { tailFrac };
+            meta.text = text; meta.bubbleText = bubbleText; meta.bubbleType = bubbleType; meta.bubbleCorner = bubbleCorner;
             fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf8');
           } catch {}
   
