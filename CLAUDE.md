@@ -294,6 +294,16 @@ node agents\makrut\pipeline\makrut.js --resend
 - **Trigger:** on-demand เท่านั้นผ่าน dashboard (`/dashboard/maprao`, `/api/maprao/generate`) — ไม่มี scheduler/cron ประจำวัน
 - env: `MAPRAO_COMIC_SIZE` (default 1080), `MAPRAO_COMIC_MAXLINE` (default 40)
 
+### Agent อะนิเมะ (`agents/anime/`)
+
+สร้างรูปตัวละครอนิเมะจากรูปคนต้นแบบ + ลูกโป่งคำพูด ผ่าน Dashboard + Telegram Bot
+
+- **Bubble AI (`agents/anime/bubble-gen.js`):** `summarizeBubble(rawText)` → Typhoon2 สรุป/rephrase ข้อความเป็น bubble text + type (speech/thought) + corner — pattern เดียวกับ maprao: isValid + normBubble + retry 3 ครั้ง → fallback raw text; ทั้ง bot และ dashboard ผ่าน `renderBalloonOnImage` ชุดเดียวกัน
+- **Bubble style (maprao-compatible):** ใช้ `lib/manga-bubble.js` `drawBubble()` ร่วมกับ maprao — compact fixed-corner bubble (AI เลือก corner อัตโนมัติ), ไม่มี drag-tail preview; `balloon-canvas.js` เป็น thin wrapper ของ `lib/manga-bubble`
+- **Gallery per-item actions (เหมือน maprao):** ปุ่ม 📤 โพสต์ FB / ✈️ ส่ง TG approval ซ้ำ / 🗑️ ลบ บน card แต่ละใบ — route: `DELETE /gallery/:id`, `POST /gallery/:id/post`, `POST /gallery/:id/resend`; Telegram resend ใช้ `agents/anime/anime-tg.js` `sendAnimeApproval()` ส่งรูปพร้อมปุ่ม callback ไปยัง anime bot
+- **News Dropdown:** `GET /dashboard/anime/api/news` ดึงข่าว 7 วันล่าสุดจาก manao + makrut รวมกัน (sort by date) → dropdown ใน dashboard เลือกแล้ว populate textarea ด้วย `title + body` → `summarizeBubble` จะสรุปเป็น bubble text อัตโนมัติตอน generate
+- env: `ANIME_TELEGRAM_BOT_TOKEN`, `ANIME_TELEGRAM_CHAT_ID`, `ANIME_BUBBLE_MAXCHARS` (default 60)
+
 ### Agent มะกรูด (`agents/makrut/`)
 
 FIFA World Cup 2026 news pipeline — ทำงานเหมือน manao แต่ scrape จากแหล่งข่าว FIFA/กีฬา
