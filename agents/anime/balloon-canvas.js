@@ -202,14 +202,45 @@ function drawBalloon(ctx, W, H, text, tailFrac, opts = {}) {
   else drawSpeech(ctx, bx, by, bw, bh, tail, pad, r, border, fontSize, lineH, text);
 }
 
+function drawFooter(ctx, footerCaption, W, imgH) {
+  const footerH = Math.round(W * 0.08);
+  const fontSize = Math.round(footerH * 0.28);
+  const lineH = fontSize * 1.4;
+  const maxW = W * 0.9;
+
+  ctx.font = `italic ${fontSize}px Sarabun, Tahoma, sans-serif`;
+
+  // word-wrap: split on spaces for latin, char-by-char for Thai
+  const words = footerCaption.replace(/\s+/g, ' ').trim();
+  const lines = [];
+  let cur = '';
+  for (const ch of words) {
+    if (ctx.measureText(cur + ch).width > maxW && cur) { lines.push(cur.trimEnd()); cur = ch; }
+    else cur += ch;
+  }
+  if (cur) lines.push(cur.trimEnd());
+
+  const textBlockH = lines.length * lineH;
+  const y0 = imgH + (footerH - textBlockH) / 2 + fontSize;
+
+  ctx.fillStyle = '#111'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, y0 + i * lineH));
+}
+
 async function renderBalloonOnImage(baseImagePath, text, tailFrac, outPath, opts = {}) {
   ensureFont();
   const img = await loadImage(baseImagePath);
   const W = img.width, H = img.height;
-  const canvas = createCanvas(W, H);
+  const footerH = opts.footerCaption ? Math.round(W * 0.08) : 0;
+  const canvas = createCanvas(W, H + footerH);
   const ctx = canvas.getContext('2d');
+
+  // white background (visible in footer area)
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H + footerH);
   ctx.drawImage(img, 0, 0, W, H);
   if (text && text.trim()) drawBalloon(ctx, W, H, text, tailFrac, opts);
+  if (opts.footerCaption) drawFooter(ctx, opts.footerCaption, W, H);
+
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, canvas.toBuffer('image/jpeg', 95));
   return outPath;

@@ -93,8 +93,12 @@
     </div>
 
     <div id="preview-wrap">
-      <canvas id="preview-canvas" width="320" height="320"></canvas>
-      <div style="font-size:11px;color:var(--dim);margin-top:4px">bubble วางที่มุมที่เลือก — เลือก bottom corner เพื่อไม่บังหน้าตัวละคร</div>
+      <canvas id="preview-canvas" width="320" height="346"></canvas>
+      <div style="font-size:11px;color:var(--dim);margin-top:4px">bubble วางที่มุมที่เลือก · แถบขาวด้านล่าง = footer caption (AI สรุปอัตโนมัติ)</div>
+    </div>
+    <div id="footer-result" style="margin-top:8px;display:none;background:#111;border-radius:8px;padding:8px 12px">
+      <div style="font-size:11px;color:var(--dim);margin-bottom:4px">Footer caption (AI สรุป):</div>
+      <div id="footer-text" style="font-size:13px;color:var(--text);font-style:italic;line-height:1.5"></div>
     </div>
 
     <button class="btn" id="gen-btn" onclick="generate()">🎨 สร้างตัวละคร</button>
@@ -279,12 +283,18 @@
   function drawPreview() {
     const cv = document.getElementById('preview-canvas');
     const ctx = cv.getContext('2d');
-    const W = cv.width, H = cv.height;
-    ctx.clearRect(0, 0, W, H);
-    // พื้นหลัง: รูปต้นแบบ (ถ้ามี) ไม่งั้นเทาเข้ม
-    if (srcImg) { ctx.drawImage(srcImg, 0, 0, W, H); }
-    else { ctx.fillStyle = '#2a2f3a'; ctx.fillRect(0, 0, W, H); }
-    drawBalloon(ctx, W, H, document.getElementById('balloontext').value);
+    const W = cv.width, imgH = 320, footerH = cv.height - imgH;
+    ctx.clearRect(0, 0, W, cv.height);
+    // พื้นหลัง image area
+    if (srcImg) { ctx.drawImage(srcImg, 0, 0, W, imgH); }
+    else { ctx.fillStyle = '#2a2f3a'; ctx.fillRect(0, 0, W, imgH); }
+    drawBalloon(ctx, W, imgH, document.getElementById('balloontext').value);
+    // footer band preview
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, imgH, W, footerH);
+    ctx.font = `italic ${Math.round(footerH * 0.40)}px Sarabun, Tahoma, sans-serif`;
+    ctx.fillStyle = '#999'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Footer caption — AI สรุปอัตโนมัติ', W / 2, imgH + footerH / 2);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   }
 
 
@@ -336,7 +346,7 @@
     finally { btn.disabled = false; btn.textContent = '🎨 สร้างตัวละคร'; }
   }
 
-  // ส่งข้อความ + corner ให้ server วาดลูกโป่ง (balloon-canvas.js)
+  // ส่งข้อความ + corner ให้ server วาดลูกโป่ง + footer (balloon-canvas.js)
   async function finalizeServer(id) {
     const r = await fetch(API + '/finalize', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -344,6 +354,11 @@
     });
     const j = await r.json();
     if (!j.ok) throw new Error(j.error || 'finalize ล้มเหลว');
+    if (j.footer) {
+      document.getElementById('footer-text').textContent = j.footer;
+      document.getElementById('footer-result').style.display = 'block';
+    }
+    return j;
   }
 
   // ════════════ Gallery ════════════

@@ -303,11 +303,12 @@ node agents\makrut\pipeline\makrut.js --resend
 
 สร้างรูปตัวละครอนิเมะจากรูปคนต้นแบบ + ลูกโป่งคำพูด ผ่าน Dashboard + Telegram Bot
 
-- **Bubble AI (`agents/anime/bubble-gen.js`):** `summarizeBubble(rawText)` → Typhoon2 สรุป/rephrase ข้อความ → `{text, type, corner}` — type: speech/thought/shout/whisper; corner: top-left/top-right/bottom-left/bottom-right (default `bottom-right` เพื่อไม่บังหน้า bust portrait)
-- **Face-safe placement:** bubble วางที่ corner ที่ AI เลือก — `balloon-canvas.js` มี `CORNER_GEOM` map corner → `{bx,by,tx,ty}` ตรงกับ dashboard preview JS เสมอ; dashboard มี corner picker 4 ปุ่ม override ได้; `renderBalloonOnImage(path, text, null, out, {template, corner})`
+- **Bubble AI (`agents/anime/bubble-gen.js`):** `summarizeBubble(rawText)` → Typhoon2 สรุป/rephrase ข้อความ → `{text, type, corner, footer}` — text ≤60 ตัว (bubble สั้น), footer ≤200 ตัว (สรุปยาว); corner: top-left/top-right/bottom-left/bottom-right (default `bottom-right` เพื่อไม่บังหน้า bust portrait)
+- **Footer Caption:** output JPEG มีแถบขาวต่อท้ายด้านล่างภาพ (8% ของความกว้าง) + italic text ดำ — `renderBalloonOnImage(..., {template, corner, footerCaption})` ขยาย canvas อัตโนมัติถ้ามี `footerCaption`; dashboard preview แสดง placeholder band ก่อน finalize, หลัง finalize แสดง footer จริงใน div ด้านล่าง
+- **Face-safe placement:** bubble วางที่ corner ที่ AI เลือก — `balloon-canvas.js` มี `CORNER_GEOM` map corner → `{bx,by,tx,ty}` ตรงกับ dashboard preview JS เสมอ; dashboard มี corner picker 4 ปุ่ม override ได้
 - **Gallery per-item actions:** ปุ่ม 📤 โพสต์ FB / ✈️ ส่ง TG approval ซ้ำ / 🗑️ ลบ บน card แต่ละใบ — route: `DELETE /gallery/:id`, `POST /gallery/:id/post`, `POST /gallery/:id/resend`; Telegram resend ใช้ `agents/anime/anime-tg.js` `sendAnimeApproval()`
 - **News Dropdown:** `GET /dashboard/anime/api/news` ดึงข่าว 7 วันล่าสุดจาก manao + makrut รวมกัน → dropdown populate textarea → `summarizeBubble` สรุปอัตโนมัติตอน generate
-- env: `ANIME_TELEGRAM_BOT_TOKEN`, `ANIME_TELEGRAM_CHAT_ID`, `ANIME_BUBBLE_MAXCHARS` (default 60)
+- env: `ANIME_TELEGRAM_BOT_TOKEN`, `ANIME_TELEGRAM_CHAT_ID`, `ANIME_BUBBLE_MAXCHARS` (default 60), `ANIME_FOOTER_MAXCHARS` (default 200)
 
 ### Agent มะกรูด (`agents/makrut/`)
 

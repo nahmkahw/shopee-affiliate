@@ -168,16 +168,17 @@ function register(req, res, url, rawUrl, method, deps) {
           const dir = path.join(ROOT, 'agents', 'anime', 'gallery', String(id).replace(/[^\d]/g, ''));
           const animePath = path.join(dir, 'anime.png');
           if (!fs.existsSync(animePath)) return jsonReply(res, 404, { ok: false, error: 'ไม่พบรูป id นี้' });
-          const { text: bubbleText, type: bubbleType, corner: bubbleCorner } = await summarizeBubble(text);
+          const { text: bubbleText, type: bubbleType, corner: bubbleCorner, footer } = await summarizeBubble(text);
           const corner = (balloon && balloon.corner) || bubbleCorner;
-          await renderBalloonOnImage(animePath, bubbleText, null, path.join(dir, 'final.jpg'), { template: bubbleType, corner });
+          await renderBalloonOnImage(animePath, bubbleText, null, path.join(dir, 'final.jpg'), { template: bubbleType, corner, footerCaption: footer || undefined });
           try {
             const metaPath = path.join(dir, 'meta.json');
             const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8').replace(/^﻿/, ''));
             meta.text = text; meta.bubbleText = bubbleText; meta.bubbleType = bubbleType; meta.bubbleCorner = corner;
+            if (footer) meta.footerCaption = footer;
             fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf8');
           } catch {}
-          jsonReply(res, 200, { ok: true, corner });
+          jsonReply(res, 200, { ok: true, corner, footer: footer || '' });
         } catch (e) { jsonReply(res, 200, { ok: false, error: e.message.substring(0, 200) }); }
       });
       return;
