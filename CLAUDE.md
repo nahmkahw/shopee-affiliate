@@ -292,6 +292,11 @@ node agents\makrut\pipeline\makrut.js --resend
 - **Bubble:** พูด/คิดในช่อง (ไม่ใช่ caption band แบบมะปราง) — 0-1 Bubble/Panel, fixed-corner position ไม่คำนวณหลบตัวละคร ([ADR-002](agents/maprao/docs/ADR-002-fixed-corner-bubble-placement.md)) + Footer Caption ปิดท้ายเรื่อง
 - **Approval + Post:** reuse namkhao bot approval infra ทั้งหมด (**ไม่ใช่บอทของมะปรางเอง** — มะปรางไม่มี callback handler, ดู [ADR-001](agents/maprao/docs/ADR-001-shared-telegram-bot.md)) — เขียน `agents/maprao/pipeline/news/{id}/` (data.json + content/facebook.md + image.jpg) ให้ตรง shape ที่ `post.js` คาดหวัง แล้วเรียก `lib/tg-approval.js` `sendApprovalNotification(..., { mode: 'immediate' })` → namkhao bot callback → `lib/namkhao-bot-news.js` `postNow()` (ฟังก์ชันใหม่ คู่กับ `schedulePost()` เดิม — โพสต์ทันทีไม่มี `--schedule`)
 - **Trigger:** on-demand เท่านั้นผ่าน dashboard (`/dashboard/maprao`, `/api/maprao/generate`) — ไม่มี scheduler/cron ประจำวัน
+- **Video (Reels/TikTok):** กด 🎬 ใน Gallery → `--action video` → [`agents/maprao/pipeline/comic-video.js`](agents/maprao/pipeline/comic-video.js):
+  - Title card (2s) → Panel 1-4 (Ken Burns still + Typhoon2 narration + gTTS + bubble subtitle) → concat → `gallery/{id}/story.mp4`
+  - รองรับ 2 format: `portrait` (9:16 Reels/TikTok, default) | `square` (1:1)
+  - env: `MAPRAO_VIDEO_SIZE` (default 1080), `MAPRAO_VIDEO_FORMAT` (default portrait)
+  - **Gate 2:** `kenBurnsClip`/`concatClips`/`addSubtitle` + portrait support ย้ายไปที่ [`lib/video-build.js`](lib/video-build.js) — maprang `video-build.js` กลายเป็น thin wrapper (re-export เท่านั้น)
 - env: `MAPRAO_COMIC_SIZE` (default 1080), `MAPRAO_COMIC_MAXLINE` (default 40)
 
 ### Agent อะนิเมะ (`agents/anime/`)
