@@ -25,6 +25,9 @@
   .drop img{max-width:100%;max-height:180px;border-radius:8px;margin-top:10px}
   .btn{width:100%;margin-top:18px;background:var(--accent);border:none;border-radius:8px;padding:12px;color:#fff;font-size:15px;font-weight:700;cursor:pointer}
   .btn:hover{background:#9333ea}.btn:disabled{opacity:.5;cursor:not-allowed}
+  .corner-btn{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:7px 4px;color:var(--dim);font-size:12px;cursor:pointer;transition:all .15s}
+  .corner-btn:hover{border-color:var(--accent);color:var(--text)}
+  .corner-btn.active{background:rgba(168,85,247,.18);border-color:var(--accent);color:var(--accent);font-weight:700}
   .progress{margin-top:14px;font-size:13px;color:var(--accent);min-height:18px}
   .counter{font-size:13px;font-weight:700;margin-top:6px}
   .counter.ok{color:var(--green)}.counter.over{color:var(--red)}
@@ -81,9 +84,17 @@
     <textarea id="balloontext" placeholder="พิมพ์บทพูด หรือวางข่าวยาวแล้ว AI จะสรุปเป็น bubble text ให้อัตโนมัติ…" oninput="updateCounter();drawPreview()">กินข้าวแล้วบ่</textarea>
     <div class="counter ok" id="counter">ใส่ได้อีก — ตัว</div>
 
+    <label>ตำแหน่ง Bubble</label>
+    <div id="corner-picker" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+      <button class="corner-btn" data-corner="top-left"     onclick="setCorner('top-left')"    >↖ บน-ซ้าย</button>
+      <button class="corner-btn" data-corner="top-right"    onclick="setCorner('top-right')"   >↗ บน-ขวา</button>
+      <button class="corner-btn" data-corner="bottom-left"  onclick="setCorner('bottom-left')" >↙ ล่าง-ซ้าย</button>
+      <button class="corner-btn active" data-corner="bottom-right" onclick="setCorner('bottom-right')">↘ ล่าง-ขวา ✓</button>
+    </div>
+
     <div id="preview-wrap">
       <canvas id="preview-canvas" width="320" height="320"></canvas>
-      <div style="font-size:11px;color:var(--dim);margin-top:4px">🖐️ ลากจุดสีม่วง (ปลายหาง) เพื่อชี้ไปที่ตัวละคร · อัปโหลดรูปเพื่อเห็นพื้นหลังจริง</div>
+      <div style="font-size:11px;color:var(--dim);margin-top:4px">bubble วางที่มุมที่เลือก — เลือก bottom corner เพื่อไม่บังหน้าตัวละคร</div>
     </div>
 
     <button class="btn" id="gen-btn" onclick="generate()">🎨 สร้างตัวละคร</button>
@@ -129,26 +140,39 @@
 <script>
   const API = '/dashboard/anime/api';
   let selectedFile = null, srcImg = null;
-  let tailFrac = { x: 0.46, y: 0.46 };   // ตำแหน่งปลายหาง (สัดส่วนของภาพ) — ลากได้บน preview
-  let activeTemplate = null;             // template ที่ตั้งไว้ (ใช้เป็น default — override ด้วยการอัปโหลด)
+  let selectedCorner = 'bottom-right';   // default: ไม่บังหน้าตัวละคร bust
+  let activeTemplate = null;
+
+  // corner → normalized positions (ต้องตรงกับ CORNER_GEOM ใน balloon-canvas.js)
+  const CORNER_GEOM = {
+    'top-left':    (W,H) => ({ bx:0.05*W, by:0.04*H, tx:0.55*W, ty:0.62*H }),
+    'top-right':   (W,H) => ({ bx:0.35*W, by:0.04*H, tx:0.45*W, ty:0.62*H }),
+    'bottom-left': (W,H) => ({ bx:0.05*W, by:0.68*H, tx:0.55*W, ty:0.38*H }),
+    'bottom-right':(W,H) => ({ bx:0.35*W, by:0.68*H, tx:0.45*W, ty:0.38*H }),
+  };
+
+  function setCorner(c) {
+    selectedCorner = c;
+    document.querySelectorAll('.corner-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.corner === c);
+      b.textContent = b.dataset.corner === c ? b.dataset.corner.replace('top','↑').replace('bottom','↓').replace('-left','←').replace('-right','→') + ' ✓'
+                    : b.dataset.corner.replace('top','↑').replace('bottom','↓').replace('-left','←').replace('-right','→');
+    });
+    drawPreview();
+  }
 
   // ════════════ Balloon geometry + drawing (canvas) ════════════
-  // การ์ตูน: ขาวมน + ขอบดำ + หางชี้ลงซ้าย | ตำแหน่ง: บนขวา | ขนาดคงที่
   function geom(W, H) {
     const pad = 0.026 * W;
-    const bw = 0.56 * W, bh = 0.30 * H;
-    const bx = W - bw - 0.04 * W;          // มุมขวา
-    const by = H - bh - 0.05 * H;          // มุมล่าง
-    const fontSize = 0.038 * W;            // เล็กลง → ใส่ตัวอักษรได้มากขึ้น
+    const bw = 0.60 * W, bh = 0.26 * H;
+    const c = (CORNER_GEOM[selectedCorner] || CORNER_GEOM['bottom-right'])(W, H);
+    const fontSize = 0.038 * W;
     return {
-      bx, by, bw, bh, pad,
-      r: 0.035 * W,
-      border: Math.max(2, 0.006 * W),
-      fontSize,
-      lineH: fontSize * 1.25,
-      // เป้าหางชี้ = ตำแหน่งที่ลากไว้ (ค่าเริ่มต้นกลางตัวละคร)
-      tail: { cx: tailFrac.x * W, cy: tailFrac.y * H },
-      txt: { x: bx + pad, y: by + pad, w: bw - 2 * pad, h: bh - 2 * pad },
+      bx: c.bx, by: c.by, bw, bh, pad,
+      r: 0.035 * W, border: Math.max(2, 0.006 * W),
+      fontSize, lineH: fontSize * 1.25,
+      tail: { cx: c.tx, cy: c.ty },
+      txt: { x: c.bx + pad, y: c.by + pad, w: bw - 2 * pad, h: bh - 2 * pad },
     };
   }
   function setFont(ctx, g) { ctx.font = `700 ${g.fontSize}px Sarabun, Tahoma, sans-serif`; }
@@ -231,13 +255,6 @@
     for (const ln of shown) { ctx.fillText(ln, g.bx + g.bw / 2, y); y += g.lineH; }
     ctx.textAlign = 'left';
 
-    // handle ลากปลายหาง (เฉพาะ preview)
-    if (showHandle) {
-      ctx.beginPath();
-      ctx.arc(g.tail.cx, g.tail.cy, Math.max(5, 0.018 * W), 0, Math.PI * 2);
-      ctx.fillStyle = '#a855f7'; ctx.fill();
-      ctx.lineWidth = Math.max(1.5, 0.004 * W); ctx.strokeStyle = '#fff'; ctx.stroke();
-    }
   }
 
   function roundRect(ctx, x, y, w, h, r) {
@@ -267,26 +284,9 @@
     // พื้นหลัง: รูปต้นแบบ (ถ้ามี) ไม่งั้นเทาเข้ม
     if (srcImg) { ctx.drawImage(srcImg, 0, 0, W, H); }
     else { ctx.fillStyle = '#2a2f3a'; ctx.fillRect(0, 0, W, H); }
-    drawBalloon(ctx, W, H, document.getElementById('balloontext').value, true);   // true = แสดง handle
+    drawBalloon(ctx, W, H, document.getElementById('balloontext').value);
   }
 
-  // ลากปลายหางบน preview (รองรับเมาส์ + ทัช)
-  (function enableTailDrag() {
-    const cv = document.getElementById('preview-canvas');
-    let dragging = false;
-    const toFrac = e => {
-      const r = cv.getBoundingClientRect();
-      const x = (e.clientX - r.left) * (cv.width / r.width) / cv.width;
-      const y = (e.clientY - r.top) * (cv.height / r.height) / cv.height;
-      return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
-    };
-    const set = e => { tailFrac = toFrac(e); drawPreview(); };
-    cv.style.cursor = 'crosshair';
-    cv.addEventListener('pointerdown', e => { dragging = true; cv.setPointerCapture(e.pointerId); set(e); });
-    cv.addEventListener('pointermove', e => { if (dragging) set(e); });
-    cv.addEventListener('pointerup',   () => { dragging = false; });
-    cv.addEventListener('pointercancel', () => { dragging = false; });
-  })();
 
   // ════════════ Upload preview ════════════
   const fileInput = document.getElementById('file'), drop = document.getElementById('drop');
@@ -336,11 +336,11 @@
     finally { btn.disabled = false; btn.textContent = '🎨 สร้างตัวละคร'; }
   }
 
-  // ส่งข้อความ + ตำแหน่งหางให้ server วาดลูกโป่ง (balloon-canvas.js)
+  // ส่งข้อความ + corner ให้ server วาดลูกโป่ง (balloon-canvas.js)
   async function finalizeServer(id) {
     const r = await fetch(API + '/finalize', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, text: document.getElementById('balloontext').value, balloon: { tailFrac } }),
+      body: JSON.stringify({ id, text: document.getElementById('balloontext').value, balloon: { corner: selectedCorner } }),
     });
     const j = await r.json();
     if (!j.ok) throw new Error(j.error || 'finalize ล้มเหลว');
@@ -492,7 +492,6 @@
         document.getElementById('faceWeight').value = activeTemplate.faceWeight;
         document.getElementById('fw-val').textContent = activeTemplate.faceWeight;
       }
-      if (activeTemplate.tailFrac) tailFrac = activeTemplate.tailFrac;
       // ใช้รูป template เป็นพื้นหลัง preview (ถ้ายังไม่อัปโหลดทับ)
       if (activeTemplate.templateId) {
         const im = new Image();

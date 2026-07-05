@@ -18,17 +18,33 @@ function ensureFont() {
   fontReady = true;
 }
 
-function geom(W, H, tailFrac) {
+// corner → bubble origin + tail target (tail points toward face zone = upper-center)
+const CORNER_GEOM = {
+  'top-left':     (W, H) => ({ bx: 0.05*W, by: 0.04*H, tx: 0.55*W, ty: 0.62*H }),
+  'top-right':    (W, H) => ({ bx: 0.35*W, by: 0.04*H, tx: 0.45*W, ty: 0.62*H }),
+  'bottom-left':  (W, H) => ({ bx: 0.05*W, by: 0.68*H, tx: 0.55*W, ty: 0.38*H }),
+  'bottom-right': (W, H) => ({ bx: 0.35*W, by: 0.68*H, tx: 0.45*W, ty: 0.38*H }),
+};
+const VALID_CORNERS = Object.keys(CORNER_GEOM);
+
+function geom(W, H, tailFrac, corner) {
   const pad = 0.026 * W;
   const bw = 0.60 * W, bh = 0.26 * H;
-  const bx = 0.05 * W;
-  const by = 0.04 * H;
+  let bx, by, tailCx, tailCy;
+  if (corner && CORNER_GEOM[corner]) {
+    const c = CORNER_GEOM[corner](W, H);
+    bx = c.bx; by = c.by; tailCx = c.tx; tailCy = c.ty;
+  } else {
+    // legacy: use tailFrac if no corner specified
+    bx = 0.05 * W; by = 0.04 * H;
+    tailCx = (tailFrac?.x ?? 0.46) * W; tailCy = (tailFrac?.y ?? 0.46) * H;
+  }
   const fontSize = 0.038 * W;
   return {
     bx, by, bw, bh, pad,
     r: 0.035 * W, border: Math.max(2, 0.006 * W),
     fontSize, lineH: fontSize * 1.25,
-    tail: { cx: (tailFrac?.x ?? 0.46) * W, cy: (tailFrac?.y ?? 0.46) * H },
+    tail: { cx: tailCx, cy: tailCy },
     txt: { x: bx + pad, y: by + pad, w: bw - 2 * pad, h: bh - 2 * pad },
   };
 }
@@ -166,15 +182,15 @@ function drawWhisper(ctx, bx, by, bw, bh, tail, pad, r, border, fontSize, lineH,
 
 function drawBalloon(ctx, W, H, text, tailFrac, opts = {}) {
   const template = opts.template || 'speech';
-  let bx, by, bw, bh;
+  let bx, by, bw, bh, tail;
   if (opts.rect) {
     bx = opts.rect.bx * W; by = opts.rect.by * H;
     bw = opts.rect.bw * W; bh = opts.rect.bh * H;
+    tail = { cx: (tailFrac?.x ?? 0.46) * W, cy: (tailFrac?.y ?? 0.46) * H };
   } else {
-    const g = geom(W, H, tailFrac);
-    bx = g.bx; by = g.by; bw = g.bw; bh = g.bh;
+    const g = geom(W, H, tailFrac, opts.corner);
+    bx = g.bx; by = g.by; bw = g.bw; bh = g.bh; tail = g.tail;
   }
-  const tail = { cx: (tailFrac?.x ?? 0.46) * W, cy: (tailFrac?.y ?? 0.46) * H };
   const pad = 0.026 * W, r = 0.035 * W, border = Math.max(2, 0.006 * W);
   const fontSize = 0.038 * W * Math.min(1.2, bw / (0.56 * W));
   const lineH = fontSize * 1.25;

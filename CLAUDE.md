@@ -303,10 +303,10 @@ node agents\makrut\pipeline\makrut.js --resend
 
 สร้างรูปตัวละครอนิเมะจากรูปคนต้นแบบ + ลูกโป่งคำพูด ผ่าน Dashboard + Telegram Bot
 
-- **Bubble AI (`agents/anime/bubble-gen.js`):** `summarizeBubble(rawText)` → Typhoon2 สรุป/rephrase ข้อความเป็น bubble text + type (speech/thought) + corner — pattern เดียวกับ maprao: isValid + normBubble + retry 3 ครั้ง → fallback raw text; ทั้ง bot และ dashboard ผ่าน `renderBalloonOnImage` ชุดเดียวกัน
-- **Bubble style (maprao-compatible):** ใช้ `lib/manga-bubble.js` `drawBubble()` ร่วมกับ maprao — compact fixed-corner bubble (AI เลือก corner อัตโนมัติ), ไม่มี drag-tail preview; `balloon-canvas.js` เป็น thin wrapper ของ `lib/manga-bubble`
-- **Gallery per-item actions (เหมือน maprao):** ปุ่ม 📤 โพสต์ FB / ✈️ ส่ง TG approval ซ้ำ / 🗑️ ลบ บน card แต่ละใบ — route: `DELETE /gallery/:id`, `POST /gallery/:id/post`, `POST /gallery/:id/resend`; Telegram resend ใช้ `agents/anime/anime-tg.js` `sendAnimeApproval()` ส่งรูปพร้อมปุ่ม callback ไปยัง anime bot
-- **News Dropdown:** `GET /dashboard/anime/api/news` ดึงข่าว 7 วันล่าสุดจาก manao + makrut รวมกัน (sort by date) → dropdown ใน dashboard เลือกแล้ว populate textarea ด้วย `title + body` → `summarizeBubble` จะสรุปเป็น bubble text อัตโนมัติตอน generate
+- **Bubble AI (`agents/anime/bubble-gen.js`):** `summarizeBubble(rawText)` → Typhoon2 สรุป/rephrase ข้อความ → `{text, type, corner}` — type: speech/thought/shout/whisper; corner: top-left/top-right/bottom-left/bottom-right (default `bottom-right` เพื่อไม่บังหน้า bust portrait)
+- **Face-safe placement:** bubble วางที่ corner ที่ AI เลือก — `balloon-canvas.js` มี `CORNER_GEOM` map corner → `{bx,by,tx,ty}` ตรงกับ dashboard preview JS เสมอ; dashboard มี corner picker 4 ปุ่ม override ได้; `renderBalloonOnImage(path, text, null, out, {template, corner})`
+- **Gallery per-item actions:** ปุ่ม 📤 โพสต์ FB / ✈️ ส่ง TG approval ซ้ำ / 🗑️ ลบ บน card แต่ละใบ — route: `DELETE /gallery/:id`, `POST /gallery/:id/post`, `POST /gallery/:id/resend`; Telegram resend ใช้ `agents/anime/anime-tg.js` `sendAnimeApproval()`
+- **News Dropdown:** `GET /dashboard/anime/api/news` ดึงข่าว 7 วันล่าสุดจาก manao + makrut รวมกัน → dropdown populate textarea → `summarizeBubble` สรุปอัตโนมัติตอน generate
 - env: `ANIME_TELEGRAM_BOT_TOKEN`, `ANIME_TELEGRAM_CHAT_ID`, `ANIME_BUBBLE_MAXCHARS` (default 60)
 
 ### Agent มะกรูด (`agents/makrut/`)
