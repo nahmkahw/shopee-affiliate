@@ -18,8 +18,9 @@ const path  = require('path');
 const ROOT = path.join(__dirname, '..', '..');
 require('dotenv').config({ path: path.join(ROOT, '.env') });
 
-const { generateAnime }       = require('./anime-gen');
-const { renderBalloonOnImage } = require('./balloon-canvas');
+const { generateAnime }        = require('./anime-gen');
+const { renderBalloonOnImage }  = require('./balloon-canvas');
+const { summarizeBubble }       = require('./bubble-gen');
 const { postFacebookImage, postInstagramImage } = require('./post-anime');
 
 const TOKEN   = process.env.ANIME_TELEGRAM_BOT_TOKEN;
@@ -124,15 +125,22 @@ async function handleText(text, overrideSource) {
       loraStrength: Math.max(0.6, Math.min(1.0, faceWeight * 0.75)),
       outPath: animePath, onProgress: m => console.log(`  [bot ${id}] ${m}`),
     });
-    await renderBalloonOnImage(animePath, text, tailFrac, finalPath);
+
+    await send('💬 AI กำลังสรุปบทพูด...');
+    const { text: bubbleText, type: bubbleType } = await summarizeBubble(text);
+    console.log(`  [bot ${id}] bubble: [${bubbleType}] "${bubbleText}"`);
+    await renderBalloonOnImage(animePath, bubbleText, tailFrac, finalPath, { template: bubbleType });
 
     try { fs.copyFileSync(src, path.join(dir, 'source.jpg')); } catch {}
     fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({
-      prompt, text, faceWeight, balloon: { tailFrac },
+      prompt, text, bubbleText, bubbleType, faceWeight, balloon: { tailFrac },
       fromTemplate: tpl ? tpl.templateId : null, created: Number(id),
     }, null, 2), 'utf8');
 
-    await tgSendDocument(finalPath, `📷 รูปใหม่พร้อมแล้ว (ความละเอียดเต็ม)\n💬 "${text}"\n\nอนุมัติเพื่อโพสต์ FB + IG?`, {
+    const captionBubble = bubbleText !== text.trim().slice(0, 60)
+      ? `💬 "${bubbleText}"\n📝 จาก: "${text.substring(0, 60)}${text.length > 60 ? '…' : ''}"`
+      : `💬 "${bubbleText}"`;
+    await tgSendDocument(finalPath, `📷 รูปใหม่พร้อมแล้ว (ความละเอียดเต็ม)\n${captionBubble}\n\nอนุมัติเพื่อโพสต์ FB + IG?`, {
       inline_keyboard: [[
         { text: '✅ อนุมัติ → โพสต์', callback_data: `ok__${id}` },
         { text: '❌ ยกเลิก', callback_data: `no__${id}` },
@@ -160,7 +168,7 @@ async function handleCallback(cb) {
   if (action === 'ok') {
     if (!fs.existsSync(finalPath)) return send('⚠️ ไม่พบรูป');
     let caption = '';
-    try { caption = JSON.parse(fs.readFileSync(metaPath, 'utf8').replace(/^﻿/, '')).text || ''; } catch {}
+    try { const m = JSON.parse(fs.readFileSync(metaPath, 'utf8').replace(/^﻿/, '')); caption = m.bubbleText || m.text || ''; } catch {}
     await send('📤 กำลังโพสต์ FB + IG…');
     const out = [];
     try { const pid = await postFacebookImage(finalPath, caption); out.push('✅ Facebook'); markPosted(metaPath, 'fb'); }
