@@ -36,6 +36,9 @@ textarea:focus{border-color:#8B5E3C}
 .mcard .meta{padding:6px 8px;font-size:11px;color:#8B5E3C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mcard .del-btn{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:13px;line-height:22px;text-align:center;cursor:pointer;padding:0}
 .mcard .del-btn:hover{background:#b91c1c}
+#lb-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out}
+#lb-overlay.open{display:flex}
+#lb-overlay img{max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.6);cursor:default}
 `;
 
 function esc(s) {
@@ -44,15 +47,28 @@ function esc(s) {
 
 function galleryCard(ROOT, job) {
   const status = job.status || 'producing';
+  const latestLog = (status === 'producing' && job.logs?.length)
+    ? job.logs[job.logs.length - 1].msg : '';
+  let videoBtn;
+  if (job.video_status === 'producing') {
+    videoBtn = `<button disabled title="กำลังสร้างวิดีโอ...">⏳</button>`;
+  } else if (job.story_video) {
+    videoBtn = `<a href="/dashboard/maprao/video/${job.id}" download="story.mp4" style="flex:1;display:flex;align-items:center;justify-content:center;border:none;border-radius:6px;padding:5px 4px;font-size:11px;font-weight:600;cursor:pointer;background:#d1fae5;color:#065f46;text-decoration:none" title="ดาวน์โหลดวิดีโอ Reels/TikTok">🎬 ดาวน์</a>`;
+  } else {
+    videoBtn = `<button onclick="makeVideo('${job.id}')" title="สร้างวิดีโอ Reels/TikTok (Ken Burns + เสียงบรรยาย)">🎬</button>`;
+  }
   return `<div class="gcard">
-    <img src="/dashboard/maprao/comic/${job.id}" onerror="this.style.display='none'">
+    <img src="/dashboard/maprao/comic/${job.id}" onerror="this.style.display='none'"
+      style="cursor:zoom-in" onclick="openLightbox('/dashboard/maprao/comic/${job.id}')" title="คลิกเพื่อดูรูปขนาดใหญ่">
     <div class="meta">
       <span class="badge b-${status}">${status}</span>
+      ${latestLog ? `<div style="margin-top:3px;font-size:10px;color:#92400e;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${esc(latestLog)}">${esc(latestLog)}</div>` : ''}
       <div style="margin-top:4px">${esc((job.prompt || '').substring(0, 60))}</div>
     </div>
     <div class="actions">
       <button onclick="postGallery('${job.id}')" title="โพสต์ Facebook ทันที">📤 โพสต์</button>
       <button onclick="resendGallery('${job.id}')" title="ส่ง Telegram approval ซ้ำ">✈️ ส่ง TG</button>
+      ${videoBtn}
       <button class="danger" onclick="deleteGallery('${job.id}')" title="ลบรายการนี้">🗑️</button>
     </div>
   </div>`;
@@ -69,6 +85,7 @@ function mascotCard(item) {
 }
 
 function renderDashboard(ROOT, { gallery, mascotList, lastDetail }) {
+  const hasProducing = gallery.some(j => j.status === 'producing' || j.video_status === 'producing');
   const cards = gallery.length
     ? gallery.map(j => galleryCard(ROOT, j)).join('')
     : '<span style="color:#8B5E3C;font-size:13px">ยังไม่มีการ์ตูน</span>';
@@ -106,7 +123,22 @@ function renderDashboard(ROOT, { gallery, mascotList, lastDetail }) {
   <div id="gallery-msg" style="font-size:12px;color:#8B5E3C;margin-top:10px;min-height:16px"></div>
 </div>
 
+<div id="lb-overlay" onclick="closeLightbox()">
+  <img id="lb-img" src="" onclick="event.stopPropagation()" alt="preview">
+</div>
+
 <script>
+${hasProducing ? 'setTimeout(() => location.reload(), 10000);' : ''}
+function openLightbox(src) {
+  document.getElementById('lb-img').src = src;
+  document.getElementById('lb-overlay').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lb-overlay').classList.remove('open');
+  document.getElementById('lb-img').src = '';
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
 async function genMascot() {
   const detail = document.getElementById('mascot-detail').value.trim();
   const btn = document.getElementById('mascot-btn');
@@ -158,6 +190,16 @@ async function resendGallery(id) {
     const r = await fetch('/api/maprao/gallery/' + id + '/resend', { method: 'POST' });
     const j = await r.json();
     document.getElementById('gallery-msg').textContent = j.ok ? '✅ ส่งแล้ว ดูที่ Telegram' : '❌ ' + (j.error || 'error');
+  } catch (e) { document.getElementById('gallery-msg').textContent = '❌ ' + e.message; }
+}
+async function makeVideo(id) {
+  document.getElementById('gallery-msg').textContent = '⏳ กำลังส่งคำสั่งสร้างวิดีโอ...';
+  try {
+    const r = await fetch('/api/maprao/gallery/' + id + '/video', { method: 'POST' });
+    const j = await r.json();
+    document.getElementById('gallery-msg').textContent = j.ok
+      ? '✅ เริ่มสร้างวิดีโอแล้ว (ใช้เวลา ~5-10 นาที — รีเฟรชเพื่อดูผล)'
+      : '❌ ' + (j.error || 'error');
   } catch (e) { document.getElementById('gallery-msg').textContent = '❌ ' + e.message; }
 }
 async function deleteGallery(id) {

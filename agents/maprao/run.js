@@ -9,6 +9,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.e
 const fs   = require('fs');
 const path = require('path');
 
+const { sendNotification } = require('../../lib/tg-notify');
 const mascot = require('./pipeline/mascot');
 
 const ROOT          = path.join(__dirname, '..', '..');
@@ -38,6 +39,65 @@ async function actionComic(prompt, id) {
   const actualId = id || Date.now().toString();
   const ctx = { COMFY_CFG, ROOT, GALLERY, PIPELINE_ROOT, NEWS_DIR, saveMeta: m => writeMeta(actualId, m) };
   await require('./pipeline/comic').runComic(ctx, { prompt, id: actualId });
+}
+
+// comic-video: สร้างการ์ตูน (→ ส่ง TG approval) + สร้างวิดีโอ (→ ส่ง TG sendVideo)
+async function actionComicVideo(prompt, id) {
+  if (!prompt) { console.error('❌ ต้องระบุ --prompt'); process.exit(1); }
+  const actualId = id || Date.now().toString();
+  const dir = path.join(GALLERY, actualId);
+  const ctx = { COMFY_CFG, ROOT, GALLERY, PIPELINE_ROOT, NEWS_DIR, saveMeta: m => writeMeta(actualId, m) };
+
+  // ขั้น 1: สร้างการ์ตูน + ส่ง TG approval (รูป comic.png + ปุ่ม Approve)
+  await require('./pipeline/comic').runComic(ctx, { prompt, id: actualId });
+
+  // ขั้น 2: สร้างวิดีโอ Reels 9:16
+  const meta = readMeta(actualId);
+  console.log('\n🎬 ต่อเนื่อง: สร้างวิดีโอ Reels...');
+  meta.video_status = 'producing';
+  writeMeta(actualId, meta);
+  try {
+    const { buildComicVideo }     = require('./pipeline/comic-video');
+    const { sendVideoToTelegram } = require('../../lib/tg-approval');
+    const videoPath = await buildComicVideo(meta, dir, msg => console.log('  ' + msg));
+    meta.video_status = 'done';
+    meta.story_video  = 'story.mp4';
+    writeMeta(actualId, meta);
+    console.log(`✅ วิดีโอพร้อม: ${videoPath}`);
+
+    // ขั้น 3: ส่งวิดีโอไป Telegram
+    const caption = `🎬 <b>วิดีโอ Reels พร้อมแล้ว!</b>\n📖 <i>${prompt.substring(0, 120)}</i>`;
+    const res = await sendVideoToTelegram(videoPath, caption);
+    if (res && res.ok) console.log('✅ ส่งวิดีโอไป Telegram แล้ว');
+    else console.warn('⚠️ ส่งวิดีโอไม่สำเร็จ:', res?.description || 'no response');
+  } catch (e) {
+    meta.video_status = 'error';
+    writeMeta(actualId, meta);
+    throw e;
+  }
+}
+
+async function actionVideo(galleryId) {
+  if (!galleryId) { console.error('❌ ต้องระบุ --id'); process.exit(1); }
+  const meta = readMeta(galleryId);
+  if (!meta) { console.error('❌ ไม่พบ gallery item:', galleryId); process.exit(1); }
+  const dir = path.join(GALLERY, galleryId);
+  console.log(`\n🎬 มะพร้าว — สร้างวิดีโอ: ${galleryId}\n📖 ${meta.prompt}\n`);
+  meta.video_status = 'producing';
+  writeMeta(galleryId, meta);
+  try {
+    const { buildComicVideo } = require('./pipeline/comic-video');
+    const videoPath = await buildComicVideo(meta, dir, msg => console.log('  ' + msg));
+    meta.video_status = 'done';
+    meta.story_video  = 'story.mp4';
+    writeMeta(galleryId, meta);
+    console.log(`✅ วิดีโอพร้อม: ${videoPath}`);
+    sendNotification(`🎬 <b>วิดีโอพร้อมแล้ว!</b>\n📖 ${(meta.prompt || '').slice(0, 80)}\nดาวน์โหลดได้ที่ Dashboard`).catch(() => {});
+  } catch (e) {
+    meta.video_status = 'error';
+    writeMeta(galleryId, meta);
+    throw e;
+  }
 }
 
 async function actionGenMascotRef(detail) {
@@ -80,7 +140,14 @@ process.on('exit', code => {
 });
 
 (async () => {
-  if (action === 'comic')             await actionComic(prompt, galleryId);
+  if (action === 'comic')               await actionComic(prompt, galleryId);
+  else if (action === 'comic-video')    await actionComicVideo(prompt, galleryId);
+  else if (action === 'video')          await actionVideo(galleryId);
   else if (action === 'gen-mascot-ref') await actionGenMascotRef(detail);
-  else                                 actionStatus(galleryId);
-})().catch(e => { console.error('❌', e.message); _exitError = e.message; process.exit(1); });
+  else                                  actionStatus(galleryId);
+})().catch(async e => {
+  console.error('❌', e.message);
+  _exitError = e.message;
+  await sendNotification(`❌ <b>มะพร้าว Error</b>\n<code>${e.message.slice(0, 200)}</code>`).catch(() => {});
+  process.exit(1);
+});

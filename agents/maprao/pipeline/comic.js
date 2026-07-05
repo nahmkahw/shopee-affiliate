@@ -13,8 +13,10 @@ const path = require('path');
 
 const { generateComicPanels, generateFbCaption } = require('./comic-gen');
 const { generateSceneStill } = require('../../../lib/flux-kontext');
+const { uploadImageToComfy }  = require('../../../lib/comfy-client-core');
 const { buildComicPage }     = require('./comic-build');
 const { sendApprovalNotification } = require('../../../lib/tg-approval');
+const { sendNotification }   = require('../../../lib/tg-notify');
 const mascot = require('./mascot');
 
 // B&W manga ink style — ผนวกเข้าทุก instruction (prompt-only, ไม่บังคับ grayscale — ADR ปมนี้ยังไม่มี, ดู CONTEXT.md)
@@ -46,30 +48,38 @@ async function runComic(ctx, { prompt, id }) {
     status: 'producing', seed, panels: [], logs: [],
   };
   const log = msg => { meta.logs.push({ t: new Date().toISOString(), msg }); ctx.saveMeta(meta); console.log('  ' + msg); };
+  const notify = text => sendNotification(text).catch(() => {});
   ctx.saveMeta(meta);
   console.log(`\n🥥 มะพร้าว — การ์ตูนขาวดำ 4 ช่อง\n📖 ${prompt}\n`);
+  notify(`🥥 <b>เริ่มสร้างการ์ตูน</b>\n📖 ${(prompt || '').slice(0, 100)}`);
 
   log('🤖 สรุป concept + แตกเป็น panel...');
-  const { concept, sharedSetting, panels, footerCaption } = await generateComicPanels(prompt);
+  const { concept, sharedSetting, panels } = await generateComicPanels(prompt);
   meta.concept = concept;
   meta.shared_setting = sharedSetting;
   meta.panels = panels;
-  meta.footer_caption = footerCaption;
   log(`💡 Concept: ${concept.title}`);
+  notify(`🤖 <b>Concept:</b> ${concept.title}`);
   ctx.saveMeta(meta);
+
+  // upload mascot ref 1 ครั้ง แล้ว reuse filename ทุก panel (กัน 4× upload ของไฟล์เดิม)
+  log('⬆️ อัปโหลด Mascot Ref...');
+  const mascotFilename = await uploadImageToComfy(ctx.COMFY_CFG, mascotRef);
 
   const imagePaths = [];
   for (const p of panels) {
     const out = path.join(dir, `panel_${p.panel}.png`);
     log(`🎨 ช่อง ${p.panel}/${panels.length}: "${p.scene_setting_en.slice(0, 40)}..."`);
+    notify(`🎨 กำลังสร้างช่อง ${p.panel}/${panels.length}`);
     await generateSceneStill(ctx.COMFY_CFG, [mascotRef], p.scene_setting_en, out,
-      { seed: seed + p.panel, styleSuffix: STYLE_SUFFIX, lockLabel: 'maprao-img' });
+      { seed: seed + p.panel, styleSuffix: STYLE_SUFFIX, lockLabel: 'maprao-img',
+        _cachedFilenames: [mascotFilename] });
     imagePaths.push(out);
   }
 
   log('🖼️ ประกอบหน้าการ์ตูน...');
   const comicPath = path.join(dir, 'comic.png');
-  await buildComicPage(panels, imagePaths, comicPath, { footerCaption });
+  await buildComicPage(panels, imagePaths, comicPath, { storyPrompt: prompt });
 
   meta.status = 'pending_approval';
   meta.comic_image = 'comic.png';
@@ -93,6 +103,7 @@ async function runComic(ctx, { prompt, id }) {
   });
 
   console.log(`✅ การ์ตูนพร้อม: ${comicPath}`);
+  notify(`✅ <b>การ์ตูนพร้อมแล้ว!</b>\n📖 ${concept.title}\nดูที่ Dashboard แล้ว Approve`);
   return meta;
 }
 
