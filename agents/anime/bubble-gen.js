@@ -43,9 +43,13 @@ function isValidBubble(text, type) {
  */
 async function summarizeBubble(rawText) {
   const input = (rawText || '').trim().slice(0, 500);
+  // input ยาว/ภาษาอังกฤษ → wrap ด้วย instruction ภาษาไทยก่อน กัน Typhoon2 ตอบ prose แทน JSON
+  const prompt = input.length > 80
+    ? `สรุปเนื้อหาต่อไปนี้เป็น bubble text ภาษาไทย 1 ประโยคสั้นๆ ตอบ JSON array เท่านั้น:\n${input}`
+    : input;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const raw  = await ollamaChat(input, SYSTEM_PROMPT);
+      const raw  = await ollamaChat(prompt, SYSTEM_PROMPT);
       const items = parseJsonArrayLenient(raw);
       if (!items || !items.length) continue;
       const o    = items[0];
