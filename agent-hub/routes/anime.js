@@ -263,6 +263,32 @@ function register(req, res, url, rawUrl, method, deps) {
       return;
     }
   
+  // ดึงข่าวล่าสุด 7 วัน จาก manao + makrut (สำหรับ dropdown ใน dashboard)
+  if (url === '/dashboard/anime/api/news' && method === 'GET') {
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const sources = [
+      { source: 'manao', dir: path.join(ROOT, 'agents', 'manao', 'pipeline', 'news') },
+      { source: 'makrut', dir: path.join(ROOT, 'agents', 'makrut', 'pipeline', 'news') },
+    ];
+    const items = [];
+    for (const { source, dir } of sources) {
+      if (!fs.existsSync(dir)) continue;
+      for (const slug of fs.readdirSync(dir)) {
+        const dataPath = path.join(dir, slug, 'data.json');
+        if (!fs.existsSync(dataPath)) continue;
+        try {
+          const d = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+          const ts = new Date(d.scraped_at || d.published_at || 0).getTime();
+          if (ts < cutoff) continue;
+          items.push({ source, slug, title: d.title, body: d.body || '',
+            published_at: d.published_at, scraped_at: d.scraped_at });
+        } catch {}
+      }
+    }
+    items.sort((a, b) => new Date(b.scraped_at || b.published_at) - new Date(a.scraped_at || a.published_at));
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
+    return res.end(JSON.stringify(items.slice(0, 50)));
+  }
 
   return false;
 }
