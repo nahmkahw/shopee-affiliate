@@ -29,7 +29,7 @@ async function writeJpgCopy(pngPath, jpgPath) {
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, img.width, img.height);
   ctx.drawImage(img, 0, 0);
-  fs.writeFileSync(jpgPath, canvas.toBuffer('image/jpeg', 0.9));
+  fs.writeFileSync(jpgPath, canvas.toBuffer('image/jpeg', 92)); // @napi-rs: quality 0–100 ไม่ใช่ 0–1
 }
 
 /**
