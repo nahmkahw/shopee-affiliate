@@ -44,6 +44,15 @@ async function actionGenMascotRef() {
   await mascot.generateMascotRef(COMFY_CFG, Math.floor(Math.random() * 1e9));
 }
 
+async function actionVideo(id) {
+  if (!id) { console.error('❌ ต้องระบุ --id'); process.exit(1); }
+  const meta = readMeta(id);
+  if (!meta) { console.error(`❌ ไม่พบ meta.json ของ ${id}`); process.exit(1); }
+  const dir = path.join(GALLERY, id);
+  const { buildComicVideo } = require('./pipeline/comic-video');
+  await buildComicVideo(meta, dir);
+}
+
 function actionStatus(galleryId) {
   if (!fs.existsSync(GALLERY)) { console.log('ยังไม่มี gallery'); return; }
   const targets = galleryId ? [galleryId] : fs.readdirSync(GALLERY).sort().reverse().slice(0, 5);
@@ -81,5 +90,6 @@ process.on('exit', code => {
 (async () => {
   if (action === 'comic')             await actionComic(prompt, galleryId);
   else if (action === 'gen-mascot-ref') await actionGenMascotRef();
+  else if (action === 'video')         await actionVideo(galleryId);
   else                                 actionStatus(galleryId);
 })().catch(e => { console.error('❌', e.message); _exitError = e.message; process.exit(1); });

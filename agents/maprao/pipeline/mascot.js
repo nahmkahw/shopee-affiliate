@@ -1,30 +1,62 @@
 'use strict';
 /**
- * mascot.js — the single fixed chibi-bunny Mascot (no character registry, unlike มะปราง)
- * Storage: agents/maprao/mascot.json { ref_image, updated_at }
- * Mascot Ref generated once via AnythingXL T2I (B&W manga ink prompt), reused for every Comic Strip.
+ * mascot.js — multi-mascot registry สำหรับ Agent มะพร้าว
+ * Storage: mascot/ folder (each PNG = one mascot), mascot.json { default_id, updated_at }
+ * ทุก mascot สร้างใหม่ = เพิ่มเข้า folder ไม่แทนที่ตัวเดิม
  */
 
 const fs   = require('fs');
 const path = require('path');
 const { submitImageWorkflow } = require('../../../lib/comfy-client-core');
 
+const MASCOT_DIR  = path.join(__dirname, '..', 'mascot');
 const MASCOT_JSON = path.join(__dirname, '..', 'mascot.json');
-const MASCOT_PNG  = path.join(__dirname, '..', 'mascot-ref.png');
 
 function load() {
   if (!fs.existsSync(MASCOT_JSON)) return {};
   try { return JSON.parse(fs.readFileSync(MASCOT_JSON, 'utf8')); } catch { return {}; }
 }
 
-function save(mascot) {
-  fs.writeFileSync(MASCOT_JSON, JSON.stringify(mascot, null, 2));
+function save(data) {
+  fs.writeFileSync(MASCOT_JSON, JSON.stringify(data, null, 2));
 }
 
-function refPath() {
+/** รายชื่อ mascot ทั้งหมดใน folder (เรียงจากเก่า→ใหม่) */
+function list() {
+  if (!fs.existsSync(MASCOT_DIR)) return [];
+  return fs.readdirSync(MASCOT_DIR)
+    .filter(f => f.endsWith('.png'))
+    .sort()
+    .map(f => ({ id: path.basename(f, '.png'), path: path.join(MASCOT_DIR, f) }));
+}
+
+/** ID ของ default mascot ปัจจุบัน */
+function defaultId() {
   const m = load();
-  const p = m.ref_image ? path.join(__dirname, '..', '..', '..', m.ref_image) : MASCOT_PNG;
-  return fs.existsSync(p) ? p : null;
+  if (m.default_id) return m.default_id;
+  // migration: ถ้าเป็น format เก่ายังไม่มี default_id → ใช้ตัวล่าสุดใน folder
+  const all = list();
+  return all.length ? all[all.length - 1].id : null;
+}
+
+function setDefault(id) {
+  save({ default_id: id, updated_at: new Date().toISOString() });
+}
+
+/** absolute path ของ default mascot (ใช้เป็น anchor ใน Flux Kontext) */
+function refPath() {
+  const id = defaultId();
+  if (id) {
+    const p = path.join(MASCOT_DIR, id + '.png');
+    if (fs.existsSync(p)) return p;
+  }
+  // legacy fallback: ref_image ใน mascot.json format เก่า
+  const m = load();
+  if (m.ref_image) {
+    const p = path.join(__dirname, '..', '..', '..', m.ref_image);
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
 }
 
 function buildMascotWorkflow(seed) {
@@ -48,17 +80,20 @@ function buildMascotWorkflow(seed) {
 }
 
 /**
- * สร้าง Mascot Ref ใหม่ (AnythingXL T2I, B&W manga ink) — เขียนทับ mascot-ref.png เดิม
- * @returns {Promise<string>} outputPath
+ * สร้าง Mascot ใหม่ — บันทึกไปที่ mascot/{id}.png และ set เป็น default อัตโนมัติ
+ * @returns {Promise<{id: string, path: string}>}
  */
 async function generateMascotRef(comfyCfg, seed) {
-  console.log('  🎨 ComfyUI T2I: สร้าง Mascot Ref (B&W manga ink)...');
+  fs.mkdirSync(MASCOT_DIR, { recursive: true });
+  const id     = Date.now().toString();
+  const outPng = path.join(MASCOT_DIR, id + '.png');
+  console.log(`  🎨 ComfyUI T2I: สร้าง Mascot ใหม่ (B&W manga ink) → ${id}.png`);
   const timeout = comfyCfg.imageTimeoutMs || comfyCfg.timeoutMs || 300000;
-  const { outputPath, bytes } = await submitImageWorkflow(
-    comfyCfg, buildMascotWorkflow(seed), '7', MASCOT_PNG, timeout, 'maprao-img');
-  save({ ref_image: path.relative(path.join(__dirname, '..', '..', '..'), outputPath), updated_at: new Date().toISOString() });
-  console.log(`  ✅ Mascot Ref: ${outputPath} (${(bytes / 1024).toFixed(0)} KB)`);
-  return outputPath;
+  const { bytes } = await submitImageWorkflow(
+    comfyCfg, buildMascotWorkflow(seed), '7', outPng, timeout, 'maprao-img');
+  setDefault(id);
+  console.log(`  ✅ Mascot ${id}: ${outPng} (${(bytes / 1024).toFixed(0)} KB)`);
+  return { id, path: outPng };
 }
 
-module.exports = { load, save, refPath, generateMascotRef, MASCOT_PNG };
+module.exports = { load, save, refPath, defaultId, setDefault, list, generateMascotRef };
