@@ -120,7 +120,6 @@ function register(req, res, url, rawUrl, method, deps) {
     return getBody(req).then(body => {
       const prompt = (body.prompt || '').trim();
       if (!prompt) return reply(res, 400, { ok: false, error: 'ต้องระบุ prompt' });
-      if (!mascot.refPath()) return reply(res, 409, { ok: false, error: 'ยังไม่มี Mascot Ref — กดสร้างก่อน' });
       const id = Date.now().toString();
       reply(res, 200, { ok: true, id });
       spawnRun(ROOT, ['--action', 'comic', '--id', id, '--prompt', prompt]);
@@ -156,7 +155,6 @@ function register(req, res, url, rawUrl, method, deps) {
     return getBody(req).then(async body => {
       const { source, slug, mode } = body;
       if (!source || !slug) return reply(res, 400, { ok: false, error: 'ต้องระบุ source + slug' });
-      if (!mascot.refPath()) return reply(res, 409, { ok: false, error: 'ยังไม่มี Mascot Ref — กดสร้างก่อน' });
       const dp = path.join(ROOT, 'agents', source, 'pipeline', 'news', slug, 'data.json');
       if (!fs.existsSync(dp)) return reply(res, 404, { ok: false, error: 'ไม่พบข้อมูลข่าว' });
       const data = JSON.parse(fs.readFileSync(dp, 'utf8'));

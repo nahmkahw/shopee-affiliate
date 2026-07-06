@@ -39,8 +39,15 @@ async function runComic(ctx, { prompt, id }) {
   fs.mkdirSync(dir, { recursive: true });
   const seed = Math.floor(Math.random() * 1e10);
 
-  const mascotRef = mascot.refPath();
-  if (!mascotRef) throw new Error('ยังไม่มี Mascot Ref — รัน --action gen-mascot-ref ก่อน');
+  let mascotRef = mascot.refPath();
+  if (!mascotRef) {
+    log('⚠️ ยังไม่มี Mascot Ref — สร้างอัตโนมัติ...');
+    await notify('⚠️ ยังไม่มี Mascot Ref — กำลังสร้างอัตโนมัติ (ใช้เวลา ~1 นาที)...');
+    await mascot.generateMascotRef(ctx.COMFY_CFG, Math.floor(Math.random() * 1e9), '');
+    mascotRef = mascot.refPath();
+    if (!mascotRef) throw new Error('สร้าง Mascot Ref อัตโนมัติไม่สำเร็จ');
+    log('✅ สร้าง Mascot Ref อัตโนมัติสำเร็จ');
+  }
 
   const meta = {
     id, prompt, mode: 'comic', created_at: new Date().toISOString(),
