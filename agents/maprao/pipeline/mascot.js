@@ -16,6 +16,7 @@ const { submitImageWorkflow } = require('../../../lib/comfy-client-core');
 const ROOT_DIR     = path.join(__dirname, '..', '..', '..');
 const MASCOT_JSON  = path.join(__dirname, '..', 'mascot.json');
 const MASCOT_DIR   = path.join(__dirname, '..', 'mascot');
+const DEFAULT_REF  = path.join(__dirname, '..', 'mascot-ref.png'); // bundled default — ใช้เมื่อคลังว่าง
 
 function load() {
   if (!fs.existsSync(MASCOT_JSON)) return { activeId: null, lastDetail: '', items: {} };
@@ -42,13 +43,22 @@ function lastDetail() {
   return load().lastDetail;
 }
 
-// path เต็มของ Mascot Ref ที่ active อยู่ (null ถ้ายังไม่มี/ไฟล์หาย)
+// path เต็มของ Mascot Ref — fallback ตามลำดับ: activeId → latest ในคลัง → mascot-ref.png (default)
 function refPath() {
   const { activeId, items } = load();
-  const it = activeId && items[activeId];
-  if (!it) return null;
-  const p = path.join(ROOT_DIR, it.file);
-  return fs.existsSync(p) ? p : null;
+  // 1. active item
+  let it = activeId && items[activeId];
+  // 2. latest item in library (ถ้า activeId ไม่ได้ตั้งหรือไฟล์หาย)
+  if (!it || !fs.existsSync(path.join(ROOT_DIR, it.file))) {
+    const latestId = Object.keys(items).sort().pop();
+    it = latestId ? items[latestId] : null;
+  }
+  if (it) {
+    const p = path.join(ROOT_DIR, it.file);
+    if (fs.existsSync(p)) return p;
+  }
+  // 3. bundled default
+  return fs.existsSync(DEFAULT_REF) ? DEFAULT_REF : null;
 }
 
 // เลือกรูปในคลังให้เป็น active Mascot Ref
