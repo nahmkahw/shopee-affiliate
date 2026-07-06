@@ -79,7 +79,21 @@ function renderDashboard(ROOT, { gallery }) {
   <div id="mascot-msg" style="font-size:12px;color:#8B5E3C;margin-bottom:6px"></div>
   <button class="btn btn-ghost" id="mascot-btn" onclick="genMascot()">🎨 สร้าง Mascot ใหม่</button>
   <hr style="margin:16px 0;border:none;border-top:1px solid #e5d5bd">
-  <textarea id="prompt" placeholder="พิมพ์เรื่องที่อยากให้กระต่ายเล่า เช่น วันนี้กระต่ายทำเค้กแครอทอร่อยๆ"></textarea>
+  <details id="news-panel" style="margin-bottom:14px;border:1px solid #e5d5bd;border-radius:8px;padding:10px">
+    <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#8B5E3C;list-style:none">📰 สร้างจากข่าว (มะนาว / มะกรูด) ▾</summary>
+    <div style="margin-top:10px">
+      <select id="news-select" style="width:100%;padding:7px 8px;border:1px solid #d9c4a3;border-radius:6px;background:#fdfaf5;color:#3b2a1a;font-size:13px">
+        <option value="">กำลังโหลดข่าว...</option>
+      </select>
+      <div style="display:flex;gap:16px;margin:8px 0 10px;font-size:13px">
+        <label style="cursor:pointer"><input type="radio" name="news-mode" value="comic" checked> 🖼️ การ์ตูน</label>
+        <label style="cursor:pointer"><input type="radio" name="news-mode" value="video"> 🎬 Video</label>
+      </div>
+      <button class="btn" id="news-gen-btn" onclick="genFromNews()" style="margin-top:0">📰 สร้างจากข่าวนี้</button>
+      <div id="news-msg" style="font-size:12px;color:#8B5E3C;margin-top:6px;min-height:16px"></div>
+    </div>
+  </details>
+  <textarea id="prompt" placeholder="หรือพิมพ์เรื่องเองตรงๆ เช่น วันนี้กระต่ายทำเค้กแครอทอร่อยๆ"></textarea>
   <br><button class="btn" id="gen-btn" onclick="genComic()">🥥 สร้างการ์ตูน 4 ช่อง</button>
   <div id="msg"></div>
 </div>
@@ -168,6 +182,47 @@ async function genComic() {
   btn.disabled = false;
 }
 loadMascots();
+async function loadNews() {
+  const sel = document.getElementById('news-select');
+  try {
+    const j = await (await fetch('/api/maprao/news')).json();
+    if (!j.ok || !j.news.length) {
+      sel.innerHTML = '<option value="">— ยังไม่มีข่าวล่าสุด —</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">— เลือกข่าว —</option>' + j.news.map(n => {
+      const tag = '[' + n.source + '] ';
+      const title = (n.title || n.slug || '').substring(0, 55);
+      return '<option value="' + n.source + ':' + n.slug + '">' + tag + title + '</option>';
+    }).join('');
+  } catch (e) { sel.innerHTML = '<option value="">❌ โหลดไม่ได้: ' + e.message + '</option>'; }
+}
+async function genFromNews() {
+  const val = document.getElementById('news-select').value;
+  if (!val) { alert('กรุณาเลือกข่าวก่อน'); return; }
+  const [source, ...rest] = val.split(':');
+  const slug = rest.join(':');
+  const mode = document.querySelector('[name="news-mode"]:checked')?.value || 'comic';
+  const btn = document.getElementById('news-gen-btn');
+  const msg = document.getElementById('news-msg');
+  btn.disabled = true;
+  msg.textContent = '⏳ Typhoon2 สรุปข่าวเป็นเรื่องกระต่าย...';
+  try {
+    const r = await fetch('/api/maprao/generate-from-news', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source, slug, mode }),
+    });
+    const j = await r.json();
+    if (j.ok) {
+      msg.textContent = '✅ เริ่มสร้างแล้ว ID: ' + j.id + ' | "' + (j.storyPrompt || '').substring(0, 50) + '"';
+      setTimeout(() => location.reload(), 3500);
+    } else {
+      msg.textContent = '❌ ' + (j.error || 'error');
+    }
+  } catch (e) { msg.textContent = '❌ ' + e.message; }
+  btn.disabled = false;
+}
+loadNews();
 async function galAction(id, action) {
   const msg = document.getElementById('gal-msg');
   const labels = { post: 'โพสต์ Facebook', resend: 'ส่ง Telegram', video: 'สร้าง Video', delete: 'ลบ' };

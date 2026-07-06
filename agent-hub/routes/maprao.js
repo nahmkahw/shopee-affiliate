@@ -11,6 +11,7 @@ const mascot = require('../../agents/maprao/pipeline/mascot');
 const { renderDashboard } = require('../html/maprao');
 const { sendApprovalNotification } = require('../../lib/tg-approval');
 const { postNow } = require('../../lib/namkhao-bot-news');
+const { summarizeNewsToStory } = require('../../agents/maprao/pipeline/news-to-story');
 
 function reply(res, code, obj) {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -68,6 +69,48 @@ function register(req, res, url, rawUrl, method, deps) {
       const id = Date.now().toString();
       reply(res, 200, { ok: true, id });
       spawnRun(ROOT, ['--action', 'comic', '--id', id, '--prompt', prompt]);
+    }).catch(e => { if (!res.headersSent) reply(res, 500, { ok: false, error: e.message }); });
+  }
+
+  // ── News feed (7 วันล่าสุด จาก manao + makrut) ─────────────────────────────
+  if (url === '/api/maprao/news' && method === 'GET') {
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const news = [];
+    for (const [src, nd] of [
+      ['manao',  path.join(ROOT, 'agents', 'manao',  'pipeline', 'news')],
+      ['makrut', path.join(ROOT, 'agents', 'makrut', 'pipeline', 'news')],
+    ]) {
+      if (!fs.existsSync(nd)) continue;
+      for (const slug of fs.readdirSync(nd)) {
+        const dp = path.join(nd, slug, 'data.json');
+        if (!fs.existsSync(dp)) continue;
+        try {
+          const d = JSON.parse(fs.readFileSync(dp, 'utf8'));
+          const ts = new Date(d.scraped_at || d.published_at || 0).getTime();
+          if (ts < cutoff) continue;
+          news.push({ source: src, slug, title: d.title, published_at: d.published_at, scraped_at: d.scraped_at });
+        } catch {}
+      }
+    }
+    news.sort((a, b) => new Date(b.scraped_at || b.published_at) - new Date(a.scraped_at || a.published_at));
+    return reply(res, 200, { ok: true, news: news.slice(0, 30) });
+  }
+
+  // ── สร้างการ์ตูน/วิดีโอ จากข่าว ─────────────────────────────────────────────
+  if (url === '/api/maprao/generate-from-news' && method === 'POST') {
+    return getBody(req).then(async body => {
+      const { source, slug, mode } = body;
+      if (!source || !slug) return reply(res, 400, { ok: false, error: 'ต้องระบุ source + slug' });
+      if (!mascot.refPath()) return reply(res, 409, { ok: false, error: 'ยังไม่มี Mascot Ref — กดสร้างก่อน' });
+      const dp = path.join(ROOT, 'agents', source, 'pipeline', 'news', slug, 'data.json');
+      if (!fs.existsSync(dp)) return reply(res, 404, { ok: false, error: 'ไม่พบข้อมูลข่าว' });
+      const data = JSON.parse(fs.readFileSync(dp, 'utf8'));
+      const storyPrompt = await summarizeNewsToStory(data.title, data.body || '');
+      const id = Date.now().toString();
+      reply(res, 200, { ok: true, id, storyPrompt });
+      const runArgs = ['--action', 'comic', '--id', id, '--prompt', storyPrompt];
+      if (mode === 'video') runArgs.push('--mode', 'video');
+      spawnRun(ROOT, runArgs);
     }).catch(e => { if (!res.headersSent) reply(res, 500, { ok: false, error: e.message }); });
   }
 
