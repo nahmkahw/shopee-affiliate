@@ -132,7 +132,15 @@ function register(req, res, url, rawUrl, method, deps) {
     const id = postMatch[1];
     if (!readNewsData(ROOT, id)) return reply(res, 404, { ok: false, error: 'ไม่พบรายการนี้' });
     return postNow(pipelineRoot(ROOT), id, 'fb', {}).then(({ code, output }) => {
-      if (code === 0) return reply(res, 200, { ok: true });
+      if (code === 0) {
+        try {
+          const dp = path.join(newsDir(ROOT), id, 'data.json');
+          const d = JSON.parse(fs.readFileSync(dp, 'utf8'));
+          d.status = 'posted'; d.posted_at = new Date().toISOString();
+          fs.writeFileSync(dp, JSON.stringify(d, null, 2));
+        } catch {}
+        return reply(res, 200, { ok: true });
+      }
       return reply(res, 500, { ok: false, error: output.slice(-300) });
     }).catch(e => reply(res, 500, { ok: false, error: e.message }));
   }

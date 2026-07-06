@@ -54,10 +54,11 @@ async function runComic(ctx, { prompt, id }) {
   notify(`🥥 <b>เริ่มสร้างการ์ตูน</b>\n📖 ${(prompt || '').slice(0, 100)}`);
 
   log('🤖 สรุป concept + แตกเป็น panel...');
-  const { concept, sharedSetting, panels } = await generateComicPanels(prompt);
+  const { concept, sharedSetting, panels, footerCaption } = await generateComicPanels(prompt);
   meta.concept = concept;
   meta.shared_setting = sharedSetting;
   meta.panels = panels;
+  meta.footer_caption = footerCaption;
   log(`💡 Concept: ${concept.title}`);
   notify(`🤖 <b>Concept:</b> ${concept.title}`);
   ctx.saveMeta(meta);
@@ -79,7 +80,7 @@ async function runComic(ctx, { prompt, id }) {
 
   log('🖼️ ประกอบหน้าการ์ตูน...');
   const comicPath = path.join(dir, 'comic.png');
-  await buildComicPage(panels, imagePaths, comicPath, { storyPrompt: prompt });
+  await buildComicPage(panels, imagePaths, comicPath, { footerCaption });
 
   meta.status = 'pending_approval';
   meta.comic_image = 'comic.png';
