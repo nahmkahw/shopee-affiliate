@@ -26,6 +26,8 @@ textarea:focus{border-color:#8B5E3C}
 .gcard .actions button.danger{background:#fecaca;color:#7f1d1d}
 .badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
 .b-producing{background:#fde68a;color:#78350f}
+@keyframes prod-ring{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.5)}50%{box-shadow:0 0 0 5px rgba(245,158,11,0)}}
+.gcard[data-status="producing"]{border:2px solid #f59e0b;animation:prod-ring 1.4s ease-in-out infinite}
 .b-pending_approval{background:#bfdbfe;color:#1e3a8a}
 .b-posted{background:#bbf7d0;color:#14532d}
 .b-error{background:#fecaca;color:#7f1d1d}
@@ -183,6 +185,21 @@ function renderGCard(job) {
     </div>
   </div>\`;
 }
+function replaceCard(job) {
+  if (!job || !job.id) return;
+  const el = document.getElementById('gcard-' + job.id);
+  if (!el) return;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = renderGCard(job);
+  el.replaceWith(tmp.firstElementChild);
+}
+function prependProducingCard(id, prompt) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = renderGCard({ id, status: 'producing', prompt, logs: [] });
+  const grid = document.getElementById('gallery');
+  grid.prepend(tmp.firstElementChild);
+  startPoll(id);
+}
 const _polls = {};
 function startPoll(id) {
   if (_polls[id]) return;
@@ -255,7 +272,7 @@ async function postGallery(id) {
     const r = await fetch('/api/maprao/gallery/' + id + '/post', { method: 'POST' });
     const j = await r.json();
     document.getElementById('gallery-msg').textContent = j.ok ? '✅ โพสต์แล้ว' : '❌ ' + (j.error || 'error');
-    if (j.ok) setTimeout(() => location.reload(), 1500);
+    if (j.ok) { const s = await (await fetch('/api/maprao/status/' + id)).json(); replaceCard(s); }
   } catch (e) { document.getElementById('gallery-msg').textContent = '❌ ' + e.message; }
 }
 async function resendGallery(id) {
@@ -272,8 +289,9 @@ async function makeVideo(id) {
     const r = await fetch('/api/maprao/gallery/' + id + '/video', { method: 'POST' });
     const j = await r.json();
     document.getElementById('gallery-msg').textContent = j.ok
-      ? '✅ เริ่มสร้างวิดีโอแล้ว (ใช้เวลา ~5-10 นาที — รีเฟรชเพื่อดูผล)'
+      ? '✅ เริ่มสร้างวิดีโอแล้ว (~5-10 นาที)'
       : '❌ ' + (j.error || 'error');
+    if (j.ok) startPoll(id);
   } catch (e) { document.getElementById('gallery-msg').textContent = '❌ ' + e.message; }
 }
 async function deleteGallery(id) {
@@ -283,7 +301,7 @@ async function deleteGallery(id) {
     const r = await fetch('/api/maprao/gallery/' + id, { method: 'DELETE' });
     const j = await r.json();
     document.getElementById('gallery-msg').textContent = j.ok ? '✅ ลบแล้ว' : '❌ ' + (j.error || 'error');
-    if (j.ok) location.reload();
+    if (j.ok) { const el = document.getElementById('gcard-' + id); if (el) el.remove(); }
   } catch (e) { document.getElementById('gallery-msg').textContent = '❌ ' + e.message; }
 }
 async function genComic() {
@@ -299,9 +317,9 @@ async function genComic() {
     });
     const j = await r.json();
     document.getElementById('msg').textContent = j.ok
-      ? '✅ เริ่มสร้างแล้ว ID: ' + j.id + ' (ดูผลได้ที่ Telegram)'
+      ? '✅ เริ่มสร้างแล้ว (ดูผลได้ที่ Telegram)'
       : '❌ ' + (j.error || 'error');
-    if (j.ok) setTimeout(() => location.reload(), 3000);
+    if (j.ok) { prependProducingCard(j.id, document.getElementById('prompt').value.trim()); }
   } catch (e) { document.getElementById('msg').textContent = '❌ ' + e.message; }
   btn.disabled = false;
 }
@@ -337,8 +355,8 @@ async function genFromNews() {
     });
     const j = await r.json();
     if (j.ok) {
-      msg.textContent = '✅ เริ่มสร้างแล้ว ID: ' + j.id + ' | "' + (j.storyPrompt || '').substring(0, 50) + '"';
-      setTimeout(() => location.reload(), 3500);
+      msg.textContent = '✅ เริ่มสร้างแล้ว | "' + (j.storyPrompt || '').substring(0, 50) + '"';
+      prependProducingCard(j.id, j.storyPrompt || '');
     } else {
       msg.textContent = '❌ ' + (j.error || 'error');
     }
