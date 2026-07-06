@@ -9,8 +9,12 @@ The single, fixed chibi-bunny character that appears in every Comic Strip. Ident
 _Avoid_: Character (that term belongs to มะปราง's user-defined, multi-character roster in `characters.json` — a different concept)
 
 **Mascot Ref**:
-The anchor image used to lock the Mascot's identity across every Panel of a Comic Strip, generated once via ComfyUI and reused for all future generations (not regenerated per job).
+An anchor image used to lock the Mascot's identity across every Panel of a Comic Strip, generated via ComfyUI. Multiple Mascot Refs can exist in a library; exactly one is active at a time and is reused for Comic Strip generation until a different one is selected or a new one is generated (which becomes active automatically).
 _Avoid_: char_ref, anime_ref (มะปราง-specific terms for its own anchor mechanism)
+
+**Mascot Detail**:
+The free-text description a user optionally supplies when generating a new Mascot Ref, appended to the fixed base style prompt (black-and-white manga ink, chibi bunny) to adjust the Mascot's specific look (e.g. an accessory or pose) without changing its core style. The base style prompt itself is not user-editable — only the Detail is. The most recently used Detail is remembered as the default for the next generation, and each Mascot Ref in the library stores the Detail it was generated with.
+_Avoid_: mascot prompt (too broad — Detail refers only to the user-editable portion, not the full locked prompt sent to ComfyUI)
 
 **Story Prompt**:
 The free-text description a user types to start a generation job. It is the sole input to the pipeline — มะพร้าว has no scheduled or automatically-sourced input.

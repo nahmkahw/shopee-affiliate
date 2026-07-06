@@ -10,26 +10,23 @@
 
 const fs   = require('fs');
 const path = require('path');
-const { createCanvas, loadImage } = require('@napi-rs/canvas');
 
 const { generateComicPanels, generateFbCaption } = require('./comic-gen');
 const { generateSceneStill } = require('../../../lib/flux-kontext');
+const { uploadImageToComfy }  = require('../../../lib/comfy-client-core');
 const { buildComicPage }     = require('./comic-build');
 const { sendApprovalNotification } = require('../../../lib/tg-approval');
+const { sendNotification }   = require('../../../lib/tg-notify');
 const mascot = require('./mascot');
 
 // B&W manga ink style — ผนวกเข้าทุก instruction (prompt-only, ไม่บังคับ grayscale — ADR ปมนี้ยังไม่มี, ดู CONTEXT.md)
 const STYLE_SUFFIX = 'Black and white manga ink drawing style, clean simple lineart, minimal shading, ' +
   'no color, monochrome, screentone shading, full body visible, detailed background.';
 
-// png → jpg (post.js/tg-approval คาดหวัง image.jpg)
-async function writeJpgCopy(pngPath, jpgPath) {
-  const img = await loadImage(pngPath);
-  const canvas = createCanvas(img.width, img.height);
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, img.width, img.height);
-  ctx.drawImage(img, 0, 0);
-  fs.writeFileSync(jpgPath, canvas.toBuffer('image/jpeg', 92)); // @napi-rs: quality 0–100 ไม่ใช่ 0–1
+// copy ไฟล์ PNG ต้นฉบับตรงๆ ไปที่ path image.jpg (post.js/tg-approval คาดหวังชื่อไฟล์นี้)
+// PNG lossless > JPEG re-encode; imgBB/FB/Telegram ตรวจ format จาก magic bytes ไม่ใช่นามสกุล จึงรับ PNG ได้ปกติ
+function writeJpgCopy(pngPath, jpgPath) {
+  fs.copyFileSync(pngPath, jpgPath);
 }
 
 /**
@@ -50,8 +47,10 @@ async function runComic(ctx, { prompt, id }) {
     status: 'producing', seed, panels: [], logs: [],
   };
   const log = msg => { meta.logs.push({ t: new Date().toISOString(), msg }); ctx.saveMeta(meta); console.log('  ' + msg); };
+  const notify = text => sendNotification(text).catch(() => {});
   ctx.saveMeta(meta);
   console.log(`\n🥥 มะพร้าว — การ์ตูนขาวดำ 4 ช่อง\n📖 ${prompt}\n`);
+  notify(`🥥 <b>เริ่มสร้างการ์ตูน</b>\n📖 ${(prompt || '').slice(0, 100)}`);
 
   log('🤖 สรุป concept + แตกเป็น panel...');
   const { concept, sharedSetting, panels, footerCaption } = await generateComicPanels(prompt);
@@ -60,14 +59,21 @@ async function runComic(ctx, { prompt, id }) {
   meta.panels = panels;
   meta.footer_caption = footerCaption;
   log(`💡 Concept: ${concept.title}`);
+  notify(`🤖 <b>Concept:</b> ${concept.title}`);
   ctx.saveMeta(meta);
+
+  // upload mascot ref 1 ครั้ง แล้ว reuse filename ทุก panel (กัน 4× upload ของไฟล์เดิม)
+  log('⬆️ อัปโหลด Mascot Ref...');
+  const mascotFilename = await uploadImageToComfy(ctx.COMFY_CFG, mascotRef);
 
   const imagePaths = [];
   for (const p of panels) {
     const out = path.join(dir, `panel_${p.panel}.png`);
     log(`🎨 ช่อง ${p.panel}/${panels.length}: "${p.scene_setting_en.slice(0, 40)}..."`);
+    notify(`🎨 กำลังสร้างช่อง ${p.panel}/${panels.length}`);
     await generateSceneStill(ctx.COMFY_CFG, [mascotRef], p.scene_setting_en, out,
-      { seed: seed + p.panel, styleSuffix: STYLE_SUFFIX, lockLabel: 'maprao-img' });
+      { seed: seed + p.panel, styleSuffix: STYLE_SUFFIX, lockLabel: 'maprao-img',
+        _cachedFilenames: [mascotFilename] });
     imagePaths.push(out);
   }
 
@@ -86,7 +92,7 @@ async function runComic(ctx, { prompt, id }) {
   fs.mkdirSync(path.join(newsDir, 'content'), { recursive: true });
   const fbCaption = await generateFbCaption(concept, prompt);
   fs.writeFileSync(path.join(newsDir, 'content', 'facebook.md'), fbCaption);
-  await writeJpgCopy(comicPath, path.join(newsDir, 'image.jpg'));
+  writeJpgCopy(comicPath, path.join(newsDir, 'image.jpg'));
   const data = { title: concept.title, status: 'pending_approval', created_at: meta.created_at };
   fs.writeFileSync(path.join(newsDir, 'data.json'), JSON.stringify(data, null, 2));
 
@@ -97,6 +103,7 @@ async function runComic(ctx, { prompt, id }) {
   });
 
   console.log(`✅ การ์ตูนพร้อม: ${comicPath}`);
+  notify(`✅ <b>การ์ตูนพร้อมแล้ว!</b>\n📖 ${concept.title}\nดูที่ Dashboard แล้ว Approve`);
   return meta;
 }
 
