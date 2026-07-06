@@ -117,7 +117,7 @@ function drawThought(ctx, bx, by, bw, bh, tail, pad, border, fontSize, lineH, te
   ctx.ellipse(cx, cy, rx * 0.72, ry * 0.72, 0, 0, Math.PI * 2);
   ctx.fill(); ctx.stroke();
 
-  const dots = [0.7, 0.5, 0.3];
+  const dots = [0.7, 0.5];
   for (const s of dots) {
     ctx.beginPath();
     ctx.arc(cx + (tail.cx - cx) * (1 - s), cy + (tail.cy - cy) * (1 - s), bumpR * s * 0.7, 0, Math.PI * 2);

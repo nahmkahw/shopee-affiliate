@@ -447,7 +447,7 @@
     if (!n) return;
     const combined = n.title + (n.body ? '\n\n' + n.body : '');
     document.getElementById('balloontext').value = combined;
-    updateCounter(); drawPreview();
+    drawPreview();
   }
 
   // โหลด active template → prefill (template = default, อัปโหลดเพื่อ override)
