@@ -62,7 +62,7 @@ function galleryCard(ROOT, job) {
   } else {
     videoBtn = `<button onclick="makeVideo('${job.id}')" title="สร้างวิดีโอ Reels/TikTok (Ken Burns + เสียงบรรยาย)">🎬</button>`;
   }
-  return `<div class="gcard">
+  return `<div class="gcard" id="gcard-${job.id}" data-status="${status}">
     <img src="/dashboard/maprao/comic/${job.id}" onerror="this.style.display='none'"
       style="cursor:zoom-in" onclick="openLightbox('/dashboard/maprao/comic/${job.id}')" title="คลิกเพื่อดูรูปขนาดใหญ่">
     <div class="meta">
@@ -98,7 +98,6 @@ function mascotCard(item) {
 }
 
 function renderDashboard(ROOT, { gallery, mascotList, lastDetail }) {
-  const hasProducing = gallery.some(j => j.status === 'producing' || j.video_status === 'producing');
   const cards = gallery.length
     ? gallery.map(j => galleryCard(ROOT, j)).join('')
     : '<span style="color:#8B5E3C;font-size:13px">ยังไม่มีการ์ตูน</span>';
@@ -155,7 +154,55 @@ function renderDashboard(ROOT, { gallery, mascotList, lastDetail }) {
 </div>
 
 <script>
-${hasProducing ? 'setTimeout(() => location.reload(), 10000);' : ''}
+function escHtml(s) {
+  return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function renderGCard(job) {
+  const st = job.status || 'producing';
+  const ll = (st === 'producing' && Array.isArray(job.logs) && job.logs.length)
+    ? job.logs[job.logs.length - 1].msg : '';
+  const vid = job.video_status;
+  const videoBtn = vid === 'producing'
+    ? \`<button disabled title="กำลังสร้างวิดีโอ...">⏳</button>\`
+    : job.story_video
+      ? \`<a href="/dashboard/maprao/video/\${job.id}" download="story.mp4" style="flex:1;display:flex;align-items:center;justify-content:center;border:none;border-radius:6px;padding:5px 4px;font-size:11px;font-weight:600;cursor:pointer;background:#d1fae5;color:#065f46;text-decoration:none">🎬 ดาวน์</a>\`
+      : \`<button onclick="makeVideo('\${job.id}')" title="สร้างวิดีโอ Reels/TikTok">🎬</button>\`;
+  return \`<div class="gcard" id="gcard-\${job.id}" data-status="\${st}">
+    <img src="/dashboard/maprao/comic/\${job.id}" onerror="this.style.display='none'"
+      style="cursor:zoom-in" onclick="openLightbox('/dashboard/maprao/comic/\${job.id}')" title="คลิกเพื่อดูรูปขนาดใหญ่">
+    <div class="meta">
+      <span class="badge b-\${st}">\${st}</span>
+      \${ll ? \`<div style="margin-top:3px;font-size:10px;color:#92400e;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="\${escHtml(ll)}">\${escHtml(ll)}</div>\` : ''}
+      <div style="margin-top:4px">\${escHtml((job.prompt||'').substring(0,60))}</div>
+    </div>
+    <div class="actions">
+      <button onclick="postGallery('\${job.id}')" title="โพสต์ Facebook">📤 โพสต์</button>
+      <button onclick="resendGallery('\${job.id}')" title="ส่ง Telegram">✈️ ส่ง TG</button>
+      \${videoBtn}
+      <button class="danger" onclick="deleteGallery('\${job.id}')" title="ลบ">🗑️</button>
+    </div>
+  </div>\`;
+}
+const _polls = {};
+function startPoll(id) {
+  if (_polls[id]) return;
+  _polls[id] = setInterval(async () => {
+    try {
+      const j = await (await fetch('/api/maprao/status/' + id)).json();
+      if (!j.ok) return;
+      const el = document.getElementById('gcard-' + id);
+      if (!el) { clearInterval(_polls[id]); delete _polls[id]; return; }
+      const still = j.status === 'producing' || j.video_status === 'producing';
+      const tmp = document.createElement('div');
+      tmp.innerHTML = renderGCard(j);
+      el.replaceWith(tmp.firstElementChild);
+      if (!still) { clearInterval(_polls[id]); delete _polls[id]; }
+    } catch {}
+  }, 5000);
+}
+document.querySelectorAll('.gcard[data-status="producing"]').forEach(el => {
+  startPoll(el.id.replace('gcard-', ''));
+});
 function openLightbox(src) {
   document.getElementById('lb-img').src = src;
   document.getElementById('lb-overlay').classList.add('open');
