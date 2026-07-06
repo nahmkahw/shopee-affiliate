@@ -39,16 +39,6 @@ async function runComic(ctx, { prompt, id }) {
   fs.mkdirSync(dir, { recursive: true });
   const seed = Math.floor(Math.random() * 1e10);
 
-  let mascotRef = mascot.refPath();
-  if (!mascotRef) {
-    log('⚠️ ยังไม่มี Mascot Ref — สร้างอัตโนมัติ...');
-    await notify('⚠️ ยังไม่มี Mascot Ref — กำลังสร้างอัตโนมัติ (ใช้เวลา ~1 นาที)...');
-    await mascot.generateMascotRef(ctx.COMFY_CFG, Math.floor(Math.random() * 1e9), '');
-    mascotRef = mascot.refPath();
-    if (!mascotRef) throw new Error('สร้าง Mascot Ref อัตโนมัติไม่สำเร็จ');
-    log('✅ สร้าง Mascot Ref อัตโนมัติสำเร็จ');
-  }
-
   const meta = {
     id, prompt, mode: 'comic', created_at: new Date().toISOString(),
     status: 'producing', seed, panels: [], logs: [],
@@ -58,6 +48,16 @@ async function runComic(ctx, { prompt, id }) {
   ctx.saveMeta(meta);
   console.log(`\n🥥 มะพร้าว — การ์ตูนขาวดำ 4 ช่อง\n📖 ${prompt}\n`);
   notify(`🥥 <b>เริ่มสร้างการ์ตูน</b>\n📖 ${(prompt || '').slice(0, 100)}`);
+
+  let mascotRef = mascot.refPath();
+  if (!mascotRef) {
+    log('⚠️ ยังไม่มี Mascot Ref — สร้างอัตโนมัติ...');
+    await notify('⚠️ ยังไม่มี Mascot Ref — กำลังสร้างอัตโนมัติ (ใช้เวลา ~1 นาที)...');
+    await mascot.generateMascotRef(ctx.COMFY_CFG, Math.floor(Math.random() * 1e9), '');
+    mascotRef = mascot.refPath();
+    if (!mascotRef) throw new Error('สร้าง Mascot Ref อัตโนมัติไม่สำเร็จ');
+    log('✅ สร้าง Mascot Ref อัตโนมัติสำเร็จ');
+  }
 
   log('🤖 สรุป concept + แตกเป็น panel...');
   const { concept, sharedSetting, panels, footerCaption } = await generateComicPanels(prompt);
