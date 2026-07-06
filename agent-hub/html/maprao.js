@@ -29,13 +29,18 @@ textarea:focus{border-color:#8B5E3C}
 .b-pending_approval{background:#bfdbfe;color:#1e3a8a}
 .b-posted{background:#bbf7d0;color:#14532d}
 .b-error{background:#fecaca;color:#7f1d1d}
-.mcard{position:relative;border-radius:10px;overflow:hidden;border:2px solid #e5d5bd;background:#fff}
+.mcard{position:relative;border-radius:10px;overflow:hidden;border:2px solid #e5d5bd;background:#fff;display:flex;flex-direction:column}
 .mcard.active{border-color:#8B5E3C}
-.mcard img{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;background:#eee;cursor:pointer}
-.mcard .active-tag{position:absolute;top:6px;left:6px;background:#8B5E3C;color:#fff;font-size:10px;padding:2px 6px;border-radius:8px}
-.mcard .meta{padding:6px 8px;font-size:11px;color:#8B5E3C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mcard .del-btn{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:13px;line-height:22px;text-align:center;cursor:pointer;padding:0}
-.mcard .del-btn:hover{background:#b91c1c}
+.mcard img{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;background:#eee;cursor:zoom-in}
+.mcard .active-tag{position:absolute;top:6px;left:6px;background:#8B5E3C;color:#fff;font-size:10px;padding:2px 6px;border-radius:8px;z-index:1}
+.mcard-footer{padding:6px 8px 8px;display:flex;flex-direction:column;gap:5px}
+.mcard-detail{font-size:10px;color:#92400e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mcard-actions{display:flex;gap:4px}
+.mcard-btn-default{flex:1;border:none;border-radius:6px;padding:4px 6px;font-size:10px;font-weight:600;cursor:pointer;background:#eee1cc;color:#8B5E3C}
+.mcard-btn-default:hover{opacity:.85}
+.mcard-active-label{flex:1;border-radius:6px;padding:4px 6px;font-size:10px;font-weight:600;background:#d1fae5;color:#065f46;text-align:center}
+.mcard-btn-del{border:none;border-radius:6px;padding:4px 7px;font-size:10px;font-weight:600;cursor:pointer;background:#fecaca;color:#7f1d1d}
+.mcard-btn-del:hover{opacity:.85}
 #lb-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out}
 #lb-overlay.open{display:flex}
 #lb-overlay img{max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.6);cursor:default}
@@ -75,12 +80,20 @@ function galleryCard(ROOT, job) {
 }
 
 function mascotCard(item) {
-  const title = item.detail ? `${esc(item.detail)} — คลิกเพื่อเลือกใช้` : 'คลิกเพื่อเลือกใช้';
+  const src = `/dashboard/maprao/mascot/${item.id}`;
+  const detail = item.detail || '';
   return `<div class="mcard ${item.active ? 'active' : ''}">
-    ${item.active ? '<span class="active-tag">✓ ใช้อยู่</span>'
-      : `<button class="del-btn" onclick="event.stopPropagation();deleteMascot('${item.id}')" title="ลบรูปนี้">×</button>`}
-    <img src="/dashboard/maprao/mascot/${item.id}" onclick="selectMascot('${item.id}')" title="${title}">
-    ${item.detail ? `<div class="meta">${esc(item.detail)}</div>` : ''}
+    ${item.active ? '<span class="active-tag">✓ ใช้อยู่</span>' : ''}
+    <img src="${src}" onclick="openLightbox('${src}')" title="คลิกเพื่อดูรูปใหญ่">
+    <div class="mcard-footer">
+      <div class="mcard-detail" title="${esc(detail)}">${esc(detail) || '<span style="color:#c4a882">ไม่มีรายละเอียด</span>'}</div>
+      <div class="mcard-actions">
+        ${item.active
+          ? `<span class="mcard-active-label">✓ Default</span>`
+          : `<button class="mcard-btn-default" onclick="selectMascot('${item.id}')">📌 ตั้ง default</button>`}
+        <button class="mcard-btn-del" onclick="deleteMascot('${item.id}')" title="ลบรูปนี้">🗑️</button>
+      </div>
+    </div>
   </div>`;
 }
 

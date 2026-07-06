@@ -70,14 +70,17 @@ function selectActive(id) {
   return m.items[id];
 }
 
-// ลบรูปในคลัง (ทั้ง entry + ไฟล์จริง) — ห้ามลบตัวที่ active อยู่ (ต้องเลือกตัวอื่นก่อน)
+// ลบรูปในคลัง (ทั้ง entry + ไฟล์จริง) — ถ้าลบ active ให้ auto-select ตัวที่เหลือล่าสุด
 function remove(id) {
   const m = load();
   if (!m.items[id]) throw new Error(`ไม่พบ Mascot Ref id=${id}`);
-  if (m.activeId === id) throw new Error('ลบ Mascot Ref ที่ใช้งานอยู่ไม่ได้ — เลือกตัวอื่นเป็น active ก่อน');
   const p = path.join(ROOT_DIR, m.items[id].file);
   try { fs.unlinkSync(p); } catch {}
   delete m.items[id];
+  if (m.activeId === id) {
+    const remaining = Object.keys(m.items).sort();
+    m.activeId = remaining.length ? remaining[remaining.length - 1] : null;
+  }
   save(m);
 }
 
