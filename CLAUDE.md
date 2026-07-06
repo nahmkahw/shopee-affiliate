@@ -292,10 +292,12 @@ node agents\makrut\pipeline\makrut.js --resend
 - **Bubble:** พูด/คิดในช่อง (ไม่ใช่ caption band แบบมะปราง) — 0-1 Bubble/Panel, fixed-corner position ไม่คำนวณหลบตัวละคร ([ADR-002](agents/maprao/docs/ADR-002-fixed-corner-bubble-placement.md)) + Footer Caption ปิดท้ายเรื่อง
 - **Approval + Post:** reuse namkhao bot approval infra ทั้งหมด (**ไม่ใช่บอทของมะปรางเอง** — มะปรางไม่มี callback handler, ดู [ADR-001](agents/maprao/docs/ADR-001-shared-telegram-bot.md)) — เขียน `agents/maprao/pipeline/news/{id}/` (data.json + content/facebook.md + image.jpg) ให้ตรง shape ที่ `post.js` คาดหวัง แล้วเรียก `lib/tg-approval.js` `sendApprovalNotification(..., { mode: 'immediate' })` → namkhao bot callback → `lib/namkhao-bot-news.js` `postNow()` (ฟังก์ชันใหม่ คู่กับ `schedulePost()` เดิม — โพสต์ทันทีไม่มี `--schedule`)
 - **Trigger:** on-demand เท่านั้นผ่าน dashboard (`/dashboard/maprao`, `/api/maprao/generate`) — ไม่มี scheduler/cron ประจำวัน
+- **News-to-Comic Pipeline:** dashboard มี section "📰 สร้างจากข่าว" — dropdown ข่าว 7 วันล่าสุดจาก manao+makrut (`GET /api/maprao/news`) → เลือก comic หรือ video → `POST /api/maprao/generate-from-news` → Typhoon2 สรุปข่าวเป็น story prompt กระต่าย ([`pipeline/news-to-story.js`](agents/maprao/pipeline/news-to-story.js) `summarizeNewsToStory()`) → spawn `run.js --action comic [--mode video]`; ถ้า `--mode video` run.js chain `actionVideo(actualId)` ต่อทันทีหลัง comic เสร็จ
 - **Video (Reels/TikTok):** กด 🎬 ใน Gallery → `--action video` → [`agents/maprao/pipeline/comic-video.js`](agents/maprao/pipeline/comic-video.js):
-  - Title card (2s) → Panel 1-4 (Ken Burns still + Typhoon2 narration + gTTS + bubble subtitle) → concat → `gallery/{id}/story.mp4`
+  - Title card (2s) → Panel 1-4 (Ken Burns still + Typhoon2 narration Hook/Setup/Twist/Punchline + gTTS ภาษาไทยล้วน + bubble subtitle) → concat → `gallery/{id}/story.mp4`
+  - `extractThaiText()` กรอง Latin/pipe ก่อนส่ง TTS; `MAPRAO_TTS_SPEED=0.9` ลดความเร็วพูดนิดๆ ให้เป็นธรรมชาติ
   - รองรับ 2 format: `portrait` (9:16 Reels/TikTok, default) | `square` (1:1)
-  - env: `MAPRAO_VIDEO_SIZE` (default 1080), `MAPRAO_VIDEO_FORMAT` (default portrait)
+  - env: `MAPRAO_VIDEO_SIZE` (default 1080), `MAPRAO_VIDEO_FORMAT` (default portrait), `MAPRAO_TTS_SPEED` (default 0.9)
   - **Gate 2:** `kenBurnsClip`/`concatClips`/`addSubtitle` + portrait support ย้ายไปที่ [`lib/video-build.js`](lib/video-build.js) — maprang `video-build.js` กลายเป็น thin wrapper (re-export เท่านั้น)
 - env: `MAPRAO_COMIC_SIZE` (default 1080), `MAPRAO_COMIC_MAXLINE` (default 40)
 
@@ -303,11 +305,12 @@ node agents\makrut\pipeline\makrut.js --resend
 
 สร้างรูปตัวละครอนิเมะจากรูปคนต้นแบบ + ลูกโป่งคำพูด ผ่าน Dashboard + Telegram Bot
 
-- **Bubble AI (`agents/anime/bubble-gen.js`):** `summarizeBubble(rawText)` → Typhoon2 สรุป/rephrase ข้อความ → `{text, type, corner}` — type: speech/thought/shout/whisper; corner: top-left/top-right/bottom-left/bottom-right (default `bottom-right` เพื่อไม่บังหน้า bust portrait)
-- **Face-safe placement:** bubble วางที่ corner ที่ AI เลือก — `balloon-canvas.js` มี `CORNER_GEOM` map corner → `{bx,by,tx,ty}` ตรงกับ dashboard preview JS เสมอ; dashboard มี corner picker 4 ปุ่ม override ได้; `renderBalloonOnImage(path, text, null, out, {template, corner})`
+- **Bubble AI (`agents/anime/bubble-gen.js`):** `summarizeBubble(rawText)` → Typhoon2 สรุป/rephrase ข้อความ → `{text, type, corner, footer}` — text ≤60 ตัว (bubble สั้น), footer ≤200 ตัว (สรุปยาว); corner: top-left/top-right/bottom-left/bottom-right (default `bottom-right` เพื่อไม่บังหน้า bust portrait)
+- **Footer Caption:** output JPEG มีแถบขาวต่อท้ายด้านล่างภาพ (8% ของความกว้าง) + italic text ดำ — `renderBalloonOnImage(..., {template, corner, footerCaption})` ขยาย canvas อัตโนมัติถ้ามี `footerCaption`; dashboard preview แสดง placeholder band ก่อน finalize, หลัง finalize แสดง footer จริงใน div ด้านล่าง
+- **Face-safe placement:** bubble วางที่ corner ที่ AI เลือก — `balloon-canvas.js` มี `CORNER_GEOM` map corner → `{bx,by,tx,ty}` ตรงกับ dashboard preview JS เสมอ; dashboard มี corner picker 4 ปุ่ม override ได้
 - **Gallery per-item actions:** ปุ่ม 📤 โพสต์ FB / ✈️ ส่ง TG approval ซ้ำ / 🗑️ ลบ บน card แต่ละใบ — route: `DELETE /gallery/:id`, `POST /gallery/:id/post`, `POST /gallery/:id/resend`; Telegram resend ใช้ `agents/anime/anime-tg.js` `sendAnimeApproval()`
 - **News Dropdown:** `GET /dashboard/anime/api/news` ดึงข่าว 7 วันล่าสุดจาก manao + makrut รวมกัน → dropdown populate textarea → `summarizeBubble` สรุปอัตโนมัติตอน generate
-- env: `ANIME_TELEGRAM_BOT_TOKEN`, `ANIME_TELEGRAM_CHAT_ID`, `ANIME_BUBBLE_MAXCHARS` (default 60)
+- env: `ANIME_TELEGRAM_BOT_TOKEN`, `ANIME_TELEGRAM_CHAT_ID`, `ANIME_BUBBLE_MAXCHARS` (default 60), `ANIME_FOOTER_MAXCHARS` (default 200)
 
 ### Agent มะกรูด (`agents/makrut/`)
 
@@ -473,6 +476,7 @@ tracking.xlsx           ← sort ตาม post_date | status: scraped → draft
 | กด Approve ข่าวแล้ว Telegram บอก "✅ สำเร็จ" แต่ FB ไม่มีโพสต์ | เดิม: `post.js` โหลด `.env` จาก cwd แต่ bot spawn ด้วย cwd=`manao/pipeline` (ไม่มี .env) → ไม่มี FB creds → error ถูกกลืน + exit 0 → bot รายงานสำเร็จหลอก. **แก้แล้ว:** post.js โหลด root `.env` ด้วย absolute path + exit non-zero เมื่อโพสต์ fail (bot จะโชว์ error จริง). post.js spawn ใหม่ทุกครั้ง → fix มีผลทันทีไม่ต้อง restart bot |
 | มะปราง dashboard โชว์ "Pre-production กำลังทำงาน" ค้าง | job orphaned (process ตายไม่อัปเดต status) — `run.js` เขียน `status='error'` ตอน exit ผิดปกติแล้ว (ทั้ง throw + process.exit) แต่ถ้าถูก `kill -9` ต้องล้าง meta status เอง |
 | Ollama output เป็น `??????` | ตรวจว่าใช้ model Typhoon2 (`OLLAMA_MODEL` ใน `.env`) — `llama3.2` ไม่รองรับไทย |
+| มะพร้าว รูปใน Telegram/Facebook ฝุ่น ไม่คม แต่ใน Gallery ปกติ | `@napi-rs/canvas` `toBuffer('image/jpeg', quality)` ใช้ scale **0–100** ไม่ใช่ 0–1 — ถ้าใส่ `0.9` = 1% quality → image.jpg ออก 38KB เท่านั้น; **แก้แล้วใน `comic.js`** ใช้ `92` แทน; ถ้าพบ image.jpg < 100KB ให้ regenerate + resend |
 
 ---
 

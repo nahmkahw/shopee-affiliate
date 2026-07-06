@@ -35,13 +35,21 @@ function writeMeta(id, meta) {
 
 async function actionComic(prompt, id) {
   if (!prompt) { console.error('❌ ต้องระบุ --prompt'); process.exit(1); }
-  const actualId = id || Date.now().toString();
-  const ctx = { COMFY_CFG, ROOT, GALLERY, PIPELINE_ROOT, NEWS_DIR, saveMeta: m => writeMeta(actualId, m) };
-  await require('./pipeline/comic').runComic(ctx, { prompt, id: actualId });
+  const ctx = { COMFY_CFG, ROOT, GALLERY, PIPELINE_ROOT, NEWS_DIR, saveMeta: m => writeMeta(id, m) };
+  await require('./pipeline/comic').runComic(ctx, { prompt, id });
 }
 
 async function actionGenMascotRef() {
   await mascot.generateMascotRef(COMFY_CFG, Math.floor(Math.random() * 1e9));
+}
+
+async function actionVideo(id) {
+  if (!id) { console.error('❌ ต้องระบุ --id'); process.exit(1); }
+  const meta = readMeta(id);
+  if (!meta) { console.error(`❌ ไม่พบ meta.json ของ ${id}`); process.exit(1); }
+  const dir = path.join(GALLERY, id);
+  const { buildComicVideo } = require('./pipeline/comic-video');
+  await buildComicVideo(meta, dir);
 }
 
 function actionStatus(galleryId) {
@@ -61,25 +69,30 @@ const arg       = f => { const i = args.indexOf(f); return i !== -1 ? args[i + 1
 const action    = arg('--action') || 'status';
 const prompt    = arg('--prompt');
 const galleryId = arg('--id');
+const mode      = arg('--mode');
+const actualId  = galleryId || Date.now().toString(); // คำนวณครั้งเดียวที่ top — ใช้ทั้ง comic + chain video
 
 // เขียน status='error' ตอน exit ผิดปกติ — กัน job ค้าง active (pattern เดียวกับมะปราง)
 let _exitError = null;
 process.on('exit', code => {
   if (code === 0) return;
   try {
-    const m = galleryId && readMeta(galleryId);
+    const m = actualId && readMeta(actualId);
     if (m && m.status === 'producing') {
       m.status = 'error';
       m.error_reason = _exitError || 'process exited abnormally';
       m.logs = m.logs || [];
       m.logs.push({ t: new Date().toISOString(), msg: `❌ ล้มเหลว: ${m.error_reason}` });
-      writeMeta(galleryId, m);
+      writeMeta(actualId, m);
     }
   } catch {}
 });
 
 (async () => {
-  if (action === 'comic')             await actionComic(prompt, galleryId);
-  else if (action === 'gen-mascot-ref') await actionGenMascotRef();
-  else                                 actionStatus(galleryId);
+  if (action === 'comic') {
+    await actionComic(prompt, actualId);
+    if (mode === 'video') await actionVideo(actualId); // chain วิดีโอต่อทันทีถ้าส่ง --mode video
+  } else if (action === 'gen-mascot-ref') await actionGenMascotRef();
+  else if (action === 'video')            await actionVideo(galleryId);
+  else                                    actionStatus(galleryId);
 })().catch(e => { console.error('❌', e.message); _exitError = e.message; process.exit(1); });
