@@ -99,6 +99,19 @@ async function actionVideo(galleryId) {
   }
 }
 
+async function actionComicFromNews(source, slug, id, mode) {
+  if (!source || !slug) { console.error('❌ ต้องระบุ --source และ --slug'); process.exit(1); }
+  const newsDataPath = path.join(ROOT, 'agents', source, 'pipeline', 'news', slug, 'data.json');
+  if (!fs.existsSync(newsDataPath)) throw new Error(`ไม่พบข้อมูลข่าว: agents/${source}/pipeline/news/${slug}/data.json`);
+  const data = JSON.parse(fs.readFileSync(newsDataPath, 'utf8'));
+  console.log(`\n🥥 มะพร้าว — สร้างจากข่าว [${source}] ${slug}\n📰 ${data.title}\n`);
+  const { summarizeNewsToStory } = require('./pipeline/news-to-story');
+  const storyPrompt = await summarizeNewsToStory(data.title, data.body || '');
+  console.log(`📖 Story prompt: ${storyPrompt.substring(0, 80)}...`);
+  if (mode === 'video') await actionComicVideo(storyPrompt, id);
+  else await actionComic(storyPrompt, id);
+}
+
 async function actionGenMascotRef(detail) {
   await mascot.generateMascotRef(COMFY_CFG, Math.floor(Math.random() * 1e9), detail || '');
 }
@@ -121,6 +134,9 @@ const action    = arg('--action') || 'status';
 const prompt    = arg('--prompt');
 const galleryId = arg('--id');
 const detail    = arg('--detail');
+const newsSource = arg('--source');
+const newsSlug   = arg('--slug');
+const runMode    = arg('--mode');
 const actualId  = galleryId || Date.now().toString(); // ใช้ใน exit handler กัน job ค้าง
 
 // เขียน status='error' ตอน exit ผิดปกติ — กัน job ค้าง active (pattern เดียวกับมะปราง)
@@ -142,6 +158,7 @@ process.on('exit', code => {
 (async () => {
   if (action === 'comic')               await actionComic(prompt, actualId);
   else if (action === 'comic-video')    await actionComicVideo(prompt, actualId);
+  else if (action === 'comic-from-news') await actionComicFromNews(newsSource, newsSlug, actualId, runMode);
   else if (action === 'video')          await actionVideo(galleryId);
   else if (action === 'gen-mascot-ref') await actionGenMascotRef(detail);
   else                                  actionStatus(galleryId);
