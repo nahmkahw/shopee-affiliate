@@ -19,11 +19,33 @@ const MASCOT_DIR   = path.join(__dirname, '..', 'mascot');
 const DEFAULT_REF  = path.join(__dirname, '..', 'mascot-ref.png'); // bundled default — ใช้เมื่อคลังว่าง
 
 function load() {
-  if (!fs.existsSync(MASCOT_JSON)) return { activeId: null, lastDetail: '', items: {} };
-  try {
-    const m = JSON.parse(fs.readFileSync(MASCOT_JSON, 'utf8'));
-    return { activeId: m.activeId || null, lastDetail: m.lastDetail || '', items: m.items || {} };
-  } catch { return { activeId: null, lastDetail: '', items: {} }; }
+  let m;
+  if (!fs.existsSync(MASCOT_JSON)) {
+    m = { activeId: null, lastDetail: '', items: {} };
+  } else {
+    try {
+      const raw = JSON.parse(fs.readFileSync(MASCOT_JSON, 'utf8'));
+      m = { activeId: raw.activeId || null, lastDetail: raw.lastDetail || '', items: raw.items || {} };
+    } catch { m = { activeId: null, lastDetail: '', items: {} }; }
+  }
+  // auto-discover PNG ใน MASCOT_DIR ที่ยังไม่ register (orphan files จากการ generate โดยตรง)
+  let dirty = false;
+  if (fs.existsSync(MASCOT_DIR)) {
+    for (const fname of fs.readdirSync(MASCOT_DIR)) {
+      if (!fname.endsWith('.png')) continue;
+      const id = fname.replace('.png', '');
+      if (!m.items[id]) {
+        m.items[id] = {
+          file: path.relative(ROOT_DIR, path.join(MASCOT_DIR, fname)),
+          created_at: new Date(parseInt(id) || Date.now()).toISOString(),
+          detail: '',
+        };
+        dirty = true;
+      }
+    }
+  }
+  if (dirty) save(m);
+  return m;
 }
 
 function save(m) {
