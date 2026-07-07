@@ -1,6 +1,6 @@
 # Agent มะยม — LINE Money Slip Logger (Design)
 
-> สถานะ: **ออกแบบเสร็จ (grilled) — ยังไม่ implement**
+> สถานะ: **implement แล้ว** (PR #43) — เหลือตั้งค่า LINE channel + `MAYOM_*` ใน `.env` + expose webhook
 > ที่มา: grilling session 2026-07-07
 
 รับสลิปโอนเงินจากกลุ่ม LINE → OCR ด้วย vision model (local) → บันทึกเป็นรายการธุรกรรม → Dashboard สรุป (รวม / รายวัน / แยกตาม LINE user)

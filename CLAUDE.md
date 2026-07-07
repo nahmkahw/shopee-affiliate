@@ -311,7 +311,7 @@ node agents\makrut\pipeline\makrut.js --resend
 
 ### Agent มะยม (`agents/mayom/`) — LINE Money Slip Logger
 
-> สถานะ: **ออกแบบเสร็จ (grilled) ยังไม่ implement** — spec เต็มที่ [agents/mayom/docs/DESIGN.md](agents/mayom/docs/DESIGN.md)
+> spec เต็มที่ [agents/mayom/docs/DESIGN.md](agents/mayom/docs/DESIGN.md) — ก่อนใช้งานจริงต้องตั้งค่า LINE channel + เติม `MAYOM_*` ใน root `.env` + expose webhook (ngrok ตอนทดสอบ)
 
 รับสลิปโอนเงินจากกลุ่ม LINE → OCR ด้วย vision model (local) → บันทึกรายการธุรกรรม → Dashboard สรุป (รวม / รายวัน / แยกตาม LINE user). **Webhook-driven ล้วน** — ไม่มี bot process รันค้าง, ไม่มี scheduler; `agent-hub` HTTP server รับ webhook ตรงผ่าน `routes/mayom.js`
 
