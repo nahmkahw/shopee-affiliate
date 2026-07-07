@@ -13,8 +13,12 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
 const store = require('./store');
+const summarize = require('./summarize');
 const line  = require('../../lib/line-client');
 const { readSlip } = require('../../lib/slip-ocr');
+
+const THAI_MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+function thaiMonth(ym) { const [y, m] = ym.split('-'); return `${THAI_MON[parseInt(m, 10) - 1]} ${y}`; }
 
 const TOKEN    = process.env.MAYOM_LINE_CHANNEL_ACCESS_TOKEN || '';
 const GROUP_ID = process.env.MAYOM_LINE_GROUP_ID || '';
@@ -24,13 +28,22 @@ function arg(flag, def = null) {
   return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : def;
 }
 
-async function notify(to, replyToken, text) {
+async function notify(to, replyToken, text, quickReply) {
   if (!TOKEN || !to) return;
   // ลอง reply ก่อน (ฟรี) ถ้าพลาด/หมดอายุ → push
   if (replyToken) {
-    try { await line.replyMessage(replyToken, text, TOKEN); return; } catch {}
+    try { await line.replyMessage(replyToken, text, TOKEN, quickReply); return; } catch {}
   }
-  try { await line.pushMessage(to, text, TOKEN); } catch (e) { console.error('[mayom] push fail:', e.message); }
+  try { await line.pushMessage(to, text, TOKEN, quickReply); } catch (e) { console.error('[mayom] push fail:', e.message); }
+}
+
+// ชื่อที่ใช้เรียก user: alias > ชื่อจากสลิปล่าสุด > line_user_id
+function resolveName(userId) {
+  const alias = store.getUsers()[userId];
+  if (alias) return alias;
+  const mine = store.readAll().filter(t => t.line_user_id === userId)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  return mine.length ? (mine[0].line_display_name || userId) : userId;
 }
 
 // ── parse ข้อความกำกับ: คำแรก=category (ถ้า match หมวด), ที่เหลือ=note ─────────────
@@ -110,6 +123,30 @@ async function processSlip() {
   console.log(`[mayom] recorded ${id}: ${baht} บาท (dup=${!!dup})`);
 }
 
+// /สรุป — สรุปยอดรายเดือนของ "คนที่พิมพ์" ตอบในกลุ่ม (Quick Reply เลือกเดือน)
+async function summary() {
+  const userId = arg('--user-id');
+  const groupId = arg('--group-id') || GROUP_ID;
+  const replyToken = arg('--reply-token');
+  const text = (arg('--text') || '').trim();
+  const rest = text.replace(/^\/(สรุป|summary)/i, '').trim();
+  const disp = resolveName(userId);
+
+  // ไม่ระบุเดือน → โชว์ Quick Reply ปุ่มเดือน (ล่าสุด 6 เดือนที่มีข้อมูล)
+  if (!/\d{4}-\d{2}/.test(rest)) {
+    const months = summarize.userMonths(userId).slice(0, 6);
+    if (!months.length) return notify(groupId, replyToken, `คุณ${disp} ยังไม่มีรายการที่บันทึกไว้`);
+    const chips = months.map(ym => ({ label: thaiMonth(ym), text: `/สรุป ${ym}` }));
+    return notify(groupId, replyToken, `📊 เลือกเดือนที่ต้องการสรุป (คุณ${disp}):`, chips);
+  }
+
+  const [, ym] = rest.match(/(\d{4}-\d{2})/);
+  const s = summarize.userMonthSummary(userId, ym);
+  if (!s.count) return notify(groupId, replyToken, `ไม่มีรายการเดือน ${thaiMonth(ym)} ของคุณ${disp}`);
+  return notify(groupId, replyToken,
+    `📊 คุณ${disp} — ${thaiMonth(ym)}\nรวม ${s.count} ใบ = ${s.total.toLocaleString('th-TH')} บาท`);
+}
+
 async function caption() {
   const lineUserId = arg('--user-id');
   const text = arg('--text');
@@ -123,6 +160,7 @@ async function caption() {
   const action = arg('--action', 'process-slip');
   try {
     if (action === 'process-slip') await processSlip();
+    else if (action === 'summary') await summary();
     else if (action === 'caption') await caption();
     else { console.error('[mayom] unknown action:', action); process.exit(1); }
   } catch (e) {

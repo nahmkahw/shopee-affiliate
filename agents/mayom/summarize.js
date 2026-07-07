@@ -84,4 +84,22 @@ function build(filter = {}) {
   return { totals, daily, catNames, cats, byUser, rows, users };
 }
 
-module.exports = { build, bkkDate };
+// ── สรุปเฉพาะ user (สำหรับคำสั่ง /สรุป ใน LINE) ────────────────────────────────
+function _countable(t, userId) {
+  return t.line_user_id === userId && !t.duplicate && t.status === 'recorded' && t.amount != null;
+}
+
+/** userMonths — เดือน 'YYYY-MM' (เวลาไทย) ที่ user คนนี้มีรายการ เรียงล่าสุดก่อน */
+function userMonths(userId) {
+  const set = new Set();
+  store.readAll().filter(t => _countable(t, userId)).forEach(t => set.add(bkkDate(t.created_at).slice(0, 7)));
+  return [...set].sort().reverse();
+}
+
+/** userMonthSummary — ยอดรวม + จำนวนใบ ของ user คนนี้ในเดือน ym ('YYYY-MM') */
+function userMonthSummary(userId, ym) {
+  const rows = store.readAll().filter(t => _countable(t, userId) && bkkDate(t.created_at).slice(0, 7) === ym);
+  return { count: rows.length, total: rows.reduce((s, t) => s + (t.amount || 0), 0) };
+}
+
+module.exports = { build, bkkDate, userMonths, userMonthSummary };

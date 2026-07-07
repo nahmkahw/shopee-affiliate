@@ -54,7 +54,14 @@ function dispatchEvents(ROOT, events, allowedGroup) {
       spawnRun(ROOT, ['--action', 'process-slip', '--message-id', ev.message.id,
         '--user-id', userId, '--group-id', groupId, ...(ev.replyToken ? ['--reply-token', ev.replyToken] : [])]);
     } else if (ev.message.type === 'text' && ev.message.text) {
-      spawnRun(ROOT, ['--action', 'caption', '--user-id', userId, '--text', ev.message.text]);
+      const text = ev.message.text.trim();
+      const rt = ev.replyToken ? ['--reply-token', ev.replyToken] : [];
+      // คำสั่งขึ้นต้น /สรุป (หรือ /summary) → สรุปรายเดือน; นอกนั้น = ข้อความกำกับสลิป
+      if (text.startsWith('/สรุป') || /^\/summary/i.test(text)) {
+        spawnRun(ROOT, ['--action', 'summary', '--user-id', userId, '--group-id', groupId, '--text', text, ...rt]);
+      } else {
+        spawnRun(ROOT, ['--action', 'caption', '--user-id', userId, '--text', text]);
+      }
     }
   }
 }
