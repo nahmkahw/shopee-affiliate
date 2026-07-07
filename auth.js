@@ -226,6 +226,10 @@ function gate(req, res) {
     return true;
   }
 
+  // ── ยกเว้น LINE webhook (มะยม) — ตรวจ X-Line-Signature ใน route แทน session ──
+  // LINE ยิงมาจาก IP ภายนอกไม่มี cookie; auth ทำผ่าน HMAC signature ที่ routes/mayom.js
+  if (url === '/webhook/line/mayom') return false;
+
   // ── ยกเว้น internal calls จาก localhost (approval-bot, namkhao scheduler ฯลฯ) ──
   const remoteAddr = req.socket?.remoteAddress || '';
   if (remoteAddr === '127.0.0.1' || remoteAddr === '::1' || remoteAddr === '::ffff:127.0.0.1') {

@@ -75,6 +75,11 @@ const AGENTS = {
     hasDashboard: true,
     actions: [],
   },
+  mayom: {
+    label: 'มะยม', role: 'LINE Money Slip Logger', color: '#65A30D', colorLight: '#F7FEE7', emoji: '🧾',
+    hasDashboard: true,
+    actions: [],
+  },
 };
 
 const pipelineProcs = {
