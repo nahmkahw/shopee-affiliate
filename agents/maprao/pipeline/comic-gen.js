@@ -121,16 +121,18 @@ text_th สั้น ≤${MAX_LINE} ตัวอักษร, family-friendly`;
   return { concept, sharedSetting, panels, footerCaption };
 }
 
-// บรรทัดปิดเรื่องนอกกรอบ (1 บรรทัด สรุปอารมณ์)
+// footer 2 บรรทัด: title\nสรุปเนื้อเรื่อง 1 ประโยค
 async function deriveFooterCaption(concept) {
-  const sys = `ตอบภาษาไทยบรรทัดเดียว ไม่เกิน 20 ตัวอักษร ไม่มีเครื่องหมายคำพูด สรุปอารมณ์ปิดท้ายเรื่องแบบน่ารักๆ
-ตัวอย่าง: อร่อยมากกกก~`;
+  const sys = `ตอบภาษาไทยบรรทัดเดียว ไม่เกิน 50 ตัวอักษร ไม่มีเครื่องหมายคำพูด
+สรุปเนื้อเรื่องของการ์ตูน 4 ช่องนี้เป็น 1 ประโยคกระชับ น่ารัก บอกว่าเกิดอะไรขึ้น
+ตัวอย่าง: กระต่ายน้อยลองทำเค้กครั้งแรก แม้จะพังแต่ก็อร่อยในแบบของตัวเอง`;
   try {
-    const raw = await ollamaChat(`เรื่อง: ${concept.title}`, sys);
+    const raw = await ollamaChat(
+      `หัวข้อ: ${concept.title}\nประเด็น: ${concept.points.join(', ')}`, sys);
     const s = (raw || '').trim().split('\n')[0].replace(/^["']|["']$/g, '').trim();
-    if (s && s.length <= 24) return s;
+    if (s && s.length >= 5 && s.length <= 60) return `${concept.title}\n${s}`;
   } catch {}
-  return 'น่ารักมากเลย~';
+  return `${concept.title}\nเรื่องราวน่ารักของกระต่ายน้อย`;
 }
 
 // caption สั้นๆ สำหรับโพสต์ FB (Typhoon2 แต่งจาก concept, ไม่มี #Shopeeaffiliate เพราะไม่ใช่สินค้า)
