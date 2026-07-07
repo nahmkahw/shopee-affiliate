@@ -153,6 +153,42 @@ async function postFacebook(itemId) {
   return res.id;
 }
 
+async function commentFacebook(postId, data) {
+  const { FB_PAGE_ID, FB_ACCESS_TOKEN } = process.env;
+  if (!FB_PAGE_ID || !FB_ACCESS_TOKEN) return null;
+  const parts = [];
+  if (data.title) parts.push(data.title);
+  const price = data.price || '';
+  const disc  = data.discount ? ` (${data.discount})` : (data.original_price ? ` (ลดจาก ${data.original_price})` : '');
+  if (price) parts.push(`💰 ราคา: ${price}${disc}`);
+  if (parts.length === 0) return null;
+  const message = parts.join('\n');
+
+  // แลก User Token → Page Token เพื่อ comment ในนามของ Page (ต้องการ pages_manage_engagement)
+  let token = FB_ACCESS_TOKEN;
+  try {
+    const qs = `fields=access_token&access_token=${encodeURIComponent(FB_ACCESS_TOKEN)}`;
+    const ptRes = await new Promise((resolve, reject) => {
+      https.get({ hostname: 'graph.facebook.com', path: `/v19.0/${FB_PAGE_ID}?${qs}` }, res => {
+        let buf = '';
+        res.on('data', d => buf += d);
+        res.on('end', () => { try { resolve(JSON.parse(buf)); } catch { reject(new Error('parse')); } });
+      }).on('error', reject);
+    });
+    if (ptRes.access_token) token = ptRes.access_token;
+    else if (ptRes.error) console.log(`  ⚠️ Page Token: ${ptRes.error.message}`);
+  } catch (te) {
+    console.log(`  ⚠️ Page Token exchange ล้มเหลว (ใช้ User Token แทน): ${te.message}`);
+  }
+
+  const res = await httpsPost('graph.facebook.com',
+    `/v19.0/${postId}/comments`,
+    { message, access_token: token }
+  );
+  if (res.error) throw new Error('FB comment: ' + res.error.message);
+  return res.id;
+}
+
 // ─── imgBB upload ─────────────────────────────────────────────────────────────
 
 function uploadImgBB(imagePath) {
@@ -357,6 +393,12 @@ async function main(opts = {}) {
         const postId = await postFacebook(id);
         console.log(`  ✅ Facebook — post_id: ${postId}`);
         results[id].fb = '✅';
+        try {
+          const commentId = await commentFacebook(postId, data);
+          console.log(`  💬 Comment — comment_id: ${commentId}`);
+        } catch (ce) {
+          console.log(`  ⚠️ Comment ไม่สำเร็จ (โพสต์ยังสำเร็จ): ${ce.message}`);
+        }
       } catch (e) {
         console.log(`  ❌ Facebook — ${e.message}`);
         results[id].fb = '❌';
@@ -449,6 +491,7 @@ module.exports = {
   httpsPost,
   httpsPostBinary,
   postFacebook,
+  commentFacebook,
   postInstagram,
   postX,
   main,

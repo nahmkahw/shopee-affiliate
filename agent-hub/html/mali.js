@@ -48,6 +48,9 @@ function buildShopeeHTML(products) {
     return `<tr style="border-bottom:1px solid #F3F4F6;${rowBg}" data-date="${p.post_date}" data-status="${p.isPosted ? 'posted' : p.hasAllContent ? 'ready' : p.hasFB ? 'partial' : 'none'}">
       <td style="padding:10px 12px;white-space:nowrap;font-size:13px;${dateClass}">${p.post_date}${badge}</td>
       <td style="padding:10px 12px">${img}</td>
+      <td style="padding:10px 12px;white-space:nowrap">
+        <span style="font-size:11px;font-family:monospace;color:#6B7280;background:#F3F4F6;padding:2px 6px;border-radius:4px;user-select:all" title="คลิกเพื่อเลือก">${escHtml(p.id)}</span>
+      </td>
       <td style="padding:10px 12px;max-width:240px">
         <a href="${p.affiliate_link}" target="_blank" style="font-size:13px;font-weight:500;color:#1F2937;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(p.title)}">${escHtml(p.title.substring(0,60))}${p.title.length>60?'…':''}</a>
         <div style="font-size:11px;color:#9CA3AF;margin-top:2px">${escHtml(p.shop_name)}</div>
@@ -189,7 +192,7 @@ tbody tr:hover{background:#F9FAFB!important}
     <div style="overflow-x:auto">
       <table id="product-table">
         <thead><tr>
-          <th>วันที่โพสต์</th><th>รูป</th><th>ชื่อสินค้า</th><th>ราคา</th>
+          <th>วันที่โพสต์</th><th>รูป</th><th>ID</th><th>ชื่อสินค้า</th><th>ราคา</th>
           <th style="text-align:center">คะแนน</th><th style="text-align:center">FB</th>
           <th style="text-align:center">IG</th><th style="text-align:center">X</th>
           <th style="text-align:center">TikTok</th><th>สถานะ</th>
