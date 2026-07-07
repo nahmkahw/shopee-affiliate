@@ -65,13 +65,14 @@ function userRows(byUser) {
 }
 
 function txRows(rows, cats) {
-  if (!rows.length) return '<tr><td colspan="8" style="color:#65A30D">ยังไม่มีรายการ</td></tr>';
+  if (!rows.length) return '<tr><td colspan="9" style="color:#65A30D">ยังไม่มีรายการ</td></tr>';
   const opts = sel => cats.map(c => `<option${(sel === c.name) ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
   return rows.map(t => `<tr data-id="${t.id}">
     <td><img class="thumb" src="/dashboard/mayom/slip/${t.id}" onclick="lb(this.src)" onerror="this.style.display='none'"></td>
     <td>${esc((t.created_at || '').slice(5, 16).replace('T', ' '))}</td>
     <td>${esc(t.display)}</td>
     <td><input class="amt" type="number" step="0.01" value="${t.amount == null ? '' : t.amount}"></td>
+    <td style="font-size:11px;max-width:170px;line-height:1.4">${esc(t.bank_from) || '—'}<span style="color:#65A30D"> → </span>${esc(t.bank_to) || '—'}</td>
     <td><select class="cat">${opts(cats.some(c => c.name === t.category) ? t.category : 'อื่นๆ')}</select></td>
     <td><input class="note" value="${esc(t.note)}"></td>
     <td>${t.duplicate ? '<span class="badge b-dup">ซ้ำ</span>' : ''}<span class="badge b-${t.status}">${t.status === 'needs_review' ? 'ตรวจ' : 'ok'}</span>
@@ -130,7 +131,7 @@ function renderDashboard(summary, filter = {}) {
   </form>
   <div id="tmsg" style="font-size:12px;color:#65A30D;margin-bottom:6px"></div>
   <div style="overflow-x:auto"><table><thead><tr>
-    <th>สลิป</th><th>เวลา</th><th>ผู้ส่ง</th><th>ยอด</th><th>หมวด</th><th>โน้ต</th><th>สถานะ</th><th></th>
+    <th>สลิป</th><th>เวลา</th><th>ผู้ส่ง</th><th>ยอด</th><th>จาก → ถึง</th><th>หมวด</th><th>โน้ต</th><th>สถานะ</th><th></th>
   </tr></thead><tbody>${txRows(rows, cats)}</tbody></table></div>
 </div>
 
