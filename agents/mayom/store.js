@@ -20,6 +20,7 @@ const SLIP_DIR  = path.join(BASE, 'slips');
 const INDEX     = path.join(BASE, 'index.json');
 const USERS     = path.join(BASE, 'users.json');
 const CATS      = path.join(BASE, 'categories.json');
+const LASTGROUP = path.join(BASE, 'last-group.json');
 
 const DEFAULT_CATS = [
   { name: 'อาหาร',        color: '#f97316' },
@@ -60,6 +61,13 @@ function matchCategory(text) {
   const partial = names.find(n => n !== 'อื่นๆ' && (t.includes(n) || n.includes(t)));
   return partial || null;
 }
+
+// ── last group (ช่วยหา MAYOM_LINE_GROUP_ID ตอน setup) ──────────────────────────
+function recordLastGroup({ groupId, userId }) {
+  if (!groupId) return;
+  writeJson(LASTGROUP, { groupId, userId: userId || null, at: new Date().toISOString() });
+}
+function getLastGroup() { return readJson(LASTGROUP, null); }
 
 // ── users (alias) ─────────────────────────────────────────────────────────────
 function getUsers() { return readJson(USERS, {}); }
@@ -155,6 +163,7 @@ function attachCaption(lineUserId, { category, note }, withinMs = 60000) {
 module.exports = {
   BASE, SLIP_DIR, slipPath, hashImage,
   getCategories, setCategories, categoryNames, matchCategory,
+  recordLastGroup, getLastGroup,
   getUsers, setAlias, displayFor,
   readAll, getTx, findDuplicate, saveTx, updateTx, deleteTx, attachCaption,
 };

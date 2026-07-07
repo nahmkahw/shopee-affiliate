@@ -43,8 +43,9 @@ function dispatchEvents(ROOT, events, allowedGroup) {
     const src = ev.source || {};
     const groupId = src.groupId || src.roomId || '';
     const userId = src.userId || 'unknown';
-    // log ทุก event → ใช้หา MAYOM_LINE_GROUP_ID ตอน setup (ส่งข้อความในกลุ่มแล้วดูค่านี้)
+    // log + จำ group ล่าสุด → ใช้หา MAYOM_LINE_GROUP_ID ตอน setup (ดูบน dashboard ได้)
     console.log(`[mayom] event: type=${src.type || '?'} groupId=${groupId || '(ไม่มี — แชท 1:1)'} userId=${userId}`);
+    store.recordLastGroup({ groupId, userId });
     if (allowedGroup && groupId !== allowedGroup) {
       console.log('[mayom] ข้าม event จากกลุ่มอื่น:', groupId);
       continue;
@@ -117,6 +118,15 @@ async function register(req, res, url, rawUrl, method, deps) {
     if (!store.getTx(txMatch[1])) return reply(res, 404, { ok: false, error: 'ไม่พบรายการ' });
     store.deleteTx(txMatch[1]);
     return reply(res, 200, { ok: true });
+  }
+
+  // ── last group (ช่วยหา MAYOM_LINE_GROUP_ID ตอน setup) ──
+  if (url === '/api/mayom/last-group' && method === 'GET') {
+    return reply(res, 200, {
+      ok: true,
+      configured: process.env.MAYOM_LINE_GROUP_ID || '',
+      last: store.getLastGroup(),
+    });
   }
 
   // ── ตั้งชื่อเล่น user ──

@@ -92,6 +92,17 @@ function renderDashboard(summary, filter = {}) {
 <title>มะยม — Money Slip Logger</title><style>${CSS}</style></head><body>
 <h1>🧾 มะยม</h1><div class="sub">บันทึกสลิปโอนเงินจากกลุ่ม LINE — สรุปรวม / รายวัน / แยกตามผู้ส่ง</div>
 
+<details class="card" id="setup" style="padding:12px 16px">
+  <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#4d7c0f;list-style:none">⚙️ Setup — หา Group ID ▾</summary>
+  <div style="margin-top:10px;font-size:13px">
+    <div>Group ID ที่ตั้งไว้ (.env): <code id="cfg-group" style="background:#ecfccb;padding:2px 6px;border-radius:4px">—</code></div>
+    <div style="margin-top:8px">Group ล่าสุดที่ยิงเข้ามา: <code id="last-group" style="background:#ecfccb;padding:2px 6px;border-radius:4px">— (ยังไม่มี event)</code>
+      <button class="btn ghost" id="copy-group" style="display:none;margin-left:6px" onclick="copyGroup()">📋 คัดลอก</button></div>
+    <div id="setup-hint" style="font-size:12px;color:#65A30D;margin-top:8px">ส่งข้อความ/สลิปในกลุ่ม LINE แล้วกดรีเฟรชแถวนี้ — เอา Group ID ไปใส่ <code>MAYOM_LINE_GROUP_ID</code> ใน .env แล้วรีสตาร์ท hub</div>
+    <button class="btn ghost" onclick="loadLastGroup()" style="margin-top:6px">🔄 รีเฟรช</button>
+  </div>
+</details>
+
 <div class="cards">
   <div class="stat"><div class="n">${baht(totals.today)}</div><div class="l">วันนี้ (บาท)</div></div>
   <div class="stat"><div class="n">${baht(totals.month)}</div><div class="l">เดือนนี้ (บาท)</div></div>
@@ -126,6 +137,20 @@ function renderDashboard(summary, filter = {}) {
 <div id="lb" onclick="this.classList.remove('open')"><img id="lbi" src=""></div>
 <script>
 function lb(src){document.getElementById('lbi').src=src;document.getElementById('lb').classList.add('open');}
+let _lastGroup='';
+async function loadLastGroup(){
+  try{
+    const j=await(await fetch('/api/mayom/last-group')).json();
+    document.getElementById('cfg-group').textContent=j.configured||'(ยังไม่ตั้ง)';
+    const g=j.last&&j.last.groupId;
+    _lastGroup=g||'';
+    document.getElementById('last-group').textContent=g?(g+'  ('+(j.last.at||'').slice(0,19).replace('T',' ')+')'):'— (ยังไม่มี event)';
+    document.getElementById('copy-group').style.display=g?'inline-block':'none';
+    if(g&&j.configured&&g===j.configured)document.getElementById('setup-hint').textContent='✅ ตรงกับ .env แล้ว — พร้อมใช้งาน';
+  }catch(e){document.getElementById('last-group').textContent='❌ '+e.message;}
+}
+function copyGroup(){if(_lastGroup)navigator.clipboard.writeText(_lastGroup).then(()=>{document.getElementById('copy-group').textContent='✅ คัดลอกแล้ว';setTimeout(()=>document.getElementById('copy-group').textContent='📋 คัดลอก',1500);});}
+loadLastGroup();
 async function saveTx(id){
   const tr=document.querySelector('tr[data-id="'+id+'"]');
   const body={amount:tr.querySelector('.amt').value===''?null:parseFloat(tr.querySelector('.amt').value),
