@@ -146,6 +146,7 @@ shopee-affiliate/
 │   ├── namkhao/           ← Agent น้ำข้าว (Supervisor + Telegram bot + scheduler)
 │   ├── maprang/pipeline/  ← Agent มะปราง (Anime Story Video/Comic)
 │   ├── maprao/pipeline/   ← Agent มะพร้าว (B&W Manga Comic Strip) — reuse post.js ของ manao ร่วม
+│   ├── mayom/             ← Agent มะยม (LINE Money Slip Logger) — webhook-driven [docs/DESIGN.md]
 │   └── anime/             ← Anime image generator
 ├── input/urls.txt         ← รายการสินค้า (format: URL | affiliate_link | YYYY-MM-DD)
 ├── products/{item_id}/    ← ข้อมูล + content ต่อสินค้า
@@ -307,6 +308,21 @@ node agents\makrut\pipeline\makrut.js --resend
   - env: `MAPRAO_VIDEO_SIZE` (default 1080), `MAPRAO_VIDEO_FORMAT` (default portrait), `MAPRAO_TTS_SPEED` (default 0.9)
   - **Gate 2:** `kenBurnsClip`/`concatClips`/`addSubtitle` + portrait support ย้ายไปที่ [`lib/video-build.js`](lib/video-build.js) — maprang `video-build.js` กลายเป็น thin wrapper (re-export เท่านั้น)
 - env: `MAPRAO_COMIC_SIZE` (default 1080), `MAPRAO_COMIC_MAXLINE` (default 40)
+
+### Agent มะยม (`agents/mayom/`) — LINE Money Slip Logger
+
+> สถานะ: **ออกแบบเสร็จ (grilled) ยังไม่ implement** — spec เต็มที่ [agents/mayom/docs/DESIGN.md](agents/mayom/docs/DESIGN.md)
+
+รับสลิปโอนเงินจากกลุ่ม LINE → OCR ด้วย vision model (local) → บันทึกรายการธุรกรรม → Dashboard สรุป (รวม / รายวัน / แยกตาม LINE user). **Webhook-driven ล้วน** — ไม่มี bot process รันค้าง, ไม่มี scheduler; `agent-hub` HTTP server รับ webhook ตรงผ่าน `routes/mayom.js`
+
+- **Webhook + auth:** LINE Messaging API ยิงเข้า path คงที่ `/webhook/line/mayom` — path นี้ **ยกเว้นจาก `auth.gate()`** แต่ verify `X-Line-Signature` (HMAC-SHA256 ด้วย channel secret) แทน; รับเฉพาะ `MAYOM_LINE_GROUP_ID` (กลุ่มเดียว) นอกนั้นทิ้ง
+- **Processing:** route ตอบ HTTP 200 ทันที (LINE บังคับตอบเร็ว) → spawn `run.js --action process-slip`; ตอบยืนยันกลับกลุ่มด้วย **push message** (reply token หมดอายุก่อน OCR เสร็จ)
+- **OCR (`lib/slip-ocr.js`, Gate 2 pluggable):** Ollama vision (`MAYOM_OCR_MODEL=qwen2.5vl:latest` default, เผื่อสลับ EasySlip) คืน `{is_slip, amount, slip_datetime, bank_from/to, ref_no}` — `is_slip=false` → เงียบ ไม่บันทึก
+- **Dedup B+C:** sha256 ของ bytes รูป + `ref_no`/composite (`amount+slip_datetime+bank`) → เจอซ้ำ = บันทึกแต่ `duplicate:true` (ไม่นับยอดใน dashboard)
+- **Category/note:** ข้อความที่ user พิมพ์ตามหลังสลิป ~60s (คำแรก=category, ที่เหลือ=note) + แก้ inline ใน dashboard; `categories.json` มี default 6 หมวด + สี (stacked graph)
+- **Storage:** file-based JSON — `transactions/{id}.json` + `index.json` (ledger) + `users.json` (line_user_id→alias) + `slips/{id}.jpg`
+- **Dashboard `/dashboard/mayom`:** การ์ดสรุป (วันนี้/เดือน/ทั้งหมด/needs_review) + กราฟรายวัน stacked-by-category + ตารางแยก user + ตารางรายการ (แก้ inline + ลบ)
+- env: `MAYOM_LINE_CHANNEL_SECRET`, `MAYOM_LINE_CHANNEL_ACCESS_TOKEN`, `MAYOM_LINE_GROUP_ID`, `MAYOM_OCR_MODEL` (default `qwen2.5vl:latest`)
 
 ### Agent อะนิเมะ (`agents/anime/`)
 
