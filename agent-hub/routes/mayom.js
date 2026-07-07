@@ -42,11 +42,13 @@ function dispatchEvents(ROOT, events, allowedGroup) {
     if (ev.type !== 'message') continue;
     const src = ev.source || {};
     const groupId = src.groupId || src.roomId || '';
+    const userId = src.userId || 'unknown';
+    // log ทุก event → ใช้หา MAYOM_LINE_GROUP_ID ตอน setup (ส่งข้อความในกลุ่มแล้วดูค่านี้)
+    console.log(`[mayom] event: type=${src.type || '?'} groupId=${groupId || '(ไม่มี — แชท 1:1)'} userId=${userId}`);
     if (allowedGroup && groupId !== allowedGroup) {
       console.log('[mayom] ข้าม event จากกลุ่มอื่น:', groupId);
       continue;
     }
-    const userId = src.userId || 'unknown';
     if (ev.message.type === 'image') {
       spawnRun(ROOT, ['--action', 'process-slip', '--message-id', ev.message.id,
         '--user-id', userId, '--group-id', groupId, ...(ev.replyToken ? ['--reply-token', ev.replyToken] : [])]);
