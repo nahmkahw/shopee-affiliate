@@ -22,7 +22,7 @@ concurrency:
 jobs:
   deploy:
     name: deploy
-    runs-on: [self-hosted, windows]
+    runs-on: [self-hosted, Windows]   # Windows/X64 = label อัตโนมัติของ runner (ไม่ต้องเพิ่มเอง)
     timeout-minutes: 30   # > GPU wait 15 นาที + restart + health
     steps:
       # checkout ลง workspace ของ runner เพื่อให้ได้ "สคริปต์ deploy เวอร์ชันล่าสุด"

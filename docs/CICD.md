@@ -151,9 +151,9 @@ gh secret set GOOGLE_SHEET_ID    # วางค่าตอน prompt
 
 1. ไป `https://github.com/<owner>/<repo>/settings/actions/runners` → **New self-hosted runner** → **Windows**
 2. ทำตามคำสั่งที่หน้านั้นให้ (download → `config.cmd` → ใส่ token)
-3. ตอน config ถาม **labels** → ใส่ `windows` เพิ่ม (workflow ใช้ `runs-on: [self-hosted, windows]`)
+3. **ไม่ต้องเพิ่ม label เอง** — runner ได้ `self-hosted`, `Windows`, `X64` อัตโนมัติ ซึ่งตรงกับ `runs-on: [self-hosted, Windows]` แล้ว
 4. รันเป็น service (ค้างไว้): `.\svc.cmd install` แล้ว `.\svc.cmd start`
-5. เช็คว่าขึ้น: หน้า runners ต้องเห็นสถานะ **Idle** สีเขียว
+5. เช็คว่าขึ้น: `gh api repos/<owner>/<repo>/actions/runners --jq '.runners[] | {name,status}'` → ต้องเห็น `"status":"online"`
 
 ### ตั้ง `DEPLOY_PATH` (repo **variable** ไม่ใช่ secret)
 บอก deploy ว่า repo จริงที่ agent รันอยู่ที่ไหน (คนละที่กับ workspace ของ runner)
