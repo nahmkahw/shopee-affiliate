@@ -1,0 +1,77 @@
+name: CI
+
+# ด่านป้องกัน master — รันทุก PR ที่ target master
+# jobs: test (jest 441) + gitleaks (กัน secret/PII หลุด) + pr-title-lint (เตือน ไม่บล็อก)
+# Slack notify = Phase 2 (ยังไม่ทำที่นี่)
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+  pull-requests: write   # ให้ pr-title-lint คอมเมนต์เตือนได้
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: jest
+        run: npm test
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # ต้องมี history เต็มเพื่อสแกน diff
+      - name: gitleaks scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  pr-title-lint:
+    name: pr-title-lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title (warn only — ไม่บล็อก merge)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          PATTERN='^(feat|fix|perf|chore|docs|refactor|test|ci|build|style|revert)(\([a-z0-9-]+\))?!?: .+'
+          if echo "$PR_TITLE" | grep -qE "$PATTERN"; then
+            echo "✓ PR title OK: $PR_TITLE"
+            exit 0
+          fi
+          echo "::warning title=PR title format::ไม่ตรง conventional commit — worklog อาจ derive หมวด/agent ไม่ได้"
+          MARKER="<!-- pr-title-lint -->"
+          # กัน comment ซ้ำเวลา re-run: ลบอันเก่าก่อน
+          for id in $(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --jq ".[] | select(.body | contains(\"$MARKER\")) | .id"); do
+            gh api -X DELETE "repos/$REPO/issues/comments/$id" || true
+          done
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$MARKER
+⚠️ **PR title ไม่ตรง conventional format** (เตือนเฉยๆ ไม่บล็อก merge)
+
+worklog (Phase 2) derive หมวดงาน + agent จาก title — ถ้าไม่ตรงจะได้ \`other\`
+
+รูปแบบ: \`type(scope): สรุป\` เช่น
+- \`feat(mayom): เพิ่มคำสั่ง /สรุป\`
+- \`fix(maprao): แก้ bubble ล้นช่อง\`
+- \`perf(mayom): normalize พ.ศ.\`
+
+type ที่รับ: feat · fix · perf · chore · docs · refactor · test · ci · build · style · revert"

@@ -10,6 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 2. **อัปเดต CLAUDE.md ใน PR เดียวกัน** — เพิ่ม 1 bullet สรุปสิ่งที่เปลี่ยนแปลง (Architecture, Behavior, หรือ Rule ที่เกี่ยวข้อง)
 3. เขียนโค้ด → commit → mark PR ready for review
 
+> **CI gate (`.github/workflows/ci.yml`):** ทุก PR → master รัน `test` (jest 441) + `gitleaks` (กัน secret หลุด) + `pr-title-lint` (เตือน conventional format ไม่บล็อก). `master` เปิด branch protection: ต้องผ่าน PR + `test`/`gitleaks` เขียวก่อน merge (admin override ได้). PR title ควรเป็น `type(scope): ...` (feat/fix/perf/…) เพราะ worklog derive หมวด+agent จากตรงนี้.
+
 > **แยก agent ให้ชัดเจน:** ถ้าจะเริ่มงานของ agent ใหม่/คนละตัว ให้ `git checkout master && git pull && git checkout -b feat/<agent>-<งาน>` ก่อนเริ่มเสมอ — อย่าต่อ commit บน branch ของ agent อื่น (เคยเกิด: งาน maprang ไปกองบน `feat/mammuang-flux-kontext` ทำให้ PR ปน 2 agent แยกยาก)
 
 > งานเล็ก (bug fix, แก้ config) ไม่ต้องทำ Draft PR ก่อนได้ แต่ยังต้องอัปเดต CLAUDE.md ถ้ามีผลต่อ architecture หรือ behavior
