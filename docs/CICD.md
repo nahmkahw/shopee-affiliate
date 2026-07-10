@@ -143,6 +143,59 @@ gh secret set GOOGLE_SHEET_ID    # วางค่าตอน prompt
 
 ---
 
+## Setup 4 — Self-hosted runner (สำหรับ CD เท่านั้น)
+
+**ทำไมต้อง self-hosted:** GitHub-hosted runner เป็น VM บน cloud เข้าถึง `localhost:3002`, ComfyUI, GPU, `.env` บนเครื่องคุณไม่ได้ → deploy จริงไม่ได้
+
+**ปลอดภัยไหม:** `deploy.yml` trigger ด้วย `workflow_dispatch` (ปุ่มกด) **เท่านั้น** — PR จากภายนอกรันโค้ดบนเครื่องคุณไม่ได้ (นี่คือเหตุผลที่ CI แยกไปอยู่ cloud)
+
+1. ไป `https://github.com/<owner>/<repo>/settings/actions/runners` → **New self-hosted runner** → **Windows**
+2. ทำตามคำสั่งที่หน้านั้นให้ (download → `config.cmd` → ใส่ token)
+3. **ไม่ต้องเพิ่ม label เอง** — runner ได้ `self-hosted`, `Windows`, `X64` อัตโนมัติ ซึ่งตรงกับ `runs-on: [self-hosted, Windows]` แล้ว
+4. รันเป็น service (ค้างไว้): `.\svc.cmd install` แล้ว `.\svc.cmd start`
+5. เช็คว่าขึ้น: `gh api repos/<owner>/<repo>/actions/runners --jq '.runners[] | {name,status}'` → ต้องเห็น `"status":"online"`
+
+### ตั้ง `DEPLOY_PATH` (repo **variable** ไม่ใช่ secret)
+บอก deploy ว่า repo จริงที่ agent รันอยู่ที่ไหน (คนละที่กับ workspace ของ runner)
+
+```powershell
+gh variable set DEPLOY_PATH --body "C:\Users\lenovo3\agent\shopee-affiliate"
+gh variable list
+```
+
+## Setup 5 — Google Calendar (deploy log, ไม่บังคับ)
+
+1. เปิด **Google Calendar API**: https://console.cloud.google.com/apis/library/calendar-json.googleapis.com → ENABLE
+2. Google Calendar → เลือกปฏิทิน → **Settings and sharing** → **Share with specific people** → เพิ่มอีเมล SA (`…iam.gserviceaccount.com`) → สิทธิ์ **Make changes to events**
+3. หน้าเดียวกัน เลื่อนลงหา **Calendar ID** (เช่น `abc123@group.calendar.google.com`)
+4. `gh secret set GOOGLE_CALENDAR_ID`
+
+> ไม่ตั้งก็ได้ — `gcal-log.js` no-op เงียบๆ, deploy ยังทำงานปกติ (แค่ไม่มี event บันทึก)
+
+---
+
+## วิธี Deploy
+
+**Actions → Deploy → Run workflow** → เลือก branch (default `master`) → **Run**
+
+### 8 สเต็ปที่เกิดขึ้น
+| # | สเต็ป | ล้มเหลวแล้วยังไง |
+|---|------|------------------|
+| 1 | pre-check (branch guard, fetch, หา conflict) | `DEPLOY_PATH` ไม่ได้อยู่ branch เป้าหมาย → หยุด · ไฟล์แก้ค้าง**ชนกับ** upstream → หยุด + แจ้ง Discord |
+| 2 | GPU guard — **รอจน ComfyUI ว่าง** | เกิน 15 นาที → ยกเลิก ให้กดใหม่ทีหลัง |
+| 3 | backup state (`agent-status.json`, `mayom/index.json`, `users.json`) → `backups/` | — |
+| 4 | `git pull --ff-only` | git error → หยุด |
+| 5 | `npm ci` (เฉพาะตอน `package-lock.json` เปลี่ยน) | — |
+| 6 | restart `start-all-agents.bat` (detached, idempotent) | — |
+| 7 | health check `GET /healthz` | พัง → **restart ซ้ำ 1 ครั้ง** → ยังพัง = แจ้ง Discord, **ไม่แตะ git** |
+| 8 | report → Discord + Calendar event 🚀 | — |
+
+> **สเต็ป 1 ไม่ได้ abort เพราะ "tree ไม่สะอาด"** — repo จริงแทบไม่เคยสะอาด เพราะ agent เขียนทับไฟล์ tracked ตอน runtime (`_tg_queue.json`, `input.txt`, `telegram-bot.pid`) จึง abort เฉพาะเมื่อไฟล์ที่แก้ค้าง **ชนกับ** ไฟล์ที่ upstream เปลี่ยนจริงๆ
+
+> **ไม่มี auto-rollback โดยตั้งใจ** — `git reset --hard` อัตโนมัติบนเครื่องที่มี state ไฟล์สด (สลิปเงิน ฯลฯ) อันตรายกว่าปล่อย down ชั่วคราว. deploy กดเอง = คุณอยู่หน้าเครื่อง เข้าไปแก้ได้ทันที
+
+---
+
 ## Checklist
 
 - [ ] Discord server + channel `#ci-cd` + webhook → `gh secret set DISCORD_WEBHOOK_URL`
@@ -151,6 +204,9 @@ gh secret set GOOGLE_SHEET_ID    # วางค่าตอน prompt
 - [ ] Sheet เปล่า + **Share ให้ `client_email` สิทธิ์ Editor**
 - [ ] `gh secret set GOOGLE_SHEET_ID` (ค่าระหว่าง `/d/` กับ `/edit`)
 - [ ] `gh secret list` → เห็นครบ 3 ตัว
+- [ ] *(CD)* self-hosted runner ติดตั้ง + label `windows` + สถานะ Idle
+- [ ] *(CD)* `gh variable set DEPLOY_PATH --body "C:\...\shopee-affiliate"`
+- [ ] *(ไม่บังคับ)* Calendar API + share ให้ SA + `gh secret set GOOGLE_CALENDAR_ID`
 
 ## ทดสอบ end-to-end
 เปิด PR ทดสอบ → merge → ดู: (1) Discord `#ci-cd` ขึ้นข้อความ merged, (2) Sheet มีแถวใหม่ทั้ง 2 tab
@@ -165,3 +221,9 @@ gh secret set GOOGLE_SHEET_ID    # วางค่าตอน prompt
 | `error:0909006C:PEM routines` / `invalid_grant` | `GCP_SA_KEY` เพี้ยน — ตั้งใหม่ด้วย `gh secret set GCP_SA_KEY < file.json` (อย่า copy-paste ทีละบรรทัด) |
 | `Requested entity was not found` | `GOOGLE_SHEET_ID` ผิด (เอา URL ทั้งเส้นมา / เอา `gid` มาด้วย) |
 | Discord ไม่เด้ง แต่ workflow เขียว | `DISCORD_WEBHOOK_URL` ว่าง → no-op เงียบ (ตั้งใจ) |
+| deploy: `No runner matching the labels` | runner ไม่ได้รัน / ไม่มี label `windows` — เช็คหน้า Settings → Actions → Runners |
+| deploy: `ยังไม่ได้ตั้ง repo variable DEPLOY_PATH` | `gh variable set DEPLOY_PATH --body "<path>"` |
+| deploy: `DEPLOY_PATH อยู่ branch ... ไม่ใช่ master` | repo จริงถูก checkout ค้างที่ feature branch — `git -C "<DEPLOY_PATH>" checkout master` แล้วกดใหม่ |
+| deploy: `ไฟล์แก้ค้างชนกับ upstream` | commit หรือ `git stash` ไฟล์นั้นบนเครื่อง prod แล้วกด Deploy ใหม่ |
+| deploy: `GPU ไม่ว่างเกิน 15 นาที` | มีงาน ComfyUI ยาวค้างอยู่ — รอให้เสร็จแล้วกดใหม่ (`GPU_LOCK_FILE` ดูสถานะได้) |
+| deploy: health ไม่ผ่าน 2 ครั้ง | agent-hub ไม่ขึ้น — git **ไม่ถูก rollback** เข้าไปดู log บนเครื่อง; state backup อยู่ใน `backups/deploy-<ts>/` |

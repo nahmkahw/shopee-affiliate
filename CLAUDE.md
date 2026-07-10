@@ -14,6 +14,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > **Worklog (`.github/workflows/worklog.yml`):** PR merge → master → บันทึกลง Google Sheet 2 tab (`PRs` per-PR + `Daily` rollup) + แจ้ง Discord. lib: `lib/ci/{worklog-parse,gsheet-worklog,discord-notify,worklog-runner}.js` — **no-op เงียบๆ ถ้า `DISCORD_WEBHOOK_URL`/`GCP_SA_KEY`/`GOOGLE_SHEET_ID` ยังว่าง** (ไม่ทำ workflow แดง). setup: [docs/CICD.md](docs/CICD.md). Discord=CI/CD ops แยกจาก Telegram=content ops.
 
+> **CD deploy (`.github/workflows/deploy.yml`):** **ปุ่มกดเอง** (`workflow_dispatch`) บน **self-hosted runner** (เครื่อง Windows) — ไม่ auto-deploy ตอน merge. 8 สเต็ป: pre-check → **รอ GPU ว่าง (timeout 15 นาที)** → backup state → `git pull --ff-only` → `npm ci` (ถ้า lock เปลี่ยน) → `start-all-agents.bat` → health `GET /healthz` (พัง → restart ซ้ำ 1 ครั้ง → **ไม่ rollback git**) → report Discord + Calendar. lib: `lib/ci/{deploy-precheck,deploy-guard,health-check,gcal-log,deploy-runner}.js`. ทำงานกับ repo จริงที่ path `vars.DEPLOY_PATH` (ไม่ใช่ workspace ของ runner). **pre-check ไม่ abort เพราะ tree ไม่สะอาด** — agent เขียนทับไฟล์ tracked ตอน runtime (`_tg_queue.json`/`input.txt`/`*.pid`) จึง abort เฉพาะไฟล์ที่แก้ค้าง**ชนกับ**ที่ upstream เปลี่ยน. `agent-hub/index.js` มี `/healthz` (อยู่ก่อน `auth.gate()`).
+
 > **แยก agent ให้ชัดเจน:** ถ้าจะเริ่มงานของ agent ใหม่/คนละตัว ให้ `git checkout master && git pull && git checkout -b feat/<agent>-<งาน>` ก่อนเริ่มเสมอ — อย่าต่อ commit บน branch ของ agent อื่น (เคยเกิด: งาน maprang ไปกองบน `feat/mammuang-flux-kontext` ทำให้ PR ปน 2 agent แยกยาก)
 
 > งานเล็ก (bug fix, แก้ config) ไม่ต้องทำ Draft PR ก่อนได้ แต่ยังต้องอัปเดต CLAUDE.md ถ้ามีผลต่อ architecture หรือ behavior
