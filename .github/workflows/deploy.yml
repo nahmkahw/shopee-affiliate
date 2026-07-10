@@ -31,15 +31,19 @@ jobs:
 
       # shell: powershell = Windows PowerShell 5.1 (มีมากับ Windows)
       # ห้ามใช้ pwsh (PowerShell 7) — runner ไม่ได้ติดตั้งไว้ → "pwsh: command not found"
+      #
+      # ⚠️ เนื้อใน `run:` ต้องเป็น ASCII ล้วน — PowerShell 5.1 อ่านไฟล์ .ps1 ที่ GitHub
+      #    เขียนให้ (UTF-8 ไม่มี BOM) เป็น ANSI → อักษรไทย/ลูกศรเพี้ยนแล้วพัง parse
+      #    ข้อความภาษาไทยให้ไปอยู่ใน node script (node อ่าน UTF-8 ถูกต้อง)
       - name: ตรวจ DEPLOY_PATH
         shell: powershell
         run: |
           if (-not "${{ vars.DEPLOY_PATH }}") {
-            Write-Error "ยังไม่ได้ตั้ง repo variable DEPLOY_PATH (Settings → Secrets and variables → Actions → Variables)"
+            Write-Error "DEPLOY_PATH repo variable is not set (Settings > Secrets and variables > Actions > Variables)"
             exit 1
           }
           if (-not (Test-Path "${{ vars.DEPLOY_PATH }}\.git")) {
-            Write-Error "DEPLOY_PATH ไม่ใช่ git repo: ${{ vars.DEPLOY_PATH }}"
+            Write-Error "DEPLOY_PATH is not a git repo: ${{ vars.DEPLOY_PATH }}"
             exit 1
           }
           Write-Host "DEPLOY_PATH ok: ${{ vars.DEPLOY_PATH }}"

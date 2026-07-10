@@ -150,10 +150,38 @@ gh secret set GOOGLE_SHEET_ID    # วางค่าตอน prompt
 **ปลอดภัยไหม:** `deploy.yml` trigger ด้วย `workflow_dispatch` (ปุ่มกด) **เท่านั้น** — PR จากภายนอกรันโค้ดบนเครื่องคุณไม่ได้ (นี่คือเหตุผลที่ CI แยกไปอยู่ cloud)
 
 1. ไป `https://github.com/<owner>/<repo>/settings/actions/runners` → **New self-hosted runner** → **Windows**
-2. ทำตามคำสั่งที่หน้านั้นให้ (download → `config.cmd` → ใส่ token)
-3. **ไม่ต้องเพิ่ม label เอง** — runner ได้ `self-hosted`, `Windows`, `X64` อัตโนมัติ ซึ่งตรงกับ `runs-on: [self-hosted, Windows]` แล้ว
-4. รันเป็น service (ค้างไว้): `.\svc.cmd install` แล้ว `.\svc.cmd start`
-5. เช็คว่าขึ้น: `gh api repos/<owner>/<repo>/actions/runners --jq '.runners[] | {name,status}'` → ต้องเห็น `"status":"online"`
+2. ติดตั้งไว้ **นอกโฟลเดอร์ repo** เช่น `C:\Users\<you>\actions-runner` แล้วทำตามคำสั่งที่หน้านั้น (download → `config.cmd` → ใส่ token)
+3. ⚠️ **ตอนถาม `Enter name of work folder` → กด Enter ผ่าน (ใช้ default `_work`)**
+   ห้ามใส่ path ของ repo — runner จะถ่ายขยะ (`_actions/`, `_temp/`, **clone ซ้อน**) ลงในโฟลเดอร์ repo
+   ตรวจภายหลังที่ `<actions-runner>\.runner` → ต้องเป็น `"workFolder": "_work"`
+4. **ไม่ต้องเพิ่ม label เอง** — runner ได้ `self-hosted`, `Windows`, `X64` อัตโนมัติ ซึ่งตรงกับ `runs-on: [self-hosted, Windows]` แล้ว
+5. สตาร์ท `.\run.cmd` (interactive) หรือติดตั้งเป็น service ให้รันค้างข้าม reboot
+6. เช็คว่าขึ้น: `gh api repos/<owner>/<repo>/actions/runners --jq '.runners[] | {name,status}'` → ต้องเห็น `"status":"online"`
+
+### แก้ workFolder ที่ตั้งผิดไปแล้ว
+⚠️ ไฟล์ `.runner` เขียนมาแบบ **มี BOM** → ต้อง strip ก่อน `JSON.parse` ไม่งั้นพัง (`Unexpected token '﻿'`)
+
+```powershell
+# 1) หยุด runner (หรือกด Ctrl+C ในหน้าต่าง run.cmd)
+Stop-Process -Name Runner.Listener -Force
+
+# 2) แก้ workFolder — strip BOM ตอนอ่าน, ใส่ BOM กลับตอนเขียน
+node -e "const fs=require('fs');const p='C:/Users/<you>/actions-runner/.runner';const j=JSON.parse(fs.readFileSync(p,'utf8').replace(/^﻿/,''));j.workFolder='_work';fs.writeFileSync(p,'﻿'+JSON.stringify(j,null,2),'utf8');console.log('workFolder ->',j.workFolder)"
+
+# 3) สตาร์ทใหม่
+cd C:\Users\<you>\actions-runner; .\run.cmd
+```
+
+ลบขยะออกจาก repo (runner จะสร้างใหม่ที่ `_work` เอง):
+```powershell
+cd <DEPLOY_PATH>
+Remove-Item -Recurse -Force _actions,_tool,_temp,_PipelineMapping,shopee-affiliate -ErrorAction SilentlyContinue
+```
+(มี `.gitignore` กันไว้อีกชั้นแล้ว)
+
+### ⚠️ inline PowerShell ใน workflow ต้องเป็น ASCII ล้วน
+Windows PowerShell 5.1 อ่านไฟล์ `.ps1` ที่ GitHub เขียนให้ (UTF-8 ไม่มี BOM) เป็น **ANSI** → อักษรไทย/ลูกศร `→` เพี้ยนเป็น `â†'` แล้วพัง parse
+ข้อความไทยเขียนได้ใน **node script** เท่านั้น (node อ่าน UTF-8 ถูก) ส่วน `name:` และคอมเมนต์ YAML ใช้ไทยได้ปกติ
 
 ### ตั้ง `DEPLOY_PATH` (repo **variable** ไม่ใช่ secret)
 บอก deploy ว่า repo จริงที่ agent รันอยู่ที่ไหน (คนละที่กับ workspace ของ runner)
