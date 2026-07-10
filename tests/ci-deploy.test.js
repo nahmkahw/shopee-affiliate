@@ -28,6 +28,23 @@ describe('deploy-precheck', () => {
     expect(r.reason).toBe('up-to-date');
   });
 
+  test('DEPLOY_PATH ค้างอยู่ feature branch → หยุด (กัน pull master ทับ branch อื่น)', () => {
+    const r = evaluate({ behind: 3, currentBranch: 'feat/cicd-phase3-deploy', targetBranch: 'master' });
+    expect(r.proceed).toBe(false);
+    expect(r.reason).toBe('wrong-branch');
+    expect(r.currentBranch).toBe('feat/cicd-phase3-deploy');
+  });
+
+  test('branch guard ชนะ up-to-date (เช็คก่อน)', () => {
+    const r = evaluate({ behind: 0, currentBranch: 'dev', targetBranch: 'master' });
+    expect(r.reason).toBe('wrong-branch');
+  });
+
+  test('อยู่ master ถูก branch → ผ่าน guard ไปเช็คอย่างอื่นต่อ', () => {
+    const r = evaluate({ behind: 2, upstreamChanged: ['a.js'], currentBranch: 'master', targetBranch: 'master' });
+    expect(r.proceed).toBe(true);
+  });
+
   test('conflict → หยุด พร้อมรายชื่อไฟล์', () => {
     const r = evaluate({ localModified: ['post.js'], upstreamChanged: ['post.js'], behind: 2 });
     expect(r.proceed).toBe(false);

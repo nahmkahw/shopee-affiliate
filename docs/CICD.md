@@ -181,7 +181,7 @@ gh variable list
 ### 8 สเต็ปที่เกิดขึ้น
 | # | สเต็ป | ล้มเหลวแล้วยังไง |
 |---|------|------------------|
-| 1 | pre-check (fetch, หา conflict) | ไฟล์แก้ค้าง**ชนกับ** upstream → หยุด + แจ้ง Discord |
+| 1 | pre-check (branch guard, fetch, หา conflict) | `DEPLOY_PATH` ไม่ได้อยู่ branch เป้าหมาย → หยุด · ไฟล์แก้ค้าง**ชนกับ** upstream → หยุด + แจ้ง Discord |
 | 2 | GPU guard — **รอจน ComfyUI ว่าง** | เกิน 15 นาที → ยกเลิก ให้กดใหม่ทีหลัง |
 | 3 | backup state (`agent-status.json`, `mayom/index.json`, `users.json`) → `backups/` | — |
 | 4 | `git pull --ff-only` | git error → หยุด |
@@ -223,6 +223,7 @@ gh variable list
 | Discord ไม่เด้ง แต่ workflow เขียว | `DISCORD_WEBHOOK_URL` ว่าง → no-op เงียบ (ตั้งใจ) |
 | deploy: `No runner matching the labels` | runner ไม่ได้รัน / ไม่มี label `windows` — เช็คหน้า Settings → Actions → Runners |
 | deploy: `ยังไม่ได้ตั้ง repo variable DEPLOY_PATH` | `gh variable set DEPLOY_PATH --body "<path>"` |
+| deploy: `DEPLOY_PATH อยู่ branch ... ไม่ใช่ master` | repo จริงถูก checkout ค้างที่ feature branch — `git -C "<DEPLOY_PATH>" checkout master` แล้วกดใหม่ |
 | deploy: `ไฟล์แก้ค้างชนกับ upstream` | commit หรือ `git stash` ไฟล์นั้นบนเครื่อง prod แล้วกด Deploy ใหม่ |
 | deploy: `GPU ไม่ว่างเกิน 15 นาที` | มีงาน ComfyUI ยาวค้างอยู่ — รอให้เสร็จแล้วกดใหม่ (`GPU_LOCK_FILE` ดูสถานะได้) |
 | deploy: health ไม่ผ่าน 2 ครั้ง | agent-hub ไม่ขึ้น — git **ไม่ถูก rollback** เข้าไปดู log บนเครื่อง; state backup อยู่ใน `backups/deploy-<ts>/` |
