@@ -8,10 +8,22 @@ products/
 # News articles (manao pipeline)
 agents/manao/pipeline/news/
 
-# Lock files
+# Lock files (bot single-instance PID locks — must never be committed)
 .approval-bot.lock
 agent-status.json
 .auth-sessions.json
+**/*.lock
+
+# Financial / PII data — Agent มะยม (สลิปโอนเงินจริง เลขบัญชี จำนวนเงิน)
+# ห้าม commit ขึ้น public repo เด็ดขาด (daily-pr.js ทำ git add -A)
+agents/*/transactions/
+agents/*/slips/
+agents/mayom/users.json
+agents/mayom/index.json
+agents/mayom/last-group.json
+
+# Internal-only affiliate tracking (ไม่เปิด public)
+tracking.xlsx
 
 # Video temp files
 */_temp_video/
