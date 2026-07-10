@@ -78,3 +78,21 @@ jobs:
             "" \
             "type ที่รับ: feat · fix · perf · chore · docs · refactor · test · ci · build · style · revert")
           gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$BODY"
+
+  notify-failure:
+    name: notify-failure
+    needs: [test, gitleaks, pr-title-lint]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Slack alert (no-op ถ้ายังไม่ตั้ง webhook)
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: node lib/ci/slack-notify.js "❌ CI ล้มเหลว — PR #$PR_NUMBER $PR_TITLE · $PR_URL"
