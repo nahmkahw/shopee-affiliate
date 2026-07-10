@@ -42,6 +42,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ห้าม `require('../agent-hub.js')` หรือ `require('./agent-hub.js')` โดยตรง — entry point คือ `agent-hub/index.js` เท่านั้น
 - เวลาต่ออายุ `FB_ACCESS_TOKEN` อัปเดตที่ **root `.env` ไฟล์เดียว** — ทุก Agent โหลดจากที่เดียวกัน
 - ห้าม commit `.env` ไม่ว่ากรณีใด
+- **ห้าม commit ข้อมูล PII/การเงิน** — `agents/*/transactions/`, `agents/*/slips/`, `agents/mayom/{users,index,last-group}.json`, `tracking.xlsx`, `**/*.lock` ถูก gitignore แล้ว (repo เป็น **public** + `daily-pr.js` ทำ `git add -A` → เผลอ commit สลิปเงินขึ้น public ได้) — CI gitleaks เป็นด่านสุดท้าย
+- **รันเทสต์ผ่าน `jest.config.js`** (`roots: tests/` + `modulePathIgnorePatterns: .claude/,node_modules/`) — กัน haste collision จากสำเนา repo ใน `.claude/worktrees/**`; `npm test` บนเครื่อง dev = ตรงกับ CI
 - **ComfyUI submit จุดใหม่ทุกจุดต้อง wrap ด้วย `withGpuLock(label, fn)`** ([lib/gpu-lock.js](lib/gpu-lock.js)) — ไม่งั้น bypass mutex แล้ว submit ชนกัน → client timeout ตอนรอคิว (ดู [ADR](docs/ADR-comfyui-gpu-queue.md))
 
 **Test gotchas:**
