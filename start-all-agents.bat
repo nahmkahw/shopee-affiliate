@@ -18,7 +18,10 @@ if errorlevel 1 (
 
 :: ── 1. Agent Hub (port 3002) — server, kill+restart ได้ ───────────────────────
 echo [1/4] เริ่ม Agent Hub (port 3002)...
-for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr /R " :3002 "') do (
+:: กรอง LISTENING เท่านั้น! ถ้าไม่กรอง " :3002 " จะแมตช์แถว ESTABLISHED ด้วย
+:: ซึ่ง tokens=5 = PID ของ "ผู้เชื่อมต่อเข้ามา" ไม่ใช่ตัว server
+:: → เคยฆ่า deploy-runner ที่กำลังยิง health check เข้ามาเอง (CD ตายกลางคัน)
+for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr /R " :3002 " ^| findstr /I "LISTENING"') do (
     if not "%%a"=="0" taskkill /F /PID %%a >nul 2>&1
 )
 timeout /t 1 /nobreak >nul

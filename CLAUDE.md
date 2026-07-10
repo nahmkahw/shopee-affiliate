@@ -51,6 +51,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **ห้าม commit ข้อมูล PII/การเงิน** — `agents/*/transactions/`, `agents/*/slips/`, `agents/mayom/{users,index,last-group}.json`, `tracking.xlsx`, `**/*.lock` ถูก gitignore แล้ว (repo เป็น **public** + `daily-pr.js` ทำ `git add -A` → เผลอ commit สลิปเงินขึ้น public ได้) — CI gitleaks เป็นด่านสุดท้าย
 - **self-hosted runner ต้องตั้ง `workFolder` = `_work` (นอก repo)** — เคยตั้งเป็น path ของ repo ทำให้ runner ถ่าย `_actions/`(103 ไฟล์) + clone ซ้อน(549 ไฟล์) ลงใน repo → `daily-pr.js` เกือบ commit ขึ้น public. gitignore กันไว้แล้ว แต่แก้ที่ต้นเหตุ (`<actions-runner>\.runner`)
 - **inline PowerShell ใน `.github/workflows/*` ต้องเป็น ASCII ล้วน** — PS 5.1 อ่าน `.ps1` (UTF-8 ไม่มี BOM) เป็น ANSI → อักษรไทยเพี้ยน พัง parse. ข้อความไทยไว้ใน node script เท่านั้น
+- **`start-all-agents.bat` ต้องกรอง `LISTENING` ก่อน `taskkill`** — `netstat | findstr " :3002 "` แมตช์แถว ESTABLISHED ด้วย ซึ่ง `tokens=5` = PID ของ **ผู้เชื่อมต่อเข้ามา** ไม่ใช่ server (เคยฆ่า `deploy-runner` ที่ยิง health check เข้ามาเอง → CD ตายกลางคัน + hub ดับค้าง)
+- **โปรเซสที่ spawn จาก GitHub Actions ต้องลบ env `RUNNER_TRACKING_ID`** — ไม่งั้น runner เก็บกวาดฆ่าทิ้งตอน job จบ (agent-hub ที่ deploy เพิ่ง start จะดับทันที) ดู `lib/ci/deploy-runner.js` `restart()`
 - **รันเทสต์ผ่าน `jest.config.js`** (`roots: tests/` + `modulePathIgnorePatterns: .claude/,node_modules/`) — กัน haste collision จากสำเนา repo ใน `.claude/worktrees/**`; `npm test` บนเครื่อง dev = ตรงกับ CI
 - **ComfyUI submit จุดใหม่ทุกจุดต้อง wrap ด้วย `withGpuLock(label, fn)`** ([lib/gpu-lock.js](lib/gpu-lock.js)) — ไม่งั้น bypass mutex แล้ว submit ชนกัน → client timeout ตอนรอคิว (ดู [ADR](docs/ADR-comfyui-gpu-queue.md))
 

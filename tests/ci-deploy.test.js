@@ -131,4 +131,41 @@ describe('health-check', () => {
     expect(r.healthy).toBe(false);
     expect(r.attempts).toBe(3);
   });
+
+  test('initialDelayMs: หน่วงก่อน probe แรก (กันไป probe hub ตัวเก่าที่ยังไม่ถูก kill)', async () => {
+    const order = [];
+    const fetchFn = async () => { order.push('probe'); return okRes; };
+    const sleep = async (ms) => { order.push(`sleep:${ms}`); };
+    await waitHealthy({ fetchFn, sleep, log: noop, initialDelayMs: 10000 });
+    expect(order[0]).toBe('sleep:10000');   // หน่วงก่อน ไม่ใช่ probe ก่อน
+    expect(order[1]).toBe('probe');
+  });
+
+  test('initialDelayMs=0 → probe ทันที ไม่ sleep', async () => {
+    const order = [];
+    const fetchFn = async () => { order.push('probe'); return okRes; };
+    const sleep = async () => { order.push('sleep'); };
+    await waitHealthy({ fetchFn, sleep, log: noop });
+    expect(order[0]).toBe('probe');
+  });
+});
+
+describe('start-all-agents.bat — kill เฉพาะ LISTENING', () => {
+  const fs = require('fs');
+  const bat = fs.readFileSync(require('path').join(__dirname, '..', 'start-all-agents.bat'), 'latin1');
+
+  test('netstat filter ต้องกรอง LISTENING (ไม่งั้น taskkill ฆ่า client ที่ต่อเข้ามา)', () => {
+    const line = bat.split('\n').find(l => l.includes('netstat') && l.includes('3002'));
+    expect(line).toBeDefined();
+    expect(line).toMatch(/LISTENING/i);
+  });
+});
+
+describe('deploy-runner restart()', () => {
+  test('ตัด RUNNER_TRACKING_ID ออกจาก env (ไม่งั้น runner ฆ่า agent-hub ตอน job จบ)', () => {
+    const src = require('fs').readFileSync(
+      require('path').join(__dirname, '..', 'lib', 'ci', 'deploy-runner.js'), 'utf8');
+    expect(src).toMatch(/delete env\.RUNNER_TRACKING_ID/);
+    expect(src).toMatch(/spawn\('cmd\.exe', \['\/c', 'start'/);
+  });
 });
