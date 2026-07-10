@@ -29,8 +29,10 @@ jobs:
       # (ตัว deploy ไปทำงานกับ DEPLOY_PATH = repo จริงที่ agent รันอยู่ คนละที่กัน)
       - uses: actions/checkout@v4
 
+      # shell: powershell = Windows PowerShell 5.1 (มีมากับ Windows)
+      # ห้ามใช้ pwsh (PowerShell 7) — runner ไม่ได้ติดตั้งไว้ → "pwsh: command not found"
       - name: ตรวจ DEPLOY_PATH
-        shell: pwsh
+        shell: powershell
         run: |
           if (-not "${{ vars.DEPLOY_PATH }}") {
             Write-Error "ยังไม่ได้ตั้ง repo variable DEPLOY_PATH (Settings → Secrets and variables → Actions → Variables)"
@@ -43,7 +45,7 @@ jobs:
           Write-Host "DEPLOY_PATH ok: ${{ vars.DEPLOY_PATH }}"
 
       - name: deploy (8 สเต็ป)
-        shell: pwsh
+        shell: powershell
         env:
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
           DEPLOY_BRANCH: ${{ inputs.branch }}

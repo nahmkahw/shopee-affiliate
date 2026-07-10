@@ -221,7 +221,8 @@ gh variable list
 | `error:0909006C:PEM routines` / `invalid_grant` | `GCP_SA_KEY` เพี้ยน — ตั้งใหม่ด้วย `gh secret set GCP_SA_KEY < file.json` (อย่า copy-paste ทีละบรรทัด) |
 | `Requested entity was not found` | `GOOGLE_SHEET_ID` ผิด (เอา URL ทั้งเส้นมา / เอา `gid` มาด้วย) |
 | Discord ไม่เด้ง แต่ workflow เขียว | `DISCORD_WEBHOOK_URL` ว่าง → no-op เงียบ (ตั้งใจ) |
-| deploy: `No runner matching the labels` | runner ไม่ได้รัน / ไม่มี label `windows` — เช็คหน้า Settings → Actions → Runners |
+| deploy: `No runner matching the labels` | runner ไม่ได้รัน — เช็ค `gh api repos/<owner>/<repo>/actions/runners` ว่า `status: online` |
+| deploy: `pwsh: command not found` | workflow ต้องใช้ `shell: powershell` (Windows PowerShell 5.1 ที่มีมากับ Windows) ไม่ใช่ `pwsh` (PowerShell 7 ที่ไม่ได้ติดตั้ง) |
 | deploy: `ยังไม่ได้ตั้ง repo variable DEPLOY_PATH` | `gh variable set DEPLOY_PATH --body "<path>"` |
 | deploy: `DEPLOY_PATH อยู่ branch ... ไม่ใช่ master` | repo จริงถูก checkout ค้างที่ feature branch — `git -C "<DEPLOY_PATH>" checkout master` แล้วกดใหม่ |
 | deploy: `ไฟล์แก้ค้างชนกับ upstream` | commit หรือ `git stash` ไฟล์นั้นบนเครื่อง prod แล้วกด Deploy ใหม่ |
