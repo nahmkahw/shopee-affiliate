@@ -10,9 +10,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 2. **อัปเดต CLAUDE.md ใน PR เดียวกัน** — เพิ่ม 1 bullet สรุปสิ่งที่เปลี่ยนแปลง (Architecture, Behavior, หรือ Rule ที่เกี่ยวข้อง)
 3. เขียนโค้ด → commit → mark PR ready for review
 
-> **CI gate (`.github/workflows/ci.yml`):** ทุก PR → master รัน `test` (jest 441) + `gitleaks` (กัน secret หลุด) + `pr-title-lint` (เตือน conventional format ไม่บล็อก) + `notify-failure` (Slack alert ถ้า CI แดง). `master` เปิด branch protection: ต้องผ่าน PR + `test`/`gitleaks` เขียวก่อน merge (admin override ได้). PR title ควรเป็น `type(scope): ...` (feat/fix/perf/…) เพราะ worklog derive หมวด+agent จากตรงนี้.
+> **CI gate (`.github/workflows/ci.yml`):** ทุก PR → master รัน `test` (jest 441) + `gitleaks` (กัน secret หลุด) + `pr-title-lint` (เตือน conventional format ไม่บล็อก) + `notify-failure` (Discord alert ถ้า CI แดง). `master` เปิด branch protection: ต้องผ่าน PR + `test`/`gitleaks` เขียวก่อน merge (admin override ได้). PR title ควรเป็น `type(scope): ...` (feat/fix/perf/…) เพราะ worklog derive หมวด+agent จากตรงนี้.
 
-> **Worklog (`.github/workflows/worklog.yml`):** PR merge → master → บันทึกลง Google Sheet 2 tab (`PRs` per-PR + `Daily` rollup) + แจ้ง Slack. lib: `lib/ci/{worklog-parse,gsheet-worklog,slack-notify,worklog-runner}.js` — **no-op เงียบๆ ถ้า `SLACK_WEBHOOK_URL`/`GCP_SA_KEY`/`GOOGLE_SHEET_ID` ยังว่าง** (ไม่ทำ workflow แดง). setup: [docs/CICD.md](docs/CICD.md). Slack=CI/CD ops แยกจาก Telegram=content ops.
+> **Worklog (`.github/workflows/worklog.yml`):** PR merge → master → บันทึกลง Google Sheet 2 tab (`PRs` per-PR + `Daily` rollup) + แจ้ง Discord. lib: `lib/ci/{worklog-parse,gsheet-worklog,discord-notify,worklog-runner}.js` — **no-op เงียบๆ ถ้า `DISCORD_WEBHOOK_URL`/`GCP_SA_KEY`/`GOOGLE_SHEET_ID` ยังว่าง** (ไม่ทำ workflow แดง). setup: [docs/CICD.md](docs/CICD.md). Discord=CI/CD ops แยกจาก Telegram=content ops.
 
 > **แยก agent ให้ชัดเจน:** ถ้าจะเริ่มงานของ agent ใหม่/คนละตัว ให้ `git checkout master && git pull && git checkout -b feat/<agent>-<งาน>` ก่อนเริ่มเสมอ — อย่าต่อ commit บน branch ของ agent อื่น (เคยเกิด: งาน maprang ไปกองบน `feat/mammuang-flux-kontext` ทำให้ PR ปน 2 agent แยกยาก)
 

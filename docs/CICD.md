@@ -1,6 +1,6 @@
 # CI/CD ภายในองค์กร — คู่มือ + Setup
 
-ระบบ CI/CD สำหรับ shopee-affiliate: GitHub Actions (เครื่องยนต์) + Slack (dev ops) + Google Sheets/Calendar (worklog + log) + Telegram (content ops, แยกส่วน)
+ระบบ CI/CD สำหรับ shopee-affiliate: GitHub Actions (เครื่องยนต์) + Discord (dev ops) + Google Sheets/Calendar (worklog + log) + Telegram (content ops, แยกส่วน)
 
 ## สถาปัตยกรรม
 
@@ -11,14 +11,14 @@
 | **CD deploy** | self-hosted (เครื่อง Windows) | ปุ่มกด (workflow_dispatch) | `.github/workflows/deploy.yml` *(Phase 3)* |
 
 - CI = `test` (jest 441) + `gitleaks` + `pr-title-lint` (เตือน). branch protection: `test`+`gitleaks` ต้องเขียว, admin override ได้
-- Slack = ห้องเครื่อง CI/CD (build fail, PR merged, deploy). **Telegram = content ops คงเดิม แยกกัน**
+- Discord = ห้องเครื่อง CI/CD (build fail, PR merged, deploy). **Telegram = content ops คงเดิม แยกกัน**
 - ทุก lib อยู่ `lib/ci/*` (thin, DI ผ่าน params, no-op ถ้าไม่มี secret)
 
 ## Secrets ที่ต้องตั้ง (GitHub → Settings → Secrets and variables → Actions)
 
 | secret | ใช้ที่ | ได้มาจาก |
 |--------|--------|----------|
-| `SLACK_WEBHOOK_URL` | ci.yml, worklog.yml | Slack Incoming Webhook |
+| `DISCORD_WEBHOOK_URL` | ci.yml, worklog.yml | Discord channel webhook |
 | `GCP_SA_KEY` | worklog.yml | Google service-account JSON (ทั้งไฟล์) |
 | `GOOGLE_SHEET_ID` | worklog.yml | id ใน URL ของ Sheet |
 | `GOOGLE_CALENDAR_ID` | Phase 3/4 | Calendar settings |
@@ -27,16 +27,15 @@
 
 ---
 
-## Setup 1 — Slack (สร้าง workspace ใหม่)
+## Setup 1 — Discord (สร้าง server ใหม่ + webhook)
 
-1. ไป https://slack.com/get-started → **Create a workspace** (ฟรี) — ตั้งชื่อ เช่น `shopee-affiliate-dev`
-2. สร้าง channel เช่น `#ci-cd`
-3. สร้าง Incoming Webhook:
-   - https://api.slack.com/apps → **Create New App** → *From scratch* → เลือก workspace
-   - เมนู **Incoming Webhooks** → เปิด *Activate* → **Add New Webhook to Workspace** → เลือก `#ci-cd`
-   - copy URL หน้าตา `https://hooks.slack.com/services/T…/B…/…`
-4. เพิ่มเป็น GitHub Secret `SLACK_WEBHOOK_URL`
-5. ทดสอบ: `node lib/ci/slack-notify.js "hello"` (ตั้ง `SLACK_WEBHOOK_URL` ใน env ก่อน)
+1. Discord → **＋ (Add a Server)** → *Create My Own* (ฟรี) — เช่น `shopee-affiliate-dev`
+2. สร้าง text channel เช่น `#ci-cd`
+3. สร้าง Webhook:
+   - คลิกเฟือง ⚙️ ข้างชื่อ channel `#ci-cd` → **Integrations** → **Webhooks** → **New Webhook**
+   - ตั้งชื่อ (เช่น `CI Bot`) → **Copy Webhook URL** (หน้าตา `https://discord.com/api/webhooks/…/…`)
+4. เพิ่มเป็น GitHub Secret `DISCORD_WEBHOOK_URL`
+5. ทดสอบ: `DISCORD_WEBHOOK_URL=... node lib/ci/discord-notify.js "hello"`
 
 ## Setup 2 — Google Service Account + Sheet
 
@@ -55,4 +54,4 @@
 ---
 
 ## ทดสอบ end-to-end
-เปิด PR ทดสอบ → merge → ดู: (1) Slack `#ci-cd` ขึ้นข้อความ merged, (2) Sheet มีแถวใหม่ทั้ง 2 tab
+เปิด PR ทดสอบ → merge → ดู: (1) Discord `#ci-cd` ขึ้นข้อความ merged, (2) Sheet มีแถวใหม่ทั้ง 2 tab

@@ -1,6 +1,6 @@
 name: Worklog
 
-# บันทึกงานลง Google Sheet (per-PR + daily) + แจ้ง Slack เมื่อ PR merge เข้า master
+# บันทึกงานลง Google Sheet (per-PR + daily) + แจ้ง Discord เมื่อ PR merge เข้า master
 # ดึง metadata จาก event payload ตรงๆ (ไม่ต้องเรียก API เพิ่ม)
 # googleapis ติดตั้ง ad-hoc ในงานนี้ (ไม่ใส่ใน package.json — กัน test job ช้า)
 on:
@@ -23,7 +23,7 @@ jobs:
           node-version: 20
       - name: install googleapis
         run: npm install googleapis --no-audit --no-fund --no-save
-      - name: append worklog + notify Slack
+      - name: append worklog + notify Discord
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
@@ -36,7 +36,7 @@ jobs:
           PR_ADDITIONS: ${{ github.event.pull_request.additions }}
           PR_DELETIONS: ${{ github.event.pull_request.deletions }}
           CI_STATUS: success
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
         run: node lib/ci/worklog-runner.js
