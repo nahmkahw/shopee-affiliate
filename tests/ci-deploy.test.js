@@ -162,10 +162,30 @@ describe('start-all-agents.bat — kill เฉพาะ LISTENING', () => {
 });
 
 describe('deploy-runner restart()', () => {
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'lib', 'ci', 'deploy-runner.js'), 'utf8');
+
   test('ตัด RUNNER_TRACKING_ID ออกจาก env (ไม่งั้น runner ฆ่า agent-hub ตอน job จบ)', () => {
-    const src = require('fs').readFileSync(
-      require('path').join(__dirname, '..', 'lib', 'ci', 'deploy-runner.js'), 'utf8');
     expect(src).toMatch(/delete env\.RUNNER_TRACKING_ID/);
     expect(src).toMatch(/spawn\('cmd\.exe', \['\/c', 'start'/);
+  });
+
+  test('ห้ามใช้ process.exit() — libuv assertion crash ตอนปิด (async.c:94)', () => {
+    expect(src).not.toMatch(/process\.exit\(/);
+    expect(src).toMatch(/process\.exitCode\s*=/);
+  });
+});
+
+describe('health-check probe — ไม่ใช้ fetch keep-alive', () => {
+  const src = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'lib', 'ci', 'health-check.js'), 'utf8');
+
+  test('ใช้ node:http + keepAlive:false (กัน socket ค้าง → bat taskkill + libuv crash)', () => {
+    expect(src).toMatch(/require\('node:http'\)/);
+    expect(src).toMatch(/keepAlive:\s*false/);
+  });
+
+  test('probe ไม่ default เป็น global fetch อีกแล้ว', () => {
+    expect(src).not.toMatch(/fetchFn\s*=\s*fetch/);
   });
 });
