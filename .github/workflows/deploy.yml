@@ -1,0 +1,55 @@
+name: Deploy
+
+# CD — ปุ่มกดเอง (ไม่ auto-deploy ตอน merge ตามที่ตกลง)
+# รันบน self-hosted runner บนเครื่อง Windows ที่ agent อยู่จริง
+#
+# ⚠️ trigger เป็น workflow_dispatch เท่านั้น — PR จากภายนอกรันโค้ดบนเครื่องไม่ได้
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: branch ที่จะ deploy
+        required: false
+        default: master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy   # กัน deploy ซ้อนกัน
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: [self-hosted, windows]
+    timeout-minutes: 30   # > GPU wait 15 นาที + restart + health
+    steps:
+      # checkout ลง workspace ของ runner เพื่อให้ได้ "สคริปต์ deploy เวอร์ชันล่าสุด"
+      # (ตัว deploy ไปทำงานกับ DEPLOY_PATH = repo จริงที่ agent รันอยู่ คนละที่กัน)
+      - uses: actions/checkout@v4
+
+      - name: ตรวจ DEPLOY_PATH
+        shell: pwsh
+        run: |
+          if (-not "${{ vars.DEPLOY_PATH }}") {
+            Write-Error "ยังไม่ได้ตั้ง repo variable DEPLOY_PATH (Settings → Secrets and variables → Actions → Variables)"
+            exit 1
+          }
+          if (-not (Test-Path "${{ vars.DEPLOY_PATH }}\.git")) {
+            Write-Error "DEPLOY_PATH ไม่ใช่ git repo: ${{ vars.DEPLOY_PATH }}"
+            exit 1
+          }
+          Write-Host "DEPLOY_PATH ok: ${{ vars.DEPLOY_PATH }}"
+
+      - name: deploy (8 สเต็ป)
+        shell: pwsh
+        env:
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          DEPLOY_BRANCH: ${{ inputs.branch }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+        run: |
+          npm install googleapis --no-audit --no-fund --no-save
+          node lib/ci/deploy-runner.js

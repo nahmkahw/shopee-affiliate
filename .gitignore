@@ -25,6 +25,9 @@ agents/mayom/last-group.json
 # Internal-only affiliate tracking (ไม่เปิด public)
 tracking.xlsx
 
+# Deploy state backups (สร้างโดย lib/ci/deploy-runner.js สเต็ป 3)
+backups/
+
 # Video temp files
 */_temp_video/
 *.mp4

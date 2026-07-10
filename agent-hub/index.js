@@ -238,6 +238,15 @@ const server = http.createServer(async (req, res) => {
   const url    = rawUrl.split('?')[0];
   const method = req.method;
 
+  // ── /healthz — liveness probe สำหรับ CD (deploy.yml สเต็ป 7) ──
+  // อยู่ก่อน auth.gate() ตั้งใจ: ต้องตอบได้แม้ DASHBOARD_PASSWORD_HASH ยังไม่ตั้ง (gate จะ 503)
+  // ไม่คืนข้อมูลอ่อนไหว — แค่ ok/pid/uptime
+  if (url === '/healthz') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: true, pid: process.pid, uptime: Math.round(process.uptime()) }));
+    return;
+  }
+
   if (auth.gate(req, res)) return;
 
   const done = () => res.writableEnded || res.headersSent || res._claimed;
