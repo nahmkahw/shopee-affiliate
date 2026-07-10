@@ -28,6 +28,16 @@ tracking.xlsx
 # Deploy state backups (สร้างโดย lib/ci/deploy-runner.js สเต็ป 3)
 backups/
 
+# GitHub Actions self-hosted runner artifacts
+# กันเคสที่ runner ตั้ง workFolder ผิดมาที่โฟลเดอร์ repo (เคยเกิด: clone ซ้อน 549 ไฟล์
+# + _actions/ 103 ไฟล์ untracked → daily-pr.js `git add -A` เกือบคอมมิตขึ้น public repo)
+# workFolder ที่ถูกคือ <actions-runner>/_work
+_actions/
+_tool/
+_temp/
+_PipelineMapping/
+/shopee-affiliate/
+
 # Video temp files
 */_temp_video/
 *.mp4
