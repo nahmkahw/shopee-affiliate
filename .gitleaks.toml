@@ -1,0 +1,21 @@
+# gitleaks config — ด่านสุดท้ายกัน secret/token หลุดขึ้น public repo
+# extend default ruleset (ครอบ FB/Google/AWS/generic API keys, Telegram/Slack tokens ฯลฯ)
+# หมายเหตุ: การกัน "ไฟล์ PII/การเงินมะยม" ทำที่ .gitignore (Phase 0) — gitleaks ตรงนี้
+#          เน้นจับ token/secret ในเนื้อไฟล์
+[extend]
+useDefault = true
+
+[allowlist]
+description = "ไฟล์ที่อนุญาต (ตัวอย่าง/เทมเพลต ไม่ใช่ secret จริง)"
+paths = [
+  '''\.env\.example$''',
+  '''\.gitleaks\.toml$''',
+  '''package-lock\.json$''',
+]
+# placeholder ใน .env.example / เอกสาร (CLAUDE.md มีคำพวกนี้) — ไม่นับเป็น leak
+regexes = [
+  '''APP_ID''',
+  '''APP_SECRET''',
+  '''SHORT_LIVED_TOKEN''',
+  '''YOUR_[A-Z_]+''',
+]
