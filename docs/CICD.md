@@ -10,11 +10,11 @@
 | **Worklog** | GitHub-hosted (cloud) | PR merge → master | `.github/workflows/worklog.yml` |
 | **CD deploy** | self-hosted (เครื่อง Windows) | ปุ่มกด (workflow_dispatch) | `.github/workflows/deploy.yml` *(Phase 3)* |
 
-- CI = `test` (jest 441) + `gitleaks` + `pr-title-lint` (เตือน). branch protection: `test`+`gitleaks` ต้องเขียว, admin override ได้
+- CI = `test` (jest) + `gitleaks` + `pr-title-lint` (เตือน) + `notify-failure` (Discord alert). branch protection: `test`+`gitleaks` ต้องเขียว, admin override ได้
 - Discord = ห้องเครื่อง CI/CD (build fail, PR merged, deploy). **Telegram = content ops คงเดิม แยกกัน**
 - ทุก lib อยู่ `lib/ci/*` (thin, DI ผ่าน params, no-op ถ้าไม่มี secret)
 
-## Secrets ที่ต้องตั้ง (GitHub → Settings → Secrets and variables → Actions)
+## Secrets ที่ต้องตั้ง
 
 | secret | ใช้ที่ | ได้มาจาก |
 |--------|--------|----------|
@@ -24,6 +24,24 @@
 | `GOOGLE_CALENDAR_ID` | Phase 3/4 | Calendar settings |
 
 > ทุก workflow **no-op เงียบๆ** ถ้า secret ยังว่าง — ตั้งเมื่อไรก็เริ่มทำงานเมื่อนั้น ไม่พังก่อน
+
+### ตั้ง secret ยังไง — 2 วิธี
+
+**วิธี A — `gh` CLI (แนะนำ 🔒 ค่าไม่ผ่าน clipboard/หน้าจอ)**
+```powershell
+gh secret set DISCORD_WEBHOOK_URL          # prompt ให้วางค่า
+gh secret set GOOGLE_SHEET_ID              # prompt ให้วางค่า
+gh secret set GCP_SA_KEY < "C:\path\to\service-account.json"   # อ่านจากไฟล์ตรงๆ
+
+gh secret list                             # ตรวจว่าครบ
+```
+
+**วิธี B — หน้าเว็บ**
+ลิงก์ตรง: `https://github.com/<owner>/<repo>/settings/secrets/actions`
+
+> **หาเมนูไม่เจอ?** มันไม่ได้อยู่ระดับบนสุด — ต้องเข้า **repo → แท็บ Settings** (ไม่ใช่ Settings ของบัญชี) แล้วเลื่อนแถบซ้ายลงไปที่หัวข้อ **Security** → **Secrets and variables** → กางออก → **Actions**
+
+⚠️ **ห้ามวางค่า secret ลงใน chat / commit / issue** — repo นี้เป็น public
 
 ---
 
@@ -37,15 +55,87 @@
 4. เพิ่มเป็น GitHub Secret `DISCORD_WEBHOOK_URL`
 5. ทดสอบ: `DISCORD_WEBHOOK_URL=... node lib/ci/discord-notify.js "hello"`
 
-## Setup 2 — Google Service Account + Sheet
+## Setup 2 — Google Service Account (ได้ไฟล์ JSON)
 
+**ทำไมต้องใช้ service account:** worklog รันบน GitHub runner (ไม่มีคนนั่งกดยินยอม) → ต้องเป็น auth แบบ server-to-server ไม่ใช่ OAuth
+
+### 2.1 สร้าง project + เปิด API
 1. https://console.cloud.google.com → สร้าง project (เช่น `shopee-affiliate-ci`)
-2. **APIs & Services → Enable APIs** → เปิด **Google Sheets API** (+ **Google Calendar API** เผื่อ Phase 4)
-3. **IAM & Admin → Service Accounts → Create** → ตั้งชื่อ → **Create key** → *JSON* → ดาวน์โหลด
-4. copy เนื้อ JSON ทั้งไฟล์ → GitHub Secret `GCP_SA_KEY`
-5. สร้าง Google Sheet ใหม่ (เปล่าๆ) → **Share** ให้ email ของ service account (ลงท้าย `…iam.gserviceaccount.com`) สิทธิ์ **Editor**
-6. copy `GOOGLE_SHEET_ID` จาก URL: `docs.google.com/spreadsheets/d/<ID>/edit`
-7. tab `PRs` + `Daily` **ไม่ต้องสร้างเอง** — `gsheet-worklog.js` สร้าง + ใส่ header ให้อัตโนมัติครั้งแรก
+2. เปิด **Google Sheets API**: https://console.cloud.google.com/apis/library/sheets.googleapis.com → **ENABLE**
+   (เผื่อ Phase 4 เปิด **Google Calendar API** ด้วย)
+
+### 2.2 สร้าง service account
+ไปที่ https://console.cloud.google.com/iam-admin/serviceaccounts (เช็คว่าเลือก **project ถูกตัว** ที่แถบบน)
+
+1. **+ CREATE SERVICE ACCOUNT** → ใส่ชื่อ → **CREATE AND CONTINUE**
+2. ขั้น *"Grant this service account access to project"* → **ข้าม (CONTINUE)**
+   — Sheets ไม่ได้ใช้สิทธิ์ระดับ project แต่ใช้การ **share Sheet ให้อีเมล SA** (ขั้น 3.2)
+3. ขั้น *"Grant users access"* → **ข้าม** → **DONE**
+
+### 2.3 สร้าง key JSON ⚠️ จุดที่คนหาไม่เจอบ่อยสุด
+**ปุ่ม Create key ไม่ได้อยู่ในหน้า wizard ตอนสร้าง** — ต้องสร้าง SA ให้เสร็จก่อน แล้วเข้าไปทีหลัง:
+
+1. กลับมาที่ลิสต์ service accounts → **คลิกที่อีเมลของ SA** (แถวนั้น) เพื่อเข้าหน้ารายละเอียด
+2. ไปแท็บ **KEYS** (อยู่บนสุด ข้างๆ DETAILS / PERMISSIONS)
+3. **ADD KEY** → **Create new key** → เลือก **JSON** → **CREATE**
+4. เบราว์เซอร์ดาวน์โหลดไฟล์ `.json` ทันที (ชื่อประมาณ `myproject-a1b2c3d4.json`)
+   — **ดาวน์โหลดได้ครั้งเดียว** เก็บให้ดี (สร้างใหม่ได้ถ้าหาย)
+5. `gh secret set GCP_SA_KEY < "C:\path\to\myproject-a1b2c3d4.json"`
+
+> **ADD KEY กดไม่ได้ / ขึ้น "Key creation is not allowed"?**
+> เป็น org policy `iam.disableServiceAccountKeyCreation` บล็อก (เจอบ่อยถ้าบัญชีอยู่ใต้ Google Workspace ขององค์กร)
+> แก้: ใช้ **บัญชี Gmail ส่วนตัว** สร้าง project ใหม่ (ปกติไม่มี policy นี้) หรือให้ admin ปลดที่ IAM & Admin → Organization Policies
+
+---
+
+## Setup 3 — Google Sheet
+
+### 3.1 สร้าง Sheet เปล่า
+https://sheets.new → ได้ไฟล์ใหม่ทันที → ตั้งชื่อ เช่น `Worklog CI/CD`
+
+**ไม่ต้องสร้าง tab หรือหัวตารางเอง** (ดูขั้น 3.4)
+
+### 3.2 Share ให้ service account ← ลืมข้อนี้บ่อยสุด
+1. เปิดไฟล์ JSON ที่ดาวน์โหลดมา หาบรรทัด `"client_email"` — จะลงท้ายด้วย `…iam.gserviceaccount.com`
+2. ใน Sheet กด **Share** → วางอีเมลนั้น → สิทธิ์ **Editor** → Send
+
+> ลืมข้อนี้ → worklog จะ error `403 The caller does not have permission`
+
+### 3.3 หา `GOOGLE_SHEET_ID`
+ID ฝังอยู่ใน URL ตอนเปิด Sheet — เอาส่วนที่อยู่ **ระหว่าง `/d/` กับ `/edit`**
+
+```
+https://docs.google.com/spreadsheets/d/1a2B3cD4eF5gH6iJ7kL8mN9oP0qR/edit#gid=0
+                                       └──────────────────────────┘
+                                            GOOGLE_SHEET_ID
+```
+
+| | |
+|---|---|
+| ✅ ถูก | `1a2B3cD4eF5gH6iJ7kL8mN9oP0qR` |
+| ❌ ผิด | URL ทั้งเส้น |
+| ❌ ผิด | เอา `gid=0` มาด้วย (นั่นคือ id ของ *tab* ไม่ใช่ของ *ไฟล์*) |
+
+```powershell
+gh secret set GOOGLE_SHEET_ID    # วางค่าตอน prompt
+```
+
+### 3.4 ทำไมไม่ต้องสร้าง tab เอง
+[`lib/ci/gsheet-worklog.js`](../lib/ci/gsheet-worklog.js) มีฟังก์ชัน `ensureTab()` ที่รันทุกครั้งก่อนเขียน:
+
+1. **ไม่เจอ tab** → สร้างให้ (`addSheet`)
+2. **แถวแรกว่าง** → เขียนหัวตารางให้
+
+| ครั้งแรกที่ worklog รัน | ระบบทำ |
+|---|---|
+| ไม่มี tab `PRs` | สร้าง + ใส่หัว 13 คอลัมน์ |
+| ไม่มี tab `Daily` | สร้าง + ใส่หัว 9 คอลัมน์ |
+| จากนั้น | append 1 แถวลง `PRs` + upsert แถววันนั้นใน `Daily` |
+
+ครั้งต่อๆ ไป `ensureTab` เห็นว่ามีครบแล้ว → ข้าม ไม่เขียนทับ (**idempotent**)
+
+> tab เริ่มต้นชื่อ `Sheet1` / `ชีต1` ที่ Google แถมมา — **ปล่อยทิ้งไว้ได้** ระบบไม่ยุ่ง จะลบทีหลังก็ได้
+> **อย่าเปลี่ยนชื่อมันเป็น `PRs` เอง** เพราะหัวตารางจะไม่ตรงกับที่โค้ดคาดหวัง
 
 ### โครงสร้าง Sheet ที่ระบบสร้าง
 - **tab `PRs`** (1 แถว/PR): `merge_date · pr · title · author · category · agent · commits · files · additions · deletions · ci_status · deploy_status · url`
@@ -53,5 +143,25 @@
 
 ---
 
+## Checklist
+
+- [ ] Discord server + channel `#ci-cd` + webhook → `gh secret set DISCORD_WEBHOOK_URL`
+- [ ] Google project + **เปิด Sheets API**
+- [ ] Service account → แท็บ **KEYS** → ADD KEY → JSON → `gh secret set GCP_SA_KEY < file.json`
+- [ ] Sheet เปล่า + **Share ให้ `client_email` สิทธิ์ Editor**
+- [ ] `gh secret set GOOGLE_SHEET_ID` (ค่าระหว่าง `/d/` กับ `/edit`)
+- [ ] `gh secret list` → เห็นครบ 3 ตัว
+
 ## ทดสอบ end-to-end
 เปิด PR ทดสอบ → merge → ดู: (1) Discord `#ci-cd` ขึ้นข้อความ merged, (2) Sheet มีแถวใหม่ทั้ง 2 tab
+
+## Troubleshooting
+
+| อาการ | สาเหตุ / แก้ |
+|-------|-------------|
+| workflow เขียวแต่ Sheet ว่าง + log ว่า `no-op` | secret ยังไม่ได้ตั้ง — `gh secret list` เช็ค |
+| `403 The caller does not have permission` | ลืม Share Sheet ให้ `client_email` ของ SA (ขั้น 3.2) |
+| `Google Sheets API has not been used in project…` | ยังไม่เปิด Sheets API (ขั้น 2.1) |
+| `error:0909006C:PEM routines` / `invalid_grant` | `GCP_SA_KEY` เพี้ยน — ตั้งใหม่ด้วย `gh secret set GCP_SA_KEY < file.json` (อย่า copy-paste ทีละบรรทัด) |
+| `Requested entity was not found` | `GOOGLE_SHEET_ID` ผิด (เอา URL ทั้งเส้นมา / เอา `gid` มาด้วย) |
+| Discord ไม่เด้ง แต่ workflow เขียว | `DISCORD_WEBHOOK_URL` ว่าง → no-op เงียบ (ตั้งใจ) |
