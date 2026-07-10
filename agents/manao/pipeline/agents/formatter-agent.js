@@ -113,7 +113,7 @@ function getItems() {
                    : '';
       process.stdout.write(`     📲 ส่ง Telegram ซ้ำ...`);
       try {
-        await sendApprovalNotification(slug, data, master, { pipelineRoot: PIPELINE_ROOT, newsDir: NEWS_DIR });
+        await sendApprovalNotification(slug, data, master, { pipelineRoot: PIPELINE_ROOT, newsDir: NEWS_DIR, addMapraoButtons: true });
         process.stdout.write(` ✓\n`);
       } catch (e) {
         process.stdout.write(` ⚠️ ${e.message.substring(0, 60)}\n`);
@@ -231,7 +231,7 @@ function getItems() {
 
       process.stdout.write(`     📲 ส่ง Telegram รอ approve...`);
       try {
-        await sendApprovalNotification(slug, data, master, { pipelineRoot: PIPELINE_ROOT, newsDir: NEWS_DIR });
+        await sendApprovalNotification(slug, data, master, { pipelineRoot: PIPELINE_ROOT, newsDir: NEWS_DIR, addMapraoButtons: true });
         process.stdout.write(` ✓\n`);
       } catch (e) {
         process.stdout.write(` ⚠️ ${e.message.substring(0, 60)}\n`);

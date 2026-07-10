@@ -16,13 +16,36 @@ const { submitImageWorkflow } = require('../../../lib/comfy-client-core');
 const ROOT_DIR     = path.join(__dirname, '..', '..', '..');
 const MASCOT_JSON  = path.join(__dirname, '..', 'mascot.json');
 const MASCOT_DIR   = path.join(__dirname, '..', 'mascot');
+const DEFAULT_REF  = path.join(__dirname, '..', 'mascot-ref.png'); // bundled default — ใช้เมื่อคลังว่าง
 
 function load() {
-  if (!fs.existsSync(MASCOT_JSON)) return { activeId: null, lastDetail: '', items: {} };
-  try {
-    const m = JSON.parse(fs.readFileSync(MASCOT_JSON, 'utf8'));
-    return { activeId: m.activeId || null, lastDetail: m.lastDetail || '', items: m.items || {} };
-  } catch { return { activeId: null, lastDetail: '', items: {} }; }
+  let m;
+  if (!fs.existsSync(MASCOT_JSON)) {
+    m = { activeId: null, lastDetail: '', items: {} };
+  } else {
+    try {
+      const raw = JSON.parse(fs.readFileSync(MASCOT_JSON, 'utf8'));
+      m = { activeId: raw.activeId || null, lastDetail: raw.lastDetail || '', items: raw.items || {} };
+    } catch { m = { activeId: null, lastDetail: '', items: {} }; }
+  }
+  // auto-discover PNG ใน MASCOT_DIR ที่ยังไม่ register (orphan files จากการ generate โดยตรง)
+  let dirty = false;
+  if (fs.existsSync(MASCOT_DIR)) {
+    for (const fname of fs.readdirSync(MASCOT_DIR)) {
+      if (!fname.endsWith('.png')) continue;
+      const id = fname.replace('.png', '');
+      if (!m.items[id]) {
+        m.items[id] = {
+          file: path.relative(ROOT_DIR, path.join(MASCOT_DIR, fname)),
+          created_at: new Date(parseInt(id) || Date.now()).toISOString(),
+          detail: '',
+        };
+        dirty = true;
+      }
+    }
+  }
+  if (dirty) save(m);
+  return m;
 }
 
 function save(m) {
@@ -42,13 +65,22 @@ function lastDetail() {
   return load().lastDetail;
 }
 
-// path เต็มของ Mascot Ref ที่ active อยู่ (null ถ้ายังไม่มี/ไฟล์หาย)
+// path เต็มของ Mascot Ref — fallback ตามลำดับ: activeId → latest ในคลัง → mascot-ref.png (default)
 function refPath() {
   const { activeId, items } = load();
-  const it = activeId && items[activeId];
-  if (!it) return null;
-  const p = path.join(ROOT_DIR, it.file);
-  return fs.existsSync(p) ? p : null;
+  // 1. active item
+  let it = activeId && items[activeId];
+  // 2. latest item in library (ถ้า activeId ไม่ได้ตั้งหรือไฟล์หาย)
+  if (!it || !fs.existsSync(path.join(ROOT_DIR, it.file))) {
+    const latestId = Object.keys(items).sort().pop();
+    it = latestId ? items[latestId] : null;
+  }
+  if (it) {
+    const p = path.join(ROOT_DIR, it.file);
+    if (fs.existsSync(p)) return p;
+  }
+  // 3. bundled default
+  return fs.existsSync(DEFAULT_REF) ? DEFAULT_REF : null;
 }
 
 // เลือกรูปในคลังให้เป็น active Mascot Ref
@@ -60,14 +92,17 @@ function selectActive(id) {
   return m.items[id];
 }
 
-// ลบรูปในคลัง (ทั้ง entry + ไฟล์จริง) — ห้ามลบตัวที่ active อยู่ (ต้องเลือกตัวอื่นก่อน)
+// ลบรูปในคลัง (ทั้ง entry + ไฟล์จริง) — ถ้าลบ active ให้ auto-select ตัวที่เหลือล่าสุด
 function remove(id) {
   const m = load();
   if (!m.items[id]) throw new Error(`ไม่พบ Mascot Ref id=${id}`);
-  if (m.activeId === id) throw new Error('ลบ Mascot Ref ที่ใช้งานอยู่ไม่ได้ — เลือกตัวอื่นเป็น active ก่อน');
   const p = path.join(ROOT_DIR, m.items[id].file);
   try { fs.unlinkSync(p); } catch {}
   delete m.items[id];
+  if (m.activeId === id) {
+    const remaining = Object.keys(m.items).sort();
+    m.activeId = remaining.length ? remaining[remaining.length - 1] : null;
+  }
   save(m);
 }
 

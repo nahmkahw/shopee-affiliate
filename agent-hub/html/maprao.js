@@ -26,16 +26,23 @@ textarea:focus{border-color:#8B5E3C}
 .gcard .actions button.danger{background:#fecaca;color:#7f1d1d}
 .badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
 .b-producing{background:#fde68a;color:#78350f}
+@keyframes prod-ring{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.5)}50%{box-shadow:0 0 0 5px rgba(245,158,11,0)}}
+.gcard[data-status="producing"]{border:2px solid #f59e0b;animation:prod-ring 1.4s ease-in-out infinite}
 .b-pending_approval{background:#bfdbfe;color:#1e3a8a}
 .b-posted{background:#bbf7d0;color:#14532d}
 .b-error{background:#fecaca;color:#7f1d1d}
-.mcard{position:relative;border-radius:10px;overflow:hidden;border:2px solid #e5d5bd;background:#fff}
+.mcard{position:relative;border-radius:10px;overflow:hidden;border:2px solid #e5d5bd;background:#fff;display:flex;flex-direction:column}
 .mcard.active{border-color:#8B5E3C}
-.mcard img{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;background:#eee;cursor:pointer}
-.mcard .active-tag{position:absolute;top:6px;left:6px;background:#8B5E3C;color:#fff;font-size:10px;padding:2px 6px;border-radius:8px}
-.mcard .meta{padding:6px 8px;font-size:11px;color:#8B5E3C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mcard .del-btn{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:13px;line-height:22px;text-align:center;cursor:pointer;padding:0}
-.mcard .del-btn:hover{background:#b91c1c}
+.mcard img{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;background:#eee;cursor:zoom-in}
+.mcard .active-tag{position:absolute;top:6px;left:6px;background:#8B5E3C;color:#fff;font-size:10px;padding:2px 6px;border-radius:8px;z-index:1}
+.mcard-footer{padding:6px 8px 8px;display:flex;flex-direction:column;gap:5px}
+.mcard-detail{font-size:10px;color:#92400e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mcard-actions{display:flex;gap:4px}
+.mcard-btn-default{flex:1;border:none;border-radius:6px;padding:4px 6px;font-size:10px;font-weight:600;cursor:pointer;background:#eee1cc;color:#8B5E3C}
+.mcard-btn-default:hover{opacity:.85}
+.mcard-active-label{flex:1;border-radius:6px;padding:4px 6px;font-size:10px;font-weight:600;background:#d1fae5;color:#065f46;text-align:center}
+.mcard-btn-del{border:none;border-radius:6px;padding:4px 7px;font-size:10px;font-weight:600;cursor:pointer;background:#fecaca;color:#7f1d1d}
+.mcard-btn-del:hover{opacity:.85}
 #lb-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9999;align-items:center;justify-content:center;cursor:zoom-out}
 #lb-overlay.open{display:flex}
 #lb-overlay img{max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.6);cursor:default}
@@ -57,7 +64,7 @@ function galleryCard(ROOT, job) {
   } else {
     videoBtn = `<button onclick="makeVideo('${job.id}')" title="สร้างวิดีโอ Reels/TikTok (Ken Burns + เสียงบรรยาย)">🎬</button>`;
   }
-  return `<div class="gcard">
+  return `<div class="gcard" id="gcard-${job.id}" data-status="${status}">
     <img src="/dashboard/maprao/comic/${job.id}" onerror="this.style.display='none'"
       style="cursor:zoom-in" onclick="openLightbox('/dashboard/maprao/comic/${job.id}')" title="คลิกเพื่อดูรูปขนาดใหญ่">
     <div class="meta">
@@ -75,17 +82,24 @@ function galleryCard(ROOT, job) {
 }
 
 function mascotCard(item) {
-  const title = item.detail ? `${esc(item.detail)} — คลิกเพื่อเลือกใช้` : 'คลิกเพื่อเลือกใช้';
+  const src = `/dashboard/maprao/mascot/${item.id}`;
+  const detail = item.detail || '';
   return `<div class="mcard ${item.active ? 'active' : ''}">
-    ${item.active ? '<span class="active-tag">✓ ใช้อยู่</span>'
-      : `<button class="del-btn" onclick="event.stopPropagation();deleteMascot('${item.id}')" title="ลบรูปนี้">×</button>`}
-    <img src="/dashboard/maprao/mascot/${item.id}" onclick="selectMascot('${item.id}')" title="${title}">
-    ${item.detail ? `<div class="meta">${esc(item.detail)}</div>` : ''}
+    ${item.active ? '<span class="active-tag">✓ ใช้อยู่</span>' : ''}
+    <img src="${src}" onclick="openLightbox('${src}')" title="คลิกเพื่อดูรูปใหญ่">
+    <div class="mcard-footer">
+      <div class="mcard-detail" title="${esc(detail)}">${esc(detail) || '<span style="color:#c4a882">ไม่มีรายละเอียด</span>'}</div>
+      <div class="mcard-actions">
+        ${item.active
+          ? `<span class="mcard-active-label">✓ Default</span>`
+          : `<button class="mcard-btn-default" onclick="selectMascot('${item.id}')">📌 ตั้ง default</button>`}
+        <button class="mcard-btn-del" onclick="deleteMascot('${item.id}')" title="ลบรูปนี้">🗑️</button>
+      </div>
+    </div>
   </div>`;
 }
 
 function renderDashboard(ROOT, { gallery, mascotList, lastDetail }) {
-  const hasProducing = gallery.some(j => j.status === 'producing' || j.video_status === 'producing');
   const cards = gallery.length
     ? gallery.map(j => galleryCard(ROOT, j)).join('')
     : '<span style="color:#8B5E3C;font-size:13px">ยังไม่มีการ์ตูน</span>';
@@ -142,7 +156,70 @@ function renderDashboard(ROOT, { gallery, mascotList, lastDetail }) {
 </div>
 
 <script>
-${hasProducing ? 'setTimeout(() => location.reload(), 10000);' : ''}
+function escHtml(s) {
+  return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function renderGCard(job) {
+  const st = job.status || 'producing';
+  const ll = (st === 'producing' && Array.isArray(job.logs) && job.logs.length)
+    ? job.logs[job.logs.length - 1].msg : '';
+  const vid = job.video_status;
+  const videoBtn = vid === 'producing'
+    ? \`<button disabled title="กำลังสร้างวิดีโอ...">⏳</button>\`
+    : job.story_video
+      ? \`<a href="/dashboard/maprao/video/\${job.id}" download="story.mp4" style="flex:1;display:flex;align-items:center;justify-content:center;border:none;border-radius:6px;padding:5px 4px;font-size:11px;font-weight:600;cursor:pointer;background:#d1fae5;color:#065f46;text-decoration:none">🎬 ดาวน์</a>\`
+      : \`<button onclick="makeVideo('\${job.id}')" title="สร้างวิดีโอ Reels/TikTok">🎬</button>\`;
+  return \`<div class="gcard" id="gcard-\${job.id}" data-status="\${st}">
+    <img src="/dashboard/maprao/comic/\${job.id}" onerror="this.style.display='none'"
+      style="cursor:zoom-in" onclick="openLightbox('/dashboard/maprao/comic/\${job.id}')" title="คลิกเพื่อดูรูปขนาดใหญ่">
+    <div class="meta">
+      <span class="badge b-\${st}">\${st}</span>
+      \${ll ? \`<div style="margin-top:3px;font-size:10px;color:#92400e;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="\${escHtml(ll)}">\${escHtml(ll)}</div>\` : ''}
+      <div style="margin-top:4px">\${escHtml((job.prompt||'').substring(0,60))}</div>
+    </div>
+    <div class="actions">
+      <button onclick="postGallery('\${job.id}')" title="โพสต์ Facebook">📤 โพสต์</button>
+      <button onclick="resendGallery('\${job.id}')" title="ส่ง Telegram">✈️ ส่ง TG</button>
+      \${videoBtn}
+      <button class="danger" onclick="deleteGallery('\${job.id}')" title="ลบ">🗑️</button>
+    </div>
+  </div>\`;
+}
+function replaceCard(job) {
+  if (!job || !job.id) return;
+  const el = document.getElementById('gcard-' + job.id);
+  if (!el) return;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = renderGCard(job);
+  el.replaceWith(tmp.firstElementChild);
+}
+function prependProducingCard(id, prompt) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = renderGCard({ id, status: 'producing', prompt, logs: [] });
+  const grid = document.getElementById('gallery');
+  grid.prepend(tmp.firstElementChild);
+  startPoll(id);
+}
+const _polls = {};
+function startPoll(id) {
+  if (_polls[id]) return;
+  _polls[id] = setInterval(async () => {
+    try {
+      const j = await (await fetch('/api/maprao/status/' + id)).json();
+      if (!j.ok) return;
+      const el = document.getElementById('gcard-' + id);
+      if (!el) { clearInterval(_polls[id]); delete _polls[id]; return; }
+      const still = j.status === 'producing' || j.video_status === 'producing';
+      const tmp = document.createElement('div');
+      tmp.innerHTML = renderGCard(j);
+      el.replaceWith(tmp.firstElementChild);
+      if (!still) { clearInterval(_polls[id]); delete _polls[id]; }
+    } catch {}
+  }, 5000);
+}
+document.querySelectorAll('.gcard[data-status="producing"]').forEach(el => {
+  startPoll(el.id.replace('gcard-', ''));
+});
 function openLightbox(src) {
   document.getElementById('lb-img').src = src;
   document.getElementById('lb-overlay').classList.add('open');
@@ -195,7 +272,7 @@ async function postGallery(id) {
     const r = await fetch('/api/maprao/gallery/' + id + '/post', { method: 'POST' });
     const j = await r.json();
     document.getElementById('gallery-msg').textContent = j.ok ? '✅ โพสต์แล้ว' : '❌ ' + (j.error || 'error');
-    if (j.ok) setTimeout(() => location.reload(), 1500);
+    if (j.ok) { const s = await (await fetch('/api/maprao/status/' + id)).json(); replaceCard(s); }
   } catch (e) { document.getElementById('gallery-msg').textContent = '❌ ' + e.message; }
 }
 async function resendGallery(id) {
@@ -212,8 +289,9 @@ async function makeVideo(id) {
     const r = await fetch('/api/maprao/gallery/' + id + '/video', { method: 'POST' });
     const j = await r.json();
     document.getElementById('gallery-msg').textContent = j.ok
-      ? '✅ เริ่มสร้างวิดีโอแล้ว (ใช้เวลา ~5-10 นาที — รีเฟรชเพื่อดูผล)'
+      ? '✅ เริ่มสร้างวิดีโอแล้ว (~5-10 นาที)'
       : '❌ ' + (j.error || 'error');
+    if (j.ok) startPoll(id);
   } catch (e) { document.getElementById('gallery-msg').textContent = '❌ ' + e.message; }
 }
 async function deleteGallery(id) {
@@ -223,7 +301,7 @@ async function deleteGallery(id) {
     const r = await fetch('/api/maprao/gallery/' + id, { method: 'DELETE' });
     const j = await r.json();
     document.getElementById('gallery-msg').textContent = j.ok ? '✅ ลบแล้ว' : '❌ ' + (j.error || 'error');
-    if (j.ok) location.reload();
+    if (j.ok) { const el = document.getElementById('gcard-' + id); if (el) el.remove(); }
   } catch (e) { document.getElementById('gallery-msg').textContent = '❌ ' + e.message; }
 }
 async function genComic() {
@@ -239,9 +317,9 @@ async function genComic() {
     });
     const j = await r.json();
     document.getElementById('msg').textContent = j.ok
-      ? '✅ เริ่มสร้างแล้ว ID: ' + j.id + ' (ดูผลได้ที่ Telegram)'
+      ? '✅ เริ่มสร้างแล้ว (ดูผลได้ที่ Telegram)'
       : '❌ ' + (j.error || 'error');
-    if (j.ok) setTimeout(() => location.reload(), 3000);
+    if (j.ok) { prependProducingCard(j.id, document.getElementById('prompt').value.trim()); }
   } catch (e) { document.getElementById('msg').textContent = '❌ ' + e.message; }
   btn.disabled = false;
 }
@@ -277,8 +355,8 @@ async function genFromNews() {
     });
     const j = await r.json();
     if (j.ok) {
-      msg.textContent = '✅ เริ่มสร้างแล้ว ID: ' + j.id + ' | "' + (j.storyPrompt || '').substring(0, 50) + '"';
-      setTimeout(() => location.reload(), 3500);
+      msg.textContent = '✅ เริ่มสร้างแล้ว | "' + (j.storyPrompt || '').substring(0, 50) + '"';
+      prependProducingCard(j.id, j.storyPrompt || '');
     } else {
       msg.textContent = '❌ ' + (j.error || 'error');
     }

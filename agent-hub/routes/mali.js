@@ -182,6 +182,26 @@ async function uploadFBReels(itemId) {
   if (step3.error) throw new Error(`Reels publish: ${step3.error.message}`);
   if (!step3.success) throw new Error(`Reels publish ไม่สำเร็จ: ${JSON.stringify(step3)}`);
 
+  // ── Comment บน Reels หลัง publish ─────────────────────────────────────────
+  try {
+    const dataJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'products', itemId, 'data.json'), 'utf8'));
+    const parts = [];
+    if (dataJson.title) parts.push(dataJson.title);
+    const price = dataJson.price || '';
+    const disc  = dataJson.discount ? ` (${dataJson.discount})` : (dataJson.original_price ? ` (ลดจาก ${dataJson.original_price})` : '');
+    if (price) parts.push(`💰 ราคา: ${price}${disc}`);
+    if (parts.length) {
+      const commentRes = await graphPost(`/v19.0/${video_id}/comments`, {
+        message: parts.join('\n'),
+        access_token: FB_ACCESS_TOKEN,
+      });
+      if (commentRes.error) console.log(`[Hub] ⚠️ Reels comment: ${commentRes.error.message}`);
+      else console.log(`[Hub] 💬 Reels comment — comment_id: ${commentRes.id}`);
+    }
+  } catch (ce) {
+    console.log(`[Hub] ⚠️ Reels comment ล้มเหลว: ${ce.message}`);
+  }
+
   return { id: video_id, sizeKB };
 }
 

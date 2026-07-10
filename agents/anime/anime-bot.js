@@ -18,8 +18,9 @@ const path  = require('path');
 const ROOT = path.join(__dirname, '..', '..');
 require('dotenv').config({ path: path.join(ROOT, '.env') });
 
-const { generateAnime }       = require('./anime-gen');
+const { generateAnime }        = require('./anime-gen');
 const { renderBalloonOnImage } = require('./balloon-canvas');
+const { summarizeBubble }      = require('./bubble-gen');
 const { postFacebookImage, postInstagramImage } = require('./post-anime');
 
 const TOKEN   = process.env.ANIME_TELEGRAM_BOT_TOKEN;
@@ -124,15 +125,16 @@ async function handleText(text, overrideSource) {
       loraStrength: Math.max(0.6, Math.min(1.0, faceWeight * 0.75)),
       outPath: animePath, onProgress: m => console.log(`  [bot ${id}] ${m}`),
     });
-    await renderBalloonOnImage(animePath, text, tailFrac, finalPath);
+    const { text: bubbleText, type: bubbleType, corner: bubbleCorner, footer } = await summarizeBubble(text);
+    await renderBalloonOnImage(animePath, bubbleText, null, finalPath, { template: bubbleType, corner: bubbleCorner, footerCaption: footer || undefined });
 
     try { fs.copyFileSync(src, path.join(dir, 'source.jpg')); } catch {}
-    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({
-      prompt, text, faceWeight, balloon: { tailFrac },
-      fromTemplate: tpl ? tpl.templateId : null, created: Number(id),
-    }, null, 2), 'utf8');
+    const metaObj = { prompt, text, bubbleText, bubbleType, bubbleCorner, faceWeight, fromTemplate: tpl ? tpl.templateId : null, created: Number(id) };
+    if (footer) metaObj.footerCaption = footer;
+    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(metaObj, null, 2), 'utf8');
 
-    await tgSendDocument(finalPath, `📷 รูปใหม่พร้อมแล้ว (ความละเอียดเต็ม)\n💬 "${text}"\n\nอนุมัติเพื่อโพสต์ FB + IG?`, {
+    const tgCaption = `📷 รูปใหม่พร้อมแล้ว\n💬 "${bubbleText.substring(0, 80)}"\n\nอนุมัติเพื่อโพสต์ FB + IG?`;
+    await tgSendDocument(finalPath, tgCaption, {
       inline_keyboard: [[
         { text: '✅ อนุมัติ → โพสต์', callback_data: `ok__${id}` },
         { text: '❌ ยกเลิก', callback_data: `no__${id}` },

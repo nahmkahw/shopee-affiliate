@@ -1,0 +1,21 @@
+{
+  "activeId": "1783049941385",
+  "lastDetail": "นักแบดมินตัน",
+  "items": {
+    "1783326956667": {
+      "file": "agents\\maprao\\mascot\\1783326956667.png",
+      "created_at": "2026-07-06T08:36:05.732Z",
+      "detail": ""
+    },
+    "1783048008762": {
+      "file": "agents\\maprao\\mascot\\1783048008762.png",
+      "created_at": "2026-07-03T03:06:48.762Z",
+      "detail": ""
+    },
+    "1783049941385": {
+      "file": "agents\\maprao\\mascot\\1783049941385.png",
+      "created_at": "2026-07-03T03:39:01.385Z",
+      "detail": ""
+    }
+  }
+}

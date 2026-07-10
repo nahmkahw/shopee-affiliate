@@ -146,6 +146,7 @@ shopee-affiliate/
 │   ├── namkhao/           ← Agent น้ำข้าว (Supervisor + Telegram bot + scheduler)
 │   ├── maprang/pipeline/  ← Agent มะปราง (Anime Story Video/Comic)
 │   ├── maprao/pipeline/   ← Agent มะพร้าว (B&W Manga Comic Strip) — reuse post.js ของ manao ร่วม
+│   ├── mayom/             ← Agent มะยม (LINE Money Slip Logger) — webhook-driven [docs/DESIGN.md]
 │   └── anime/             ← Anime image generator
 ├── input/urls.txt         ← รายการสินค้า (format: URL | affiliate_link | YYYY-MM-DD)
 ├── products/{item_id}/    ← ข้อมูล + content ต่อสินค้า
@@ -287,12 +288,19 @@ node agents\makrut\pipeline\makrut.js --resend
 สร้างการ์ตูนช่อง 4 ช่อง (2×2 grid) ลายเส้นขาวดำแบบ manga ink จาก Story Prompt ที่ user พิมพ์ — ตัวเอกเป็น **Mascot** กระต่าย chibi ตัวเดียวคงที่ (ไม่มี character registry แบบมะปราง) ดู domain glossary เต็มที่ [agents/maprao/docs/CONTEXT.md](agents/maprao/docs/CONTEXT.md)
 
 - **Architecture:** agent แยกจากมะปรางทั้งหมด แต่ share logic ที่เป็น generic ผ่าน `lib/` — ดึง `lib/comfy-client-core.js`, `lib/flux-kontext.js`, `lib/ollama-chat.js` ออกมาจากของมะปรางเดิม (Gate 2) ให้ทั้งสอง agent require ร่วมกัน
-- **Mascot Ref:** สร้างครั้งเดียวผ่าน `--action gen-mascot-ref` (AnythingXL T2I, prompt B&W manga ink) → `agents/maprao/mascot-ref.png` + `mascot.json` — ใช้เป็น anchor ทุก Panel ผ่าน `lib/flux-kontext.js` `generateSceneStill()` (เหมือนมะปราง แต่ ref เดียวไม่ต้อง registry)
+- **Mascot Ref:** สร้างผ่าน `--action gen-mascot-ref` (AnythingXL T2I, B&W manga ink) → เก็บใน `agents/maprao/mascot/` + `mascot.json` (multi-mascot library) — ใช้เป็น anchor ทุก Panel ผ่าน `lib/flux-kontext.js` `generateSceneStill()`
+  - **Fallback chain:** `mascot.refPath()` เลือก: activeId → latest ในคลัง → `agents/maprao/mascot-ref.png` (bundled default) — ไม่ auto-generate, pipeline ไม่ block
+  - **Auto-discover:** `load()` scan `mascot/` dir ทุกครั้ง auto-register PNG ที่ยังไม่อยู่ใน registry (orphan files ไม่หลุดออกจาก UI)
+  - **UI:** คลิกรูป → lightbox | 📌 ตั้ง default | 🗑️ ลบ (รวม active — auto-select ตัวที่เหลือ)
 - **B&W style:** ควบคุมผ่าน prompt เท่านั้น (`STYLE_SUFFIX` ใน `pipeline/comic.js`) — **ไม่บังคับ grayscale post-process** (deliberate trade-off, ดู [CONTEXT.md](agents/maprao/docs/CONTEXT.md))
-- **Bubble:** พูด/คิดในช่อง (ไม่ใช่ caption band แบบมะปราง) — 0-1 Bubble/Panel, fixed-corner position ไม่คำนวณหลบตัวละคร ([ADR-002](agents/maprao/docs/ADR-002-fixed-corner-bubble-placement.md)) + Footer Caption ปิดท้ายเรื่อง
+- **Bubble:** พูด/คิดในช่อง (ไม่ใช่ caption band แบบมะปราง) — 0-1 Bubble/Panel, fixed-corner position ไม่คำนวณหลบตัวละคร ([ADR-002](agents/maprao/docs/ADR-002-fixed-corner-bubble-placement.md))
+- **Footer Caption (2 บรรทัด):** แถบขาวล่างรูป (10% ของ PAGE) — บรรทัดบน: `concept.title` (bold = ชื่อเรื่อง), บรรทัดล่าง: Typhoon2 สรุปเนื้อเรื่อง 1 ประโยค ≤50 ตัว (italic) — `deriveFooterCaption()` ใน `comic-gen.js` คืน `"title\nsummary"`, `buildComicPage()` ใน `comic-build.js` แยก render 2 บรรทัด
 - **Approval + Post:** reuse namkhao bot approval infra ทั้งหมด (**ไม่ใช่บอทของมะปรางเอง** — มะปรางไม่มี callback handler, ดู [ADR-001](agents/maprao/docs/ADR-001-shared-telegram-bot.md)) — เขียน `agents/maprao/pipeline/news/{id}/` (data.json + content/facebook.md + image.jpg) ให้ตรง shape ที่ `post.js` คาดหวัง แล้วเรียก `lib/tg-approval.js` `sendApprovalNotification(..., { mode: 'immediate' })` → namkhao bot callback → `lib/namkhao-bot-news.js` `postNow()` (ฟังก์ชันใหม่ คู่กับ `schedulePost()` เดิม — โพสต์ทันทีไม่มี `--schedule`)
 - **Trigger:** on-demand เท่านั้นผ่าน dashboard (`/dashboard/maprao`, `/api/maprao/generate`) — ไม่มี scheduler/cron ประจำวัน
-- **News-to-Comic Pipeline:** dashboard มี section "📰 สร้างจากข่าว" — dropdown ข่าว 7 วันล่าสุดจาก manao+makrut (`GET /api/maprao/news`) → เลือก comic หรือ video → `POST /api/maprao/generate-from-news` → Typhoon2 สรุปข่าวเป็น story prompt กระต่าย ([`pipeline/news-to-story.js`](agents/maprao/pipeline/news-to-story.js) `summarizeNewsToStory()`) → spawn `run.js --action comic [--mode video]`; ถ้า `--mode video` run.js chain `actionVideo(actualId)` ต่อทันทีหลัง comic เสร็จ
+- **Dashboard live update:** Gallery card ที่ `status=producing` มีเส้น amber pulsing border (`@keyframes prod-ring` CSS) + ถูก poll `GET /api/maprao/status/{id}` ทุก 5s → `renderGCard()` client-side สร้าง DOM ใหม่ → `el.replaceWith()` replace เฉพาะ card นั้น (ไม่ reload ทั้งหน้า); polling หยุดอัตโนมัติเมื่อ status พ้น producing; gallery actions อื่น (post/delete/makeVideo) ก็ update DOM ตรงโดยไม่ reload
+- **News-to-Comic Pipeline:** 2 entry points เข้า pipeline เดียวกัน:
+  1. **Dashboard:** section "📰 สร้างจากข่าว" — dropdown ข่าว 7 วันล่าสุดจาก manao+makrut (`GET /api/maprao/news`) → เลือก comic หรือ video → `POST /api/maprao/generate-from-news` → Typhoon2 `summarizeNewsToStory()` → spawn `run.js --action comic|comic-video`
+  2. **Telegram:** ทุก approval message ของ manao+makrut มีปุ่มแถวที่ 2 — 🥥 การ์ตูน 4 ช่อง / 🎬 สร้างวิดีโอ (`lib/tg-approval.js` `addMapraoButtons: true`) → callback handler `lib/namkhao-bot-news.js` → spawn `run.js --action comic-from-news --source manao|makrut --slug <slug> [--mode video]` → อ่าน news data.json → `summarizeNewsToStory()` → pipeline ปกติ; maprao approval message ของตัวเองไม่มีปุ่มนี้ (circular)
 - **Video (Reels/TikTok):** กด 🎬 ใน Gallery → `--action video` → [`agents/maprao/pipeline/comic-video.js`](agents/maprao/pipeline/comic-video.js):
   - Title card (2s) → Panel 1-4 (Ken Burns still + Typhoon2 narration Hook/Setup/Twist/Punchline + gTTS ภาษาไทยล้วน + bubble subtitle) → concat → `gallery/{id}/story.mp4`
   - `extractThaiText()` กรอง Latin/pipe ก่อนส่ง TTS; `MAPRAO_TTS_SPEED=0.9` ลดความเร็วพูดนิดๆ ให้เป็นธรรมชาติ
@@ -300,6 +308,22 @@ node agents\makrut\pipeline\makrut.js --resend
   - env: `MAPRAO_VIDEO_SIZE` (default 1080), `MAPRAO_VIDEO_FORMAT` (default portrait), `MAPRAO_TTS_SPEED` (default 0.9)
   - **Gate 2:** `kenBurnsClip`/`concatClips`/`addSubtitle` + portrait support ย้ายไปที่ [`lib/video-build.js`](lib/video-build.js) — maprang `video-build.js` กลายเป็น thin wrapper (re-export เท่านั้น)
 - env: `MAPRAO_COMIC_SIZE` (default 1080), `MAPRAO_COMIC_MAXLINE` (default 40)
+
+### Agent มะยม (`agents/mayom/`) — LINE Money Slip Logger
+
+> spec เต็มที่ [agents/mayom/docs/DESIGN.md](agents/mayom/docs/DESIGN.md) — ก่อนใช้งานจริงต้องตั้งค่า LINE channel + เติม `MAYOM_*` ใน root `.env` + expose webhook (ngrok ตอนทดสอบ)
+
+รับสลิปโอนเงินจากกลุ่ม LINE → OCR ด้วย vision model (local) → บันทึกรายการธุรกรรม → Dashboard สรุป (รวม / รายวัน / แยกตาม LINE user). **Webhook-driven ล้วน** — ไม่มี bot process รันค้าง, ไม่มี scheduler; `agent-hub` HTTP server รับ webhook ตรงผ่าน `routes/mayom.js`
+
+- **Webhook + auth:** LINE Messaging API ยิงเข้า path คงที่ `/webhook/line/mayom` — path นี้ **ยกเว้นจาก `auth.gate()`** แต่ verify `X-Line-Signature` (HMAC-SHA256 ด้วย channel secret) แทน; รับเฉพาะ `MAYOM_LINE_GROUP_ID` (กลุ่มเดียว) นอกนั้นทิ้ง
+- **Processing:** route ตอบ HTTP 200 ทันที (LINE บังคับตอบเร็ว) → spawn `run.js --action process-slip`; ตอบยืนยันกลับกลุ่มด้วย **push message** (reply token หมดอายุก่อน OCR เสร็จ)
+- **OCR (`lib/slip-ocr.js`, Gate 2 pluggable):** Ollama vision (`MAYOM_OCR_MODEL=qwen2.5vl:latest` default, เผื่อสลับ EasySlip) คืน `{is_slip, amount, slip_datetime, bank_from/to, ref_no}` — `is_slip=false` → เงียบ ไม่บันทึก; amount ขอเป็น `amount_text` (string ตามที่พิมพ์ คงจุดทศนิยม) แล้ว parse — กันโมเดลอ่าน `86.00`→`8600` (เคยเจอจริง 3 ธนาคาร: โมเดลรวม `.00` เป็นหลักหน่วย); normalize ปี พ.ศ.→ค.ศ. ใน `slip_datetime`; ย่อรูป > `MAYOM_OCR_MAXW`(1600) ก่อน OCR (ตั้งสูงเพราะย่อต่ำ→ข้อความไทยเพี้ยน; latency หลัก = cold-load โมเดล ไม่ใช่ขนาดรูป — warm ~2.5s/ใบ)
+- **Dedup B+C:** sha256 ของ bytes รูป + `ref_no`/composite (`amount+slip_datetime+bank`) → เจอซ้ำ = บันทึกแต่ `duplicate:true` (ไม่นับยอดใน dashboard)
+- **Category/note:** ข้อความที่ user พิมพ์ตามหลังสลิป ~60s (คำแรก=category, ที่เหลือ=note) + แก้ inline ใน dashboard; `categories.json` มี default 6 หมวด + สี (stacked graph)
+- **คำสั่ง `/สรุป` ใน LINE:** พิมพ์ `/สรุป` → bot ตอบ **Quick Reply ปุ่มเดือน** (เดือนที่ "คนพิมพ์" มีข้อมูล ล่าสุด 6 เดือน) → แตะ = ส่ง `/สรุป YYYY-MM` → ตอบยอดรวม+จำนวนใบของ**คนพิมพ์เท่านั้น**ในกลุ่ม. `dispatchEvents` เช็ค prefix `/สรุป` ก่อน (นอกนั้น text = caption); `lib/line-client.js` รองรับ `quickReply` (message-action chips); logic ใน `summarize.userMonths/userMonthSummary` + `run.js --action summary`
+- **Storage:** file-based JSON — `transactions/{id}.json` + `index.json` (ledger) + `users.json` (line_user_id→alias) + `slips/{id}.jpg`
+- **Dashboard `/dashboard/mayom`:** การ์ดสรุป (วันนี้/เดือน/ทั้งหมด/needs_review) + กราฟรายวัน stacked-by-category + ตารางแยก user + ตารางรายการ (แก้ inline + ลบ)
+- env: `MAYOM_LINE_CHANNEL_SECRET`, `MAYOM_LINE_CHANNEL_ACCESS_TOKEN`, `MAYOM_LINE_GROUP_ID`, `MAYOM_OCR_MODEL` (default `qwen2.5vl:latest`)
 
 ### Agent อะนิเมะ (`agents/anime/`)
 

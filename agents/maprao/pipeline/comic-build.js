@@ -138,7 +138,7 @@ function drawBubble(ctx, bubble, cx, cy, cell) {
 async function buildComicPage(panels, imagePaths, outPath, opts = {}) {
   registerFont();
   const cell   = (PAGE - 2 * PAD - GUTTER) / 2;
-  const footerH = opts.footerCaption ? Math.round(PAGE * 0.05) : 0;
+  const footerH = opts.footerCaption ? Math.round(PAGE * 0.10) : 0;
   const pageH  = 2 * PAD + 2 * cell + GUTTER + footerH;
 
   const canvas = createCanvas(PAGE, pageH);
@@ -154,9 +154,20 @@ async function buildComicPage(panels, imagePaths, outPath, opts = {}) {
   }
 
   if (opts.footerCaption) {
-    ctx.font = `italic ${Math.round(footerH * 0.55)}px Tahoma`;
-    ctx.fillStyle = '#000'; ctx.textAlign = 'center';
-    ctx.fillText(opts.footerCaption, PAGE / 2, PAD + 2 * cell + GUTTER + footerH * 0.68);
+    const lines = opts.footerCaption.split('\n');
+    const gridBottom = PAD + 2 * cell + GUTTER;
+    ctx.textAlign = 'center'; ctx.fillStyle = '#000';
+    if (lines.length >= 2) {
+      const titleH = Math.round(footerH * 0.42);
+      const summH  = Math.round(footerH * 0.32);
+      ctx.font = `bold ${titleH}px TahomaBold, Tahoma`;
+      ctx.fillText(lines[0], PAGE / 2, gridBottom + Math.round(footerH * 0.40));
+      ctx.font = `italic ${summH}px Tahoma`;
+      ctx.fillText(lines[1], PAGE / 2, gridBottom + Math.round(footerH * 0.78));
+    } else {
+      ctx.font = `italic ${Math.round(footerH * 0.40)}px Tahoma`;
+      ctx.fillText(lines[0], PAGE / 2, gridBottom + Math.round(footerH * 0.60));
+    }
   }
 
   fs.writeFileSync(outPath, canvas.toBuffer('image/png'));

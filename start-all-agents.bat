@@ -22,8 +22,8 @@ for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr /R " :3002 "') do (
     if not "%%a"=="0" taskkill /F /PID %%a >nul 2>&1
 )
 timeout /t 1 /nobreak >nul
-start "Agent Hub" /min cmd /c "cd /d "%~dp0" && node agent-hub.js"
-echo   ✓ agent-hub.js (http://localhost:3002)
+start "Agent Hub" /min cmd /c "cd /d "%~dp0" && node agent-hub/index.js"
+echo   ✓ agent-hub/index.js (http://localhost:3002)
 
 timeout /t 2 /nobreak >nul
 
