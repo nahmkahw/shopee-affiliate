@@ -2,7 +2,7 @@ name: CI
 
 # ด่านป้องกัน master — รันทุก PR ที่ target master
 # jobs: test (jest 441) + gitleaks (กัน secret/PII หลุด) + pr-title-lint (เตือน ไม่บล็อก)
-# Slack notify = Phase 2 (ยังไม่ทำที่นี่)
+# Discord notify = Phase 2 (notify-failure job ด้านล่าง)
 on:
   pull_request:
     branches: [master]
@@ -78,3 +78,21 @@ jobs:
             "" \
             "type ที่รับ: feat · fix · perf · chore · docs · refactor · test · ci · build · style · revert")
           gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$BODY"
+
+  notify-failure:
+    name: notify-failure
+    needs: [test, gitleaks, pr-title-lint]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Discord alert (no-op ถ้ายังไม่ตั้ง webhook)
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: node lib/ci/discord-notify.js "❌ CI ล้มเหลว — PR #$PR_NUMBER $PR_TITLE · $PR_URL"
