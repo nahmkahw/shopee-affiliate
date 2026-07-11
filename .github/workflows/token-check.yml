@@ -1,0 +1,33 @@
+name: Token Check
+
+# เตือน token หมดอายุล่วงหน้า (Phase 4) — รันทุกวันบน self-hosted runner
+# อ่าน FB_ACCESS_TOKEN จาก <DEPLOY_PATH>/.env โดยตรง → FB token ไม่ต้องเข้า GitHub Secrets
+on:
+  schedule:
+    - cron: '0 1 * * *'   # 08:00 BKK ทุกวัน (UTC 01:00)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  token-check:
+    name: token-check
+    runs-on: [self-hosted, Windows]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: install googleapis
+        run: npm install googleapis --no-audit --no-fund --no-save
+      - name: check token expiry
+        shell: powershell
+        env:
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          TOKEN_ALERT_DAYS: ${{ vars.TOKEN_ALERT_DAYS }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: node lib/ci/token-check-runner.js

@@ -28,6 +28,9 @@ tracking.xlsx
 # Deploy state backups (สร้างโดย lib/ci/deploy-runner.js สเต็ป 3)
 backups/
 
+# Token-check state (idempotency ของ token-check — Phase 4)
+.token-check-state.json
+
 # GitHub Actions self-hosted runner artifacts
 # กันเคสที่ runner ตั้ง workFolder ผิดมาที่โฟลเดอร์ repo (เคยเกิด: clone ซ้อน 549 ไฟล์
 # + _actions/ 103 ไฟล์ untracked → daily-pr.js `git add -A` เกือบคอมมิตขึ้น public repo)

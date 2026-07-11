@@ -16,6 +16,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > **CD deploy (`.github/workflows/deploy.yml`):** **ปุ่มกดเอง** (`workflow_dispatch`) บน **self-hosted runner** (เครื่อง Windows) — ไม่ auto-deploy ตอน merge. 8 สเต็ป: pre-check → **รอ GPU ว่าง (timeout 15 นาที)** → backup state → `git pull --ff-only` → `npm ci` (ถ้า lock เปลี่ยน) → `start-all-agents.bat` → health `GET /healthz` (พัง → restart ซ้ำ 1 ครั้ง → **ไม่ rollback git**) → report Discord + Calendar. lib: `lib/ci/{deploy-precheck,deploy-guard,health-check,gcal-log,deploy-runner}.js`. ทำงานกับ repo จริงที่ path `vars.DEPLOY_PATH` (ไม่ใช่ workspace ของ runner). **pre-check ไม่ abort เพราะ tree ไม่สะอาด** — agent เขียนทับไฟล์ tracked ตอน runtime (`_tg_queue.json`/`input.txt`/`*.pid`) จึง abort เฉพาะไฟล์ที่แก้ค้าง**ชนกับ**ที่ upstream เปลี่ยน. `agent-hub/index.js` มี `/healthz` (อยู่ก่อน `auth.gate()`).
 
+> **Token check (`.github/workflows/token-check.yml`):** รันทุกวัน 08:00 BKK บน self-hosted runner — อ่าน `FB_ACCESS_TOKEN` จาก `<DEPLOY_PATH>/.env` โดยตรง (ไม่เข้า GitHub Secrets), query Graph `debug_token`, เหลือ ≤ `TOKEN_ALERT_DAYS`(7) **หรือ** invalid → Calendar all-day event + Discord alert. idempotent ผ่าน `.token-check-state.json`. lib: `lib/ci/{token-check,token-check-runner}.js`. Page token ถาวร (`expires_at=0`) = ไม่เตือนเวลา แต่ยังจับ token invalid.
+
 > **แยก agent ให้ชัดเจน:** ถ้าจะเริ่มงานของ agent ใหม่/คนละตัว ให้ `git checkout master && git pull && git checkout -b feat/<agent>-<งาน>` ก่อนเริ่มเสมอ — อย่าต่อ commit บน branch ของ agent อื่น (เคยเกิด: งาน maprang ไปกองบน `feat/mammuang-flux-kontext` ทำให้ PR ปน 2 agent แยกยาก)
 
 > งานเล็ก (bug fix, แก้ config) ไม่ต้องทำ Draft PR ก่อนได้ แต่ยังต้องอัปเดต CLAUDE.md ถ้ามีผลต่อ architecture หรือ behavior
