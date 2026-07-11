@@ -9,6 +9,7 @@
 | **CI gate** | GitHub-hosted (cloud) | ทุก PR → master | `.github/workflows/ci.yml` |
 | **Worklog** | GitHub-hosted (cloud) | PR merge → master | `.github/workflows/worklog.yml` |
 | **CD deploy** | self-hosted (เครื่อง Windows) | ปุ่มกด (workflow_dispatch) | `.github/workflows/deploy.yml` *(Phase 3)* |
+| **Token check** | self-hosted (เครื่อง Windows) | ทุกวัน 08:00 BKK (schedule) | `.github/workflows/token-check.yml` *(Phase 4)* |
 
 - CI = `test` (jest) + `gitleaks` + `pr-title-lint` (เตือน) + `notify-failure` (Discord alert). branch protection: `test`+`gitleaks` ต้องเขียว, admin override ได้
 - Discord = ห้องเครื่อง CI/CD (build fail, PR merged, deploy). **Telegram = content ops คงเดิม แยกกัน**
@@ -191,7 +192,21 @@ gh variable set DEPLOY_PATH --body "C:\Users\lenovo3\agent\shopee-affiliate"
 gh variable list
 ```
 
-## Setup 5 — Google Calendar (deploy log, ไม่บังคับ)
+## Phase 4 — Token expiry reminder
+
+`token-check.yml` รันทุกวัน 08:00 BKK บน self-hosted runner:
+1. อ่าน `FB_ACCESS_TOKEN` จาก `<DEPLOY_PATH>/.env` โดยตรง (**ไม่ต้องเข้า GitHub Secrets** — one-place invariant)
+2. query Graph `debug_token` → ดูวันหมดอายุ
+3. เหลือ ≤ `TOKEN_ALERT_DAYS` (default 7) **หรือ** token invalid → สร้าง Calendar all-day event บนวันหมดอายุ + เตือน Discord
+4. idempotent: ไม่เตือนซ้ำ expiry ชุดเดิม (`.token-check-state.json`, gitignored) — ต่ออายุแล้ว (expires_at เปลี่ยน) เตือนใหม่ได้
+
+> **หมายเหตุ:** ถ้า FB token เป็น **Page token ถาวร** (แลกจาก long-lived user token) `debug_token` จะคืน `expires_at=0` = ไม่มีวันหมด → ไม่เตือนเรื่องเวลา แต่ยังเตือนถ้า token ถูก revoke/invalid (จับเคส "โพสต์เงียบๆ ล้มเหลว")
+
+- ปรับเกณฑ์: `gh variable set TOKEN_ALERT_DAYS --body "14"`
+- ทดสอบเลย: **Actions → Token Check → Run workflow** (หรือ local: `DEPLOY_PATH=<path> node lib/ci/token-check-runner.js`)
+- ต้องมี `GOOGLE_CALENDAR_ID` (Setup 5) ถึงจะสร้าง event ได้ — ไม่มีก็ยังเตือน Discord
+
+## Setup 5 — Google Calendar (deploy log + token reminder, ไม่บังคับ)
 
 1. เปิด **Google Calendar API**: https://console.cloud.google.com/apis/library/calendar-json.googleapis.com → ENABLE
 2. Google Calendar → เลือกปฏิทิน → **Settings and sharing** → **Share with specific people** → เพิ่มอีเมล SA (`…iam.gserviceaccount.com`) → สิทธิ์ **Make changes to events**
